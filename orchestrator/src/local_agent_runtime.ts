@@ -1323,7 +1323,9 @@ export async function runLocalAgent(agent: LocalAgentId, opts: RunLocalAgentOpti
     let closed = false;
     let treeSignalled = false;
     const signalTree = (signal: NodeJS.Signals) => {
-      treeSignalled = signalProcessTree(child, signal) || treeSignalled;
+      // Windows：直接子进程已经自己退出时，taskkill 找不到它（退出码 128），它派生的进程也无从再按树查找。
+      // 这时与正常退出路径同一判据（Windows 上只认直接子进程退出），报原本的原因，不报「退出未确认」。
+      treeSignalled = signalProcessTree(child, signal) || treeSignalled || (process.platform === "win32" && child.exitCode !== null);
     };
     const processTreeAlive = (): boolean => {
       if (process.platform === "win32") return child.exitCode === null;

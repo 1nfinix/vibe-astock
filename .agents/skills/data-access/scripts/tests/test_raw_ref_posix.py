@@ -18,10 +18,12 @@ def test_save_raw_ref_uses_slash_even_with_windows_paths(monkeypatch, tmp_path):
     """🔴 Windows 上 os.path.join 用反斜杠:以前 raw_ref 写成 raw\\xxx.csv,传给计算库当场报路径参数错。"""
     real_open = os.open
     opened = []
+    # 先算好真实落盘路径：下面换掉的是全局 os.path.join，之后 tmp_path / ... 在 Linux 上也会拼成反斜杠
+    target = str(tmp_path / "f.bin")
 
     def fake_open(path, flags, mode=0o777):
         opened.append(path)
-        return real_open(str(tmp_path / "f.bin"), flags, mode)
+        return real_open(target, flags, mode)
 
     monkeypatch.setattr(common.os.path, "join", ntpath.join)
     monkeypatch.setattr(common.os, "makedirs", lambda *a, **k: None)
