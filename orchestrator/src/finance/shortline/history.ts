@@ -62,6 +62,8 @@ export interface DayRow {
   values: Values;
   /** ok = 六项都有;partial = 缺几项或没收盘;missing = 一项都没取到(不进分位) */
   status: "ok" | "partial" | "missing";
+  /** 端点说这天已收盘(数字定稿)。没收盘 = false;没取到或没说 = null */
+  settled: boolean | null;
   note: string;
   cached: boolean;
   fetched_at: string | null;
@@ -102,9 +104,9 @@ export interface ShortlineHistoryResult {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (d: string) => DATE_RE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+export const validDate = (d: string) => DATE_RE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 /** 和 Python round(x, n) 对齐到同一个十进制位(按 double 的真实值舍入) */
-const roundTo = (x: number, n: number) => Number(x.toFixed(n));
+export const roundTo = (x: number, n: number) => Number(x.toFixed(n));
 
 /** value 在 hist 里的分位(0~1):小于等于它的比例。样本不足或值缺失给 null */
 export function percentile(value: number | null, hist: (number | null)[]): number | null {
@@ -178,15 +180,25 @@ export function valuesOf(env: unknown): Values {
   return out;
 }
 
-export async function shortlineHistory(ctx: ServiceContext, query: Record<string, string>, signal: AbortSignal, now = new Date()): Promise<ShortlineHistoryResult> {
-  const date = query.date ?? "";
-  if (!validDate(date)) throw new ServiceError("bad_query", "date 要写成 YYYY-MM-DD");
-  if (query.refresh !== undefined && query.refresh !== "1") throw new ServiceError("bad_query", "refresh 只能是 1");
-  const days = query.days === undefined ? DAYS_DEFAULT : Number(query.days);
-  if (!Number.isInteger(days) || days < DAYS_MIN || days > DAYS_MAX) throw new ServiceError("bad_query", `days 要是 ${DAYS_MIN}–${DAYS_MAX} 的整数`);
+/** 东财那几张池能现查的最早一天;更早的只读缓存 */
+export function retentionFloor(now: Date): string {
   const today = localClock(now, SCHEDULE_TZ).day;
-  if (date > today) throw new ServiceError("bad_query", `${date} 还没到`);
-  const oldest = new Date(Date.parse(`${today}T00:00:00Z`) - SOURCE_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
+  return new Date(Date.parse(`${today}T00:00:00Z`) - SOURCE_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 取某天的取数方式:显式刷新的那天现取;超过保留期的只读缓存;其余优先缓存(没收盘的那天快照层本来就不存) */
+export function consistencyFor(d: string, oldest: string, fresh: boolean) {
+  return fresh ? { mode: "fresh" as const } : d < oldest ? { mode: "cache_only" as const } : { mode: "prefer_cache" as const };
+}
+
+export const noteOf = (e: unknown) => e instanceof ServiceError && e.code === "no_snapshot" ? "超过东财保留期,当时也没缓存" : e instanceof Error ? e.message.slice(0, 60) : "没取到";
+
+/**
+ * 那天和它之前 days−1 个交易日的六项读数(升序;取不到的日子也列出来,值是 null)。情绪历史和明日验证共用。
+ * `refresh` 只重取那一天。
+ */
+export async function dailySeries(ctx: ServiceContext, date: string, days: number, refresh: boolean, signal: AbortSignal, now: Date): Promise<{ series: DayRow[]; gaps: string[] }> {
+  const oldest = retentionFloor(now);
   const gaps: string[] = [];
 
   // 交易日:上证A股指数日 K 里早于那天的日子 + 那天本身(那天是不是交易日由端点判,不是就取不到并说明)
@@ -202,31 +214,37 @@ export async function shortlineHistory(ctx: ServiceContext, query: Record<string
 
   const series = await pool(window, CONCURRENCY, async (d): Promise<DayRow> => {
     try {
-      const fresh = query.refresh === "1" && d === date;
-      const consistency = fresh ? { mode: "fresh" as const } : d < oldest ? { mode: "cache_only" as const } : { mode: "prefer_cache" as const };
-      const r = await fetchEndpoint(ctx, { endpoint: "cn_shortline_daily", args: { date: d }, consistency, signal });
-      const env = r.envelope as { status?: string; degraded?: unknown; missing?: unknown };
-      if (env?.status === "failed") return { date: d, values: valuesOf(null), status: "missing", note: failedNote(env) || "没取到", cached: r.cached, fetched_at: r.fetched_at };
+      const r = await fetchEndpoint(ctx, { endpoint: "cn_shortline_daily", args: { date: d }, consistency: consistencyFor(d, oldest, refresh && d === date), signal });
+      // ⚠️ 端点自己的说明(degraded / settled)在 extra 里,信封顶层没有
+      const env = r.envelope as { status?: string; extra?: { degraded?: unknown; settled?: unknown } };
+      const settled = typeof env?.extra?.settled === "boolean" ? env.extra.settled : null;
+      if (env?.status === "failed") return { date: d, values: valuesOf(null), status: "missing", settled: null, note: failedNote(env) || "没取到", cached: r.cached, fetched_at: r.fetched_at };
       const values = valuesOf(env);
       const lacks = READINGS.filter((x) => values[x.key] === null).map((x) => x.label);
-      const note = [typeof env?.degraded === "string" ? env.degraded : "", lacks.length ? `缺 ${lacks.join("、")}` : ""].filter(Boolean).join(";");
+      const note = [typeof env?.extra?.degraded === "string" ? env.extra.degraded : "", lacks.length ? `缺 ${lacks.join("、")}` : ""].filter(Boolean).join(";");
       const status = lacks.length === READINGS.length ? "missing" : lacks.length || env?.status === "partial" ? "partial" : "ok";
-      return { date: d, values, status, note, cached: r.cached, fetched_at: r.fetched_at };
+      return { date: d, values, status, settled, note, cached: r.cached, fetched_at: r.fetched_at };
     } catch (e) {
       if (signal.aborted) throw e;
-      const note = e instanceof ServiceError && e.code === "no_snapshot" ? "超过东财保留期,当时也没缓存" : e instanceof Error ? e.message.slice(0, 60) : "没取到";
-      return { date: d, values: valuesOf(null), status: "missing", note, cached: false, fetched_at: null };
+      return { date: d, values: valuesOf(null), status: "missing", settled: null, note: noteOf(e), cached: false, fetched_at: null };
     }
   });
 
-  const missing = series.filter((s) => s.status === "missing");
-  if (missing.length) {
-    const older = missing.filter((s) => s.date !== date).length;
-    if (older) gaps.push(`${older} 个交易日没取到读数(东财这几张池只留最近一个月左右,更早又没缓存过的日子取不到),不进分位`);
-  }
+  const older = series.filter((s) => s.status === "missing" && s.date !== date).length;
+  if (older) gaps.push(`${older} 个交易日没取到读数(东财这几张池只留最近一个月左右,更早又没缓存过的日子取不到),不进统计`);
   const target = series[series.length - 1]!;
   if (target.status === "missing") gaps.unshift(`${date} 的读数没取到${target.note ? `(${target.note})` : ""}`);
+  return { series, gaps };
+}
 
+export async function shortlineHistory(ctx: ServiceContext, query: Record<string, string>, signal: AbortSignal, now = new Date()): Promise<ShortlineHistoryResult> {
+  const date = query.date ?? "";
+  if (!validDate(date)) throw new ServiceError("bad_query", "date 要写成 YYYY-MM-DD");
+  if (query.refresh !== undefined && query.refresh !== "1") throw new ServiceError("bad_query", "refresh 只能是 1");
+  const days = query.days === undefined ? DAYS_DEFAULT : Number(query.days);
+  if (!Number.isInteger(days) || days < DAYS_MIN || days > DAYS_MAX) throw new ServiceError("bad_query", `days 要是 ${DAYS_MIN}–${DAYS_MAX} 的整数`);
+  if (date > localClock(now, SCHEDULE_TZ).day) throw new ServiceError("bad_query", `${date} 还没到`);
+  const { series, gaps } = await dailySeries(ctx, date, days, query.refresh === "1", signal, now);
   const rows = series.filter((s) => s.status !== "missing");
   return {
     date, days,

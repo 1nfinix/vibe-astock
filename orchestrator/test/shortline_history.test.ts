@@ -125,8 +125,8 @@ if ep=='cn_shortline_daily':
   v=cfg.get('daily',{}).get(d)
   if v is None: done({'status':'failed','reason':'东财池为空','evidence':[]},3)
   evs=[{'field':k,'value':x,'raw_ref':'raw/x.json',**({'record_key':'1进2'} if k=='promotion_rate' else {})} for k,x in v.items()]
-  if d in cfg.get('unsettled',[]): done({'status':'partial','degraded':'这一天还没收盘：数字收盘前还会变，本次结果不缓存','evidence':evs},2)
-  done({'status':'ok','evidence':evs})
+  if d in cfg.get('unsettled',[]): done({'status':'partial','extra':{'degraded':'这一天还没收盘：数字收盘前还会变，本次结果不缓存','settled':False},'evidence':evs},2)
+  done({'status':'ok','extra':{'settled':True},'evidence':evs})
 done({'status':'failed','reason':'unknown','evidence':[]},3)
 `;
 
@@ -174,7 +174,8 @@ test("链路:窗口 = 日 K 里之前 N−1 个交易日 + 那天;已收盘的�
     const r = await run(ctx, { date: "2026-10-12", days: "5" }, "2026-10-12T05:00:00Z");
     assert.deepEqual(r.series.map((s) => s.date), ["2026-09-29", "2026-09-30", "2026-10-08", "2026-10-09", "2026-10-12"]);
     assert.deepEqual(r.series.map((s) => s.status), ["ok", "ok", "ok", "ok", "partial"]);
-    assert.match(r.series[4]!.note, /还没收盘/);
+    assert.match(r.series[4]!.note, /还没收盘/, "端点的说明在 extra.degraded 里(信封顶层没有)");
+    assert.deepEqual(r.series.map((s) => s.settled), [true, true, true, true, false]);
     assert.equal(r.series[3]!.values.limit_up, 69);
     assert.ok(r.context.available && r.context.sample_days === 4 && r.context.items[0]!.value === 80);
     assert.ok(r.diff.available && r.diff.prev_date === "2026-10-09" && r.diff.changes[0]!.key === "limit_up");

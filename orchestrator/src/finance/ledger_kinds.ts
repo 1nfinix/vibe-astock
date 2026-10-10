@@ -10,6 +10,7 @@
  *    界面只做两件事:把他写的原样呈现出来,以及把"哪条到期了"算出来。
  */
 import type { LedgerKindDef } from "../plugin.ts";
+import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, VERIFY_METRIC_KEYS } from "./shortline/verify_metrics.ts";
 
 /**
  * 主体代码的台账规范形:
@@ -48,6 +49,7 @@ export const FINANCE_FIELD_LABELS: Record<string, string> = {
   due: "到期日", ref: "关联", tag: "分组", category: "分类", body: "正文",
   judged_at: "判定日", verdict_note: "判定说明",
   date: "日期", price: "价格", fee: "费用", amount: "金额", ratio: "比例", migrated_from: "迁移自",
+  metric: "读数", direction: "预期方向", reason: "理由",
 };
 
 export const FINANCE_ENUM_LABELS: Record<string, string> = {
@@ -58,6 +60,8 @@ export const FINANCE_ENUM_LABELS: Record<string, string> = {
   review: "复盘", highlight: "今日要点", ask: "问 Agent", debate: "多空辩论", audit: "反思审计",
   backtest: "回测", compare: "研究对比",
   opening: "期初持仓", buy: "买入", sell: "卖出", dividend: "现金分红", split: "送转 / 拆股",
+  ...DIRECTION_LABELS,
+  ...Object.fromEntries(VERIFY_METRICS.map((m) => [m.key, m.label])),
 };
 
 export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
@@ -202,6 +206,23 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       body: TEXT(100000),
     },
     required: ["title"],
+  },
+
+  /**
+   * 明日验证条件:复盘那晚写下「下一个交易日用哪个市场读数检验今晚的判断」,一条一个读数(移植自 VA)。
+   * `date` 是写下条件的那个复盘日,对账用它的下一个交易日。
+   * 只收市场层面读数(涨停家数、炸板率……),不涉及个股、点位或买卖时机。
+   * 对账、基准发生率和战绩在 `shortline/verification.ts`;下一场开盘竞价后才写 / 改的条件在那里标「事后」、不计入战绩。
+   */
+  verification: {
+    label: "验证条件",
+    properties: {
+      date: { type: "string", format: "date" },
+      metric: { type: "string", enum: VERIFY_METRIC_KEYS },
+      direction: { type: "string", enum: DIRECTIONS },
+      reason: TEXT(200),
+    },
+    required: ["date", "metric", "direction"],
   },
 
   /** 行动:待办。可由判据到期生成,也可以自己写 */
