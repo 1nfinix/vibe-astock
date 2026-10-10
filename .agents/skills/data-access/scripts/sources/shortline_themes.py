@@ -81,6 +81,7 @@ def _iwencai_reasons(d8: str) -> tuple[dict[str, str], str]:
 
     query = f"{d8[:4]}-{d8[4:6]}-{d8[6:]}涨停的股票 涨停原因"
     reasons: dict[str, str] = {}
+    first_len = 0
     for page in range(1, _IWC_PAGES + 1):
         rows = iwencai_query(query, page=page, limit=_IWC_PAGE)
         if not rows:
@@ -96,12 +97,18 @@ def _iwencai_reasons(d8: str) -> tuple[dict[str, str], str]:
         if d8 not in dated:
             raise ValueError(f"问财返回的是 {sorted(dated)} 的涨停原因,不是 {d8}")
         cc, rc = code_cols[0], dated[d8]
+        before = len(reasons)
         for r in rows:
             code = str(r.get(cc) or "")[:6]
             reason = str(r.get(rc) or "").strip()
             if re.fullmatch(r"\d{6}", code) and reason and reason.lower() != "nan" and code not in reasons:
                 reasons[code] = clean_reason(reason)
-        if len(rows) < _IWC_PAGE:
+        # 🔴 问财每页实际给几条没核实过(要密钥):不能拿「不满 50 条」当最后一页,否则上限低于 50 时只取到第一页。
+        #    只认三种结束:空页、比第一页短、这页没给新票(上游不认 page 参数;第一页就没有能用的原因则改走同花顺)
+        if len(reasons) == before:
+            break
+        first_len = first_len or len(rows)
+        if len(rows) < first_len:
             break
     else:
         raise ValueError(f"问财翻到第 {_IWC_PAGES} 页还没完,不交半份名单")

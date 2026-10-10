@@ -72,10 +72,32 @@ class TestIwencaiReasons:
 
     def test_page_cap_refuses_half_a_list(self, monkeypatch):
         monkeypatch.setenv("IWENCAI_API_KEY", "test-key")
-        full = [{"股票代码": f"{600000 + i}.SH", "涨停原因[20261009]": "题材"} for i in range(50)]
-        monkeypatch.setattr(iwencai, "iwencai_query", lambda q, page=1, limit=50: full)
+        monkeypatch.setattr(iwencai, "iwencai_query",
+                            lambda q, page=1, limit=50: [{"股票代码": f"{600000 + page * 100 + i}.SH", "涨停原因[20261009]": "题材"} for i in range(50)])
         with pytest.raises(ValueError, match="半份"):
             T._iwencai_reasons("20261009")
+
+    @staticmethod
+    def _rows(start: int, n: int) -> list[dict]:
+        return [{"股票代码": f"{600000 + start + i}.SH", "涨停原因[20261009]": "题材"} for i in range(n)]
+
+    def test_page_size_below_50_still_pages_to_the_end(self, monkeypatch):
+        """问财每页实际给几条没核实(审计 2026-10-11 Opus 范围 1 待核实第 4 条):每页只给 20 条时不能翻一页就停。"""
+        seen: list = []
+        monkeypatch.setattr(iwencai, "iwencai_query", _iwc({1: self._rows(0, 20), 2: self._rows(20, 20), 3: self._rows(40, 9)}, seen))
+        reasons, _ = T._iwencai_reasons("20261009")
+        assert len(reasons) == 49 and [pg for _, pg in seen] == [1, 2, 3], "比第一页短的那页才是最后一页"
+
+    def test_short_first_page_asks_once_more(self, monkeypatch):
+        seen: list = []
+        monkeypatch.setattr(iwencai, "iwencai_query", _iwc({1: self._rows(0, 19)}, seen))
+        assert len(T._iwencai_reasons("20261009")[0]) == 19 and [pg for _, pg in seen] == [1, 2]
+
+    def test_upstream_ignoring_page_stops_instead_of_looping(self, monkeypatch):
+        seen: list = []
+        same = self._rows(0, 20)
+        monkeypatch.setattr(iwencai, "iwencai_query", lambda q, page=1, limit=50: seen.append(page) or same)
+        assert len(T._iwencai_reasons("20261009")[0]) == 20 and seen == [1, 2], "翻页没给新票就停,不翻满 10 页再报错"
 
     def test_without_key_iwencai_is_never_called(self, monkeypatch):
         monkeypatch.delenv("IWENCAI_API_KEY", raising=False)

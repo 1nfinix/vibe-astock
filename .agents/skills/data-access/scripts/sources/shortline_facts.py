@@ -264,7 +264,7 @@ def event_ledger(date: str, prev: Optional[str] = None, prev_zt: Any = _UNSET) -
 
     def add(tag: str, r: dict, note: str = "") -> None:
         events.append({"tag": tag, "code": r["code"], "name": r["name"], "board": r["board"], "boards": int(r.get("boards") or 0),
-                       "sector": r.get("sector") or "", "ret": round(float(r.get("ret") or 0), 2),
+                       "sector": r.get("sector") or "", "ret": None if r.get("ret") is None else round(float(r["ret"]), 2),   # 缺涨跌幅留空,不写 0.00%
                        "first_seal": r.get("first_seal") or None, "last_seal": r.get("last_seal") or None,
                        "broken_times": int(r.get("broken_times") or 0), "turnover": r.get("turnover"), "note": note,
                        # 昨天几板 —— 断板事件的意义全在这个数上

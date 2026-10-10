@@ -202,6 +202,15 @@ class TestBigcaps:
         with pytest.raises(DataNotAvailable, match="不交半份"):
             W.build_bigcaps(500)
 
+    def test_empty_page_before_floor_is_not_a_full_list(self, monkeypatch):
+        """新浪翻过最后一页回空列表、不报错(10-11 实测);还没到门槛就空了 = 名单不全(审计 2026-10-11 Opus 范围 1 待核实第 5 条)。"""
+        self._now(monkeypatch)
+        fake, calls = _sina_pages([[_x("600001", 3000), _x("600002", 900)]])
+        monkeypatch.setattr(sina, "_sina_list", fake)
+        with pytest.raises(DataNotAvailable, match="第 2 页是空的"):
+            W.build_bigcaps(500)
+        assert calls == [1, 2]
+
     @pytest.mark.parametrize("hm,trade,day", [((10, 0), True, "2026-10-09"), ((9, 10), True, "2026-10-08"), ((10, 0), False, "2026-10-08")])
     def test_quote_day(self, monkeypatch, hm, trade, day):
         self._now(monkeypatch, hm, trade)

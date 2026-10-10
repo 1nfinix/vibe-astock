@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 
 import pytest
 
@@ -183,6 +184,7 @@ class TestRows:
         resp = {"rc": 0, "data": {"qdate": 20261009, "tc": 1, "pool": [{"c": "600000", "n": "甲"}]}}
         seen = []
         monkeypatch.setattr(S.em, "em_json", lambda url, params=None, **k: seen.append(params["date"]) or resp)
+        monkeypatch.setattr(S.em, "_now_sh", lambda: datetime(2026, 10, 11, 12, 0, tzinfo=S.TZ_SH))
         for day in ("20261010", "2026-10-12"):
             with pytest.raises(RuntimeError, match="还没有"):
                 S.em._em_zt_api("getTopicZTPool", "fbt:asc", day)
@@ -190,6 +192,22 @@ class TestRows:
         assert len(S.em._em_zt_api("getYesterdayZTPool", "zs:desc", "20260930")) == 1, "历史日期的 qdate 也是最新行情日,不能拦"
         resp["data"].pop("qdate")
         assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261010")) == 1, "没有 qdate 时不猜"
+
+    @pytest.mark.parametrize("hm, blocked", [((9, 0), True), ((9, 24), True), ((9, 25), False), ((15, 0), False)])
+    def test_today_before_call_auction_match_is_refused_without_asking(self, monkeypatch, hm, blocked):
+        """开盘前上游什么时候把 qdate 切到今天没实测(审计 2026-10-11 Opus 范围 1 待核实第 2 条):
+        要是先切日期、池子还没清,qdate 核对拦不住昨天的池子 ⇒ 09:25 前请求今天一律不发请求、直接报还没开盘。"""
+        resp = {"rc": 0, "data": {"qdate": 20261012, "pool": [{"c": "600000", "n": "昨天的票"}]}}
+        seen: list = []
+        monkeypatch.setattr(S.em, "em_json", lambda url, params=None, **k: seen.append(params["date"]) or resp)
+        monkeypatch.setattr(S.em, "_now_sh", lambda: datetime(2026, 10, 12, *hm, tzinfo=S.TZ_SH))
+        if blocked:
+            with pytest.raises(RuntimeError, match="09:25"):
+                S.em._em_zt_api("getTopicZTPool", "fbt:asc", "2026-10-12")
+            assert seen == []
+        else:
+            assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261012")) == 1
+        assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261009")) == 1, "别的日子不受影响"
 
     def test_business_error_is_a_failure_not_an_empty_pool(self, monkeypatch):
         """HTTP 200 + rc 非 0 + data null(10-11 实测 rc=102 / 205)= 失败;只有 rc=0 的空列表才是空池。"""
@@ -432,6 +450,15 @@ class TestFacts:
         assert top["sector"] == "电池" and top["limit_up"] == 2 and top["broken"] == 1 and top["broken_rate"] == round(1 / 3, 3)
         assert th["theme_count"] == 2 and th["concentration"] == round(2 / 3, 3)
         assert [s["count"] for s in th["timeline"]] == [1, 0, 1, 0, 1]
+
+    def test_event_without_ret_is_blank_not_zero(self, monkeypatch):
+        """上游缺涨跌幅时事件里留空,不显示成 0.00%(审计 2026-10-11 Opus 范围 1 待核实第 7 条)。"""
+        today = {"zt": [_zt("600001", 5, ret=None), _zt("600002", 1, ret=0.0)], "zb": [], "dt": []}  # type: ignore[arg-type]
+        monkeypatch.setattr(S, "pools", lambda d: today)
+        monkeypatch.setattr(S, "zt_pool", lambda d: [_zt("600001", 4)])
+        rets = {e["code"]: e["ret"] for e in F.event_ledger("2026-10-09", "2026-10-08")["events"]}
+        assert rets["600001"] is None
+        assert all(v is None or isinstance(v, float) for v in rets.values())
 
     def test_events_when_prev_pool_is_missing_never_say_not_limit_up(self, monkeypatch):
         """前一交易日涨停池没取到:不写「昨日未涨停」,不出靠昨日板数分档的标签(审计 2026-10-11 Opus 范围 1 第 1 条)。"""

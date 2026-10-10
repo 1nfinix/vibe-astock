@@ -487,7 +487,19 @@ def _fmt_zt_time(t) -> str:
     return f"{s[0:2]}:{s[2:4]}:{s[4:6]}"
 
 
+_POOL_FIRST_MATCH = "09:25"   # 集合竞价 09:25 撮合:这之前当天的池子不可能有票
+
+
+def _now_sh() -> datetime:
+    return datetime.now(TZ_SH)
+
+
 def _em_zt_api(endpoint: str, sort: str, date: str) -> list[dict]:
+    # 🔴 开盘前上游什么时候把 qdate 切到今天没实测过:要是先切日期、池子还没清,下面的 qdate 核对拦不住昨天的池子。
+    #    09:25 之前当天的池子必然是空的,直接报还没开盘(请求也不发)。
+    now = _now_sh()
+    if str(date).replace("-", "") == now.strftime("%Y%m%d") and now.strftime("%H:%M") < _POOL_FIRST_MATCH:
+        raise RuntimeError(f"东财{endpoint}:还没到 {_POOL_FIRST_MATCH} 集合竞价撮合,今天的池子还不可能有票")
     d = em_json(f"https://push2ex.eastmoney.com/{endpoint}", params={"ut": ZTB_UT, "dpt": "wz.ztzt", "Pageindex": 0, "pagesize": 10000, "sort": sort, "date": date}, headers=_REF, timeout=10)
     # 🔴 业务失败(参数错 / 令牌失效)是 HTTP 200 + rc 非 0 + data null(10-11 实测 rc=102 / 205):不能读成空池,否则炸板、跌停被写成 0 家
     rc = d.get("rc")

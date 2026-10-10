@@ -161,7 +161,8 @@ def build_bigcaps(min_cap_yi: float = 500) -> dict:
     for page in range(1, _SINA_PAGES + 1):
         arr = sina._sina_list("Market_Center.getHQNodeData", {"page": page, "num": _SINA_PAGE, "sort": "mktcap", "asc": 0, "node": "hs_a", "symbol": "", "_s_r_a": "page"})
         if not arr:
-            break
+            # 🔴 翻过最后一页新浪回空列表、不报错(10-11 实测第 200 页)。还没翻到门槛就空了 = 名单不全,不能当完整的交出去
+            raise DataNotAvailable(f"新浪第 {page} 页是空的，还没翻到 {floor:g} 亿；不交半份名单")
         below = False
         for x in arr:
             code = str((x or {}).get("code") or "")

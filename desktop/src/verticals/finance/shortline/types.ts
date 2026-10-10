@@ -104,7 +104,7 @@ export interface ThemeStructure extends Base {
 }
 export interface LedgerEvent {
   tag: string; code: string; name: string; board: string; boards: number;
-  sector: string; ret: number; first_seal: string | null; last_seal: string | null;
+  sector: string; ret: number | null; first_seal: string | null; last_seal: string | null;
   broken_times: number; turnover?: number | null; note: string; prev_boards?: number;
 }
 export interface EventLedger extends Base {
