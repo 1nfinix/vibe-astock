@@ -297,6 +297,24 @@ def _dt_row(p: dict) -> Optional[dict]:
 
 _API = {"zt": ("getTopicZTPool", "fbt:asc", _zt_row), "zb": ("getTopicZBPool", "fbt:asc", _zb_row), "dt": ("getTopicDTPool", "fund:asc", _dt_row)}
 _POOL: dict[tuple[str, str], list[dict]] = {}
+_FIELDS: dict[tuple[str, str], list[str]] = {}
+
+
+def _keys(raw: list) -> list[str]:
+    """上游原始行的键(带一层子键,如 zttj.days),所有行取并集、排序。用来看数据源改没改字段。"""
+    ks: set[str] = set()
+    for p in raw:
+        if isinstance(p, dict):
+            for k, v in p.items():
+                ks.add(str(k))
+                if isinstance(v, dict):
+                    ks.update(f"{k}.{s}" for s in v)
+    return sorted(ks)
+
+
+def raw_fields(kind: str, day: str) -> Optional[list[str]]:
+    """本进程里取过的某张池子的上游原始字段清单(zt / zb / dt / yzt 昨日涨停);没取过或池子为空 = None(不知道)。"""
+    return _FIELDS.get((kind, compact(day)))
 
 
 def pool(kind: str, day: str) -> list[dict]:
@@ -305,7 +323,10 @@ def pool(kind: str, day: str) -> list[dict]:
     key = (kind, d)
     if key not in _POOL:
         api, sort, row = _API[kind]
-        rows = [r for r in (row(p) for p in em._em_zt_api(api, sort, d)) if r is not None]
+        raw = em._em_zt_api(api, sort, d)
+        if raw:
+            _FIELDS[key] = _keys(raw)
+        rows = [r for r in (row(p) for p in raw) if r is not None]
         _POOL[key] = rows
     return _POOL[key]
 
@@ -346,6 +367,8 @@ def settled_pool(day: str) -> Optional[list[dict]]:
             raw = em._em_zt_api("getYesterdayZTPool", "zs:desc", d)
         except Exception:  # noqa: BLE001
             return None
+        if raw:
+            _FIELDS[("yzt", d)] = _keys(raw)
         rows = []
         for p in raw:
             r = _base(p)

@@ -194,14 +194,11 @@ export function consistencyFor(d: string, oldest: string, fresh: boolean) {
 export const noteOf = (e: unknown) => e instanceof ServiceError && e.code === "no_snapshot" ? "超过东财保留期,当时也没缓存" : e instanceof Error ? e.message.slice(0, 60) : "没取到";
 
 /**
- * 那天和它之前 days−1 个交易日的六项读数(升序;取不到的日子也列出来,值是 null)。情绪历史和明日验证共用。
- * `refresh` 只重取那一天。
+ * 那天和它之前 days−1 个交易日(升序)。交易日 = 上证A股指数日 K 里早于那天的日子 + 那天本身
+ * (那天是不是交易日由各端点判,不是就取不到并说明)。日 K 取不到时只有那天,gap 说明。
  */
-export async function dailySeries(ctx: ServiceContext, date: string, days: number, refresh: boolean, signal: AbortSignal, now: Date): Promise<{ series: DayRow[]; gaps: string[] }> {
-  const oldest = retentionFloor(now);
-  const gaps: string[] = [];
-
-  // 交易日:上证A股指数日 K 里早于那天的日子 + 那天本身(那天是不是交易日由端点判,不是就取不到并说明)
+export async function tradeWindow(ctx: ServiceContext, date: string, days: number, signal: AbortSignal): Promise<{ window: string[]; gap: string | null }> {
+  if (days <= 1) return { window: [date], gap: null };
   let before: string[] = [];
   try {
     const k = await fetchEndpoint(ctx, { endpoint: "tx_kline", symbol: "sh000002", args: { count: 100 }, consistency: { mode: "prefer_cache", max_age_ms: KLINE_MAX_AGE_MS }, signal });
@@ -209,8 +206,18 @@ export async function dailySeries(ctx: ServiceContext, date: string, days: numbe
   } catch (e) {
     if (signal.aborted) throw e;
   }
-  if (!before.length) gaps.push("上证A股指数日 K 没取到,列不出之前的交易日,只看这一天");
-  const window = [...before, date];
+  return { window: [...before, date], gap: before.length ? null : "上证A股指数日 K 没取到,列不出之前的交易日,只看这一天" };
+}
+
+/**
+ * 那天和它之前 days−1 个交易日的六项读数(升序;取不到的日子也列出来,值是 null)。情绪历史和明日验证共用。
+ * `refresh` 只重取那一天。
+ */
+export async function dailySeries(ctx: ServiceContext, date: string, days: number, refresh: boolean, signal: AbortSignal, now: Date): Promise<{ series: DayRow[]; gaps: string[] }> {
+  const oldest = retentionFloor(now);
+  const gaps: string[] = [];
+  const { window, gap } = await tradeWindow(ctx, date, days, signal);
+  if (gap) gaps.push(gap);
 
   const series = await pool(window, CONCURRENCY, async (d): Promise<DayRow> => {
     try {

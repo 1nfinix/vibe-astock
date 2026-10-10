@@ -225,6 +225,21 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
     required: ["date", "metric", "direction"],
   },
 
+  /**
+   * 制度事件:涨跌幅改制、注册制、号段启用这类规则变化,人工登记(移植自 VA 的制度日历)。
+   * 「结构变化」视图把它和数据断点放在一起看;系统**不从数据反推**制度变化。
+   * 日期可以是周末(规则常周末公布)也可以是未来(提前公布、还没施行的,视图标出来)。
+   */
+  regime_event: {
+    label: "制度事件",
+    properties: {
+      date: { type: "string", format: "date" },
+      title: NONEMPTY(120),
+      note: TEXT(500),
+    },
+    required: ["date", "title"],
+  },
+
   /** 行动:待办。可由判据到期生成,也可以自己写 */
   action: {
     label: "行动",

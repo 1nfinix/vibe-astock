@@ -1,5 +1,5 @@
 """映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
-cn_shortline_settled / cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder /
+cn_shortline_settled / cn_shortline_structure / cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder /
 cn_shortline_turnover_top / cn_shortline_bigcaps)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
@@ -10,6 +10,7 @@ cn_shortline_turnover_top / cn_shortline_bigcaps)。约定同 mappers.py。
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 from typing import Any, Optional
@@ -19,6 +20,7 @@ from sources.mappers import empty, ev, out  # noqa: E402
 from sources.shortline_emotion import render_cycle, render_daily, render_metrics, render_settled  # noqa: E402
 from sources.shortline_facts import render_facts  # noqa: E402
 from sources.shortline_live import render_live  # noqa: E402
+from sources.shortline_structure import POOLS, render_structure  # noqa: E402
 from sources.shortline_themes import render_firstboard, render_themes  # noqa: E402
 from sources.shortline_watch import render_bigcaps, render_ladder, render_turnover_top  # noqa: E402
 
@@ -173,6 +175,54 @@ def shortline_settled_map(result: dict, ctx: dict) -> dict:
     extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_settled(result), "result": result,
              "computation": _computation("shortline_emotion.build_settled", {"date": day}, "取东财昨日涨停池")}
     return a.finish(bool(result.get("settled")), extra, "昨日涨停股当日表现没取到")
+
+
+# ---------------------------------------------------------------- 涨停结构
+def fields_text(fields: list[str]) -> str:
+    """字段清单写成逗号连接的文字;超过 300 字(证据文字上限)写摘要,截断会被当成字段变了。"""
+    s = ",".join(fields)
+    if len(s) <= 300:
+        return s
+    return f"{len(fields)} 个字段,摘要 sha1:{hashlib.sha1(s.encode('utf-8')).hexdigest()[:12]}"
+
+
+def shortline_structure_map(result: dict, ctx: dict) -> dict:
+    """制度构成按类(record_key = 20% / 10% / 北交所),最高标按代码,字段清单按池子(record_key = zt / zb / dt / yzt)。
+
+    池子为空看不出字段,只在 extra 里说明 —— 跌停池为空是正常的一天,标 partial 会让这天永远不进缓存;
+    取数出错才进 missing(partial,下次重取)。
+    """
+    if not result:
+        return empty("涨停结构为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    if a.block("structure", result):
+        a.num("limit_up_count", result.get("limit_up"), "只", note="东财涨停池只数")
+        n = "按当天的涨跌幅上限归类（10% 含主板 ST 当时的 5%）"
+        for k, c in (result.get("mix") or {}).items():
+            a.num("structure_mix_count", c, "只", key=k, note=n)
+        a.num("structure_share_20cm", result.get("share_20cm"), "小数", note="20% 制度的涨停只数 ÷ 涨停池；" + n)
+        a.num("structure_share_10cm", result.get("share_10cm"), "小数", note="10% 制度的涨停只数 ÷ 涨停池；" + n)
+        a.num("structure_share_bj", result.get("share_bj"), "小数", note="北交所涨停只数 ÷ 涨停池")
+        a.num("ladder_highest", result.get("highest_board"), "板")
+        a.num("structure_leader_total", result.get("leader_total"), "只", note="连板数等于最高板的只数（明细最多列 5 只）")
+        for x in result.get("leaders") or []:
+            k = x["code"]
+            a.text("leader_name", x.get("name"), key=k)
+            a.num("leader_boards", x.get("boards"), "板", key=k, note="东财连板数")
+            a.text("leader_sector", x.get("sector"), key=k, note="东财行业（不是题材）")
+            a.text("leader_first_seal", x.get("first_seal"), key=k, note="首封时间（HHMMSS）")
+        for kind, f in (result.get("fields") or {}).items():
+            if f:
+                a.num("raw_field_count", len(f), "个", key=kind, note=f"{POOLS.get(kind, kind)}上游原始行的键数")
+                a.text("raw_fields", fields_text(f), key=kind, note="上游原始行的键（按字母排序，含 zttj 子键）；用来看数据源改没改字段")
+        for kind, why in (result.get("fields_unknown") or {}).items():
+            if why.startswith("没取到"):
+                a.missing.append({"field": "raw_fields", "period": day, "reason": f"{POOLS.get(kind, kind)}{why}"})
+    extra = {"date": day, "settled": result.get("settled"), "text": render_structure(result), "result": result,
+             "fields_unknown": result.get("fields_unknown") or {},
+             "computation": _computation("shortline_structure.build_structure", {"date": day})}
+    return a.finish(bool(result.get("settled")), extra, "涨停结构没取到")
 
 
 # ---------------------------------------------------------------- 情绪周期

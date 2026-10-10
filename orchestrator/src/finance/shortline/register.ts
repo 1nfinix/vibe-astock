@@ -5,8 +5,12 @@
 import { registerView } from "../../views.ts";
 import { shortlineHistory } from "./history.ts";
 import { shortlineSamples } from "./samples.ts";
+import { shortlineStructure } from "./structure.ts";
 import { shortlineVerify, shortlineVerifyAct } from "./verification.ts";
+import { shortlineWeekly } from "./weekly.ts";
 
 registerView({ id: "shortline_history", label: "情绪历史", run: shortlineHistory });
 registerView({ id: "shortline_verify", label: "明日验证", run: shortlineVerify, act: shortlineVerifyAct });
 registerView({ id: "shortline_samples", label: "涨停样本统计", run: shortlineSamples });
+registerView({ id: "shortline_structure", label: "结构变化", run: shortlineStructure });
+registerView({ id: "shortline_weekly", label: "近 5 天热度与龙头谱系", run: shortlineWeekly });

@@ -3762,6 +3762,31 @@
       "computed": true,
       "libs": [],
       "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_structure",
+      "title": "短线涨停结构(当天涨停池里 20% / 10% / 北交所制度各占多少、最高标是谁,以及涨停 / 炸板 / 跌停 / 昨日涨停四张池子的上游字段清单;结构变化和龙头谱系的原料)",
+      "layer": "10 情绪",
+      "module": "shortline_structure",
+      "function": "build_structure",
+      "mapper": "shortline_structure_map",
+      "endpoint_label": "push2ex 涨停 / 炸板 / 跌停 / 昨日涨停池 → structure",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian/drift.py 的每日结构读数、archive 的字段清单和 weekly.py 的每日最高标。约 4 次东财请求。制度构成按当天的涨跌幅规则归类(创业板 2020-08-24 前算 10%,主板 ST 按当时 5% / 10%);最高标按东财连板数,同高按首封时间排、最多列 5 只、总数另给;字段清单是上游原始行的键(含 zttj 子键),池子为空只在 extra 说明、不标 partial(跌停池为空是正常的一天),取数出错才进 missing。东财只留最近一个月左右:已收盘的日子结果不变、长期缓存,历史靠缓存越积越长;没收盘的那一天一律 partial(不缓存)。界面视图「结构变化」「近 5 天热度」按日扇出调用它"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
       "id": "cn_shortline_live",
       "title": "短线盘中情绪(今天此刻:涨停 / 炸板 / 跌停家数、最高板、连板数、封板率 / 炸板率、昨日涨停今又封住的比例、1进2、昨日涨停股此刻中位涨幅)",
       "layer": "10 情绪",
