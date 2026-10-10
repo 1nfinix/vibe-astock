@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigation } from "react-router-dom";
 import {
-  Activity, Bell, CalendarDays, CandlestickChart, ChevronsLeft, ChevronsRight, Eye, EyeOff, FileText, FlaskConical, Github, Globe, Home, LayoutGrid, Library, ListFilter, Menu, X, Moon, NotebookPen, Radar, Settings, Star, Sun, Swords, Thermometer, UserRound, Wallet,
+  Activity, Bell, Flame, CalendarDays, CandlestickChart, ChevronsLeft, ChevronsRight, Eye, EyeOff, FileText, FlaskConical, Github, Globe, Home, LayoutGrid, Library, ListFilter, Menu, X, Moon, NotebookPen, Radar, Settings, Star, Sun, Swords, Thermometer, UserRound, Wallet,
   Atom, BatteryCharging, BatteryFull, Bot, BrainCircuit, Cable, Car, CircuitBoard, Cpu, Database, Dna, Glasses, MemoryStick, Microchip, Pickaxe, Pill, Plane, Rocket, Shield, UtilityPole,
   type LucideIcon,
 } from "lucide-react";
@@ -18,13 +18,13 @@ import { aiConnectionLabel } from "@/lib/aiConnection";
 import { useNotifyUnread } from "@/hooks/useNotifyUnread";
 import { NAV_SECTIONS, isGroup, navPageOf, navTitle, sectionHome, withSectors, type NavIcon, type NavSection } from "@/lib/nav";
 import sectorsData from "@/data/sectors.json";
-import { PRODUCT_NAME, REPO_URL } from "@/lib/brand";
+import { BRAND_MARK, PRODUCT_NAME, PRODUCT_TAGLINE, REPO_URL } from "@/lib/brand";
 
 // 作者联系方式
 const X_URL = "https://x.com/linsizhen";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
-  Home, Swords, Activity, Radar, Thermometer, LayoutGrid, CandlestickChart, FlaskConical, ListFilter, Star, Wallet, CalendarDays, Bell, Library, FileText, NotebookPen, Settings,
+  Home, Swords, Activity, Flame, Radar, Thermometer, LayoutGrid, CandlestickChart, FlaskConical, ListFilter, Star, Wallet, CalendarDays, Bell, Library, FileText, NotebookPen, Settings,
   Bot, Cpu, MemoryStick, Cable, CircuitBoard, Microchip, BatteryFull, Plane, Car, Pill,
   UtilityPole, Shield, Atom, Rocket, Dna, Pickaxe, BrainCircuit, Glasses, BatteryCharging, Database,
 };
@@ -241,12 +241,12 @@ export function Layout() {
             <div className="flex items-center justify-between">
               <Link to="/" aria-label={`${PRODUCT_NAME} 首页`} className="flex items-center gap-2.5">
                 <PhoenixTreeLogo className="h-7 w-5 shrink-0 text-primary" />
-                {!compact && <span className="workspace-brand text-base font-semibold tracking-tight">Vibe-<span className="text-primary">Research</span></span>}
+                {!compact && <span className="workspace-brand text-base font-semibold tracking-tight">{BRAND_MARK[0]}<span className="text-primary">{BRAND_MARK[1]}</span></span>}
               </Link>
               {mobile && <button aria-label="关闭导航" className="p-1" onClick={closeMobileNav}><X className="h-4 w-4" /></button>}
             </div>
             {!compact && <div data-ai-identity className="mt-1.5 space-y-0.5">
-              <p className="text-[10px] leading-4 text-muted-foreground">A股、美股、港股的投研工作台</p>
+              <p className="text-[10px] leading-4 text-muted-foreground">{PRODUCT_TAGLINE}</p>
               <Link to="/settings" data-testid="ai-runtime-badge" title="查看或更改已保存的 AI 接入" className="flex min-w-0 items-start gap-1 text-[10px] leading-5 text-muted-foreground hover:text-primary">
                 <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" /><span>{aiConnectionLabel(aiRuntime)}</span>
               </Link>

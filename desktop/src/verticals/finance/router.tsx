@@ -18,6 +18,8 @@ export const router = createBrowserRouter([
     hydrateFallbackElement: <p role="status" className="p-6 text-sm text-muted-foreground">正在打开研究工作台…</p>,
     children: [
       { path: "/", element: <Home /> },
+      { path: "/shortline", lazy: async () => ({ Component: (await import("@/pages/Shortline")).Shortline }) },
+      { path: "/shortline/:tab", lazy: async () => ({ Component: (await import("@/pages/Shortline")).Shortline }) },
       { path: "/daily-review", lazy: async () => ({ Component: (await import("@/pages/DailyReview")).DailyReview }) },
       { path: "/intel", lazy: async () => ({ Component: (await import("@/pages/Intel")).Intel }) },
       { path: "/intel/:tab", lazy: async () => ({ Component: (await import("@/pages/Intel")).Intel }) },

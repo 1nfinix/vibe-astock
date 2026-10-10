@@ -40,7 +40,7 @@ test("顶栏标题跟着当前页；认不出的显示「工作空间」", () =>
 test("每个页面只出现一次；只有一页的一级直接是链接，几页的才是组", () => {
   const tos = NAV_SECTIONS.flatMap((s) => s.pages.map((p) => p.to));
   assert.equal(new Set(tos).size, tos.length);
-  assert.deepEqual(NAV_SECTIONS.filter(isGroup).map((s) => s.label), ["产业资讯", "产业研究", "研究工具", "我的股票", "资料库"]);
+  assert.deepEqual(NAV_SECTIONS.filter(isGroup).map((s) => s.label), ["复盘", "产业资讯", "产业研究", "研究工具", "我的股票", "资料库"]);
   for (const s of NAV_SECTIONS.filter((x) => !isGroup(x))) assert.equal(s.pages[0]!.label, s.label, "单页一级的名字和页面一致");
 });
 

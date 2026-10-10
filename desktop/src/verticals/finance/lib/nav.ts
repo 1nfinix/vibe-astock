@@ -8,9 +8,10 @@
  *
  * 顺序按炒股的人每天的先后（Simon 2026-10-09 定）：先看自己的股票怎么样（首页），再复盘，再看产业资讯、做产业研究，
  * 最后才是研究工具；候选池放研究工具最后。
+ * Vibe AStock 偏短线（Simon 2026-10-10 定）：复盘一组里情绪复盘排第一，点「复盘」直接进情绪复盘。
  */
 export const NAV_ICONS = [
-  "Home", "Swords", "Activity", "Radar", "Thermometer", "LayoutGrid", "CandlestickChart",
+  "Home", "Swords", "Activity", "Flame", "Radar", "Thermometer", "LayoutGrid", "CandlestickChart",
   "FlaskConical", "ListFilter", "Star", "Wallet", "CalendarDays", "Bell", "Library", "FileText", "NotebookPen", "Settings",
   // 各板块（sectors.json 的 icon 字段）
   "Bot", "Cpu", "MemoryStick", "Cable", "CircuitBoard", "Microchip", "BatteryFull", "Plane", "Car", "Pill",
@@ -35,7 +36,10 @@ export interface NavSection {
 
 export const NAV_SECTIONS: NavSection[] = [
   { label: "首页", icon: "Home", pages: [{ to: "/", label: "首页", icon: "Home" }] },
-  { label: "每日复盘", icon: "Activity", pages: [{ to: "/daily-review", label: "每日复盘", icon: "Activity" }] },
+  { label: "复盘", icon: "Flame", pages: [
+    { to: "/shortline", label: "情绪复盘", icon: "Flame" },
+    { to: "/daily-review", label: "每日复盘", icon: "Activity" },
+  ] },
   { label: "产业资讯", icon: "Radar", pages: [
     { to: "/intel", label: "资讯雷达", icon: "Radar" },
     { to: "/signals", label: "产业信号", icon: "Thermometer" },

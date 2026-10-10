@@ -13,6 +13,7 @@
  */
 import type { PageContextDef, PageQueryDef } from "../plugin.ts";
 import { calendarFromEnvelope, liveSession, realtimeMatchesReviewDay, resolveSession } from "./session.ts";
+import { SHORTLINE_PAGE_QUERIES } from "./shortline/pages.ts";
 
 /** 主要指数 + 宽基 ETF(端点自带默认代码表,这里不重复写死) */
 const INDEX_BLOCK = { id: "indices", title: "大盘", note: "A股四大指数 + 美股道指纳指 + 港股恒生与恒生科技;红涨绿跌", endpoint: "tx_quotes_batch", required: true } as const;
@@ -155,4 +156,7 @@ export const FINANCE_PAGE_QUERIES: Record<string, PageQueryDef> = {
       { id: "board_flow", title: "行业资金流", note: "主力净额;取全 496 个板块,流出侧才看得到", endpoint: "em_board_fund_flow", args: BOARD_FLOW_ARGS, fallback: BOARD_FLOW_FALLBACK },
     ],
   },
+
+  // 短线(情绪复盘等)单独一个文件,VR 合并上游时不打架;放在最后,不改原有各页的顺序
+  ...SHORTLINE_PAGE_QUERIES,
 };

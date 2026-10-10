@@ -3,7 +3,8 @@
  * 每组列出它的二级栏目；只有一个页面的一级就列这一页。
  */
 export const HOME_FEATURE_GROUPS = [
-  { title: "每日复盘", detail: "收盘后回头看今天", features: [
+  { title: "复盘", detail: "收盘后回头看今天", features: [
+    { to: "/shortline", title: "情绪复盘", detail: "赚钱效应、晋级率、亏钱效应与题材延续" },
     { to: "/daily-review", title: "每日复盘", detail: "盘面表现、资金、连板与涨停分档" },
   ] },
   { title: "产业资讯", detail: "产业正在发生什么", features: [
