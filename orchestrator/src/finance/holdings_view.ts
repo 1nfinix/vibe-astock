@@ -166,7 +166,7 @@ export async function holdingsPerf(ctx: ServiceContext, _query: Record<string, s
 }
 
 /** 备份文件夹名:`持仓迁移备份-YYYY-MM-DD`(导入是 `持仓导入备份-…`),同一天已有就加时分秒,再撞加序号 */
-function backupDir(ctx: ServiceContext, now: Date, prefix: string): string {
+export function backupDir(ctx: ServiceContext, now: Date, prefix: string): string {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
     timeZone: SCHEDULE_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
   }).formatToParts(now).map((x) => [x.type, x.value]));

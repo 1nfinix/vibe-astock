@@ -180,7 +180,7 @@ export function Conditions({ date, conds, note, metrics, directions }: {
   };
   return (
     <div className="mt-3 rounded-lg border border-border/60 bg-muted/10 p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold"><ClipboardCheck className="h-3.5 w-3.5 text-primary" /> AI 建议明天看这几个读数</p>
+      <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold"><ClipboardCheck className="h-3.5 w-3.5 text-primary" /> {conds.length ? "AI 建议明天看这几个读数" : "明日验证"}</p>
       {conds.length > 0 && (
         <ul className="space-y-1.5">
           {conds.map((c) => (
@@ -207,7 +207,11 @@ export function Conditions({ date, conds, note, metrics, directions }: {
   );
 }
 
-type Shown = Pick<SavedReview, "date" | "settled" | "ai" | "gaps" | "conditions" | "conditions_note"> & { stages: ReviewStage[]; when: string };
+type Shown = Pick<SavedReview, "date" | "settled" | "ai" | "gaps" | "conditions" | "conditions_note" | "imported"> & { stages: ReviewStage[]; when: string };
+
+const SOURCE = "AI 按这一天的情绪、资金、题材、龙虎榜、梯队数据写(和其余分页同源);数字和证据编号由程序核对";
+/** 旧版导入的那几版:新版没有重算,不能说「由程序核对」 */
+const IMPORTED_SOURCE = "旧版 Vibe AStock 当时写的复盘,原文照搬;证据编号对照的是旧版当时的资料包,数字没有重算";
 
 export function ReviewBody({ v, r }: { v: Shown; r: ReviewResult }) {
   const summary = v.stages.find((s) => s.id === "summary");
@@ -228,7 +232,7 @@ export function ReviewBody({ v, r }: { v: Shown; r: ReviewResult }) {
         )}
         {parts.map((s) => <StageCard key={s.id} s={s} />)}
       </div>
-      <GapsAndSource gaps={safeArray<string>(v.gaps)} source="AI 按这一天的情绪、资金、题材、龙虎榜、梯队数据写(和其余分页同源);数字和证据编号由程序核对" />
+      <GapsAndSource gaps={safeArray<string>(v.gaps)} source={v.imported ? IMPORTED_SOURCE : SOURCE} />
     </div>
   );
 }
@@ -331,7 +335,7 @@ export function ReviewView({ r, onChanged }: { r: ReviewResult; onChanged: () =>
 export function reviewSummary(r: ReviewResult): string {
   const v = safeArray<SavedReview>(r.versions)[0];
   if (!v) return `${r.date} 还没写过 AI 复盘。`;
-  return [`${r.date} 的 AI 复盘(${clock(v.finished_at || v.created_at)} 写完):`,
+  return [`${r.date} 的 AI 复盘(${clock(v.finished_at || v.created_at)} 写完${v.imported ? ";从旧版导入,原文照搬,数字没按新版规则核对" : ""}):`,
     ...safeArray<ReviewStage>(v.sections).map((s) => `【${s.label}】${s.status === "done" ? s.text : STATUS_TEXT[s.status] || "没写成"}`)].join("\n");
 }
 

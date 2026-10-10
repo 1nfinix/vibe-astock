@@ -114,6 +114,18 @@ test("没写过 / 正在写 / 刚才那次没存下来;旧版是没收盘时写�
 
     const old = textOf(r.html(ReviewBody, { v: { ...OLDER, stages: OLDER.sections, when: "x" }, r: base }));
     assert.match(old, /写的时候 2026-10-09 还没收盘,里面的数字后来可能变了/);
+    assert.match(old, /数字和证据编号由程序核对/);
+    // 旧版导入的:不能说「由程序核对」,改说原文照搬;导入时写进 gaps 的提示照常显示
+    const imp = { ...OLDER, imported: true, ai: "旧版导入(deepseek)", gaps: ["从旧版导入:原文照搬,数字和证据编号没有按新版规则重新核对"],
+      conditions: [], conditions_note: "旧版这一晚的明日验证条件已经导进「明日验证」" };
+    const impText = textOf(r.html(ReviewBody, { v: { ...imp, stages: imp.sections, when: "x" }, r: base }));
+    assert.match(impText, /旧版导入\(deepseek\) 写/);
+    assert.match(impText, /⚠️ 从旧版导入:原文照搬,数字和证据编号没有按新版规则重新核对/);
+    assert.match(impText, /来源:旧版 Vibe AStock 当时写的复盘,原文照搬;证据编号对照的是旧版当时的资料包,数字没有重算/);
+    assert.doesNotMatch(impText, /由程序核对/);
+    // 条件已经直接导进「明日验证」:只剩说明、没有可点的建议,标题不再说「AI 建议」
+    assert.match(impText, /明日验证 旧版这一晚的明日验证条件已经导进「明日验证」/);
+    assert.doesNotMatch(impText, /AI 建议明天看这几个读数|加进明日验证/);
     assert.equal(clock("2026-10-09T23:05:00.000Z"), "10-10 07:05", "按北京时间");
     assert.equal(clock("不是时间"), "不是时间");
     assert.equal(clock(null), "");
@@ -140,5 +152,6 @@ test("加进明日验证:人写过的读数不改,满 8 条不再加;一条都�
     const s = reviewSummary({ ...base, versions: [SAVED, OLDER] });
     assert.match(s, /^2026-10-09 的 AI 复盘\(10-10 18:46 写完\):\n【情绪】涨停 69 只\[ev-aaaaaaaaaaaa\]/);
     assert.match(s, /【题材】没写成\n【龙虎榜】跳过/);
+    assert.match(reviewSummary({ ...base, versions: [{ ...SAVED, imported: true }] }), /^2026-10-09 的 AI 复盘\(10-10 18:46 写完;从旧版导入,原文照搬,数字没按新版规则核对\):/);
   });
 });

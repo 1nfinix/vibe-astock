@@ -83,7 +83,7 @@ export const FINANCE_FIELD_LABELS: Record<string, string> = {
   review_by: "复核日期", status: "状态", type: "类型", thesis_id: "关联论点",
   due: "到期日", ref: "关联", tag: "分组", category: "分类", body: "正文",
   judged_at: "判定日", verdict_note: "判定说明",
-  date: "日期", price: "价格", fee: "费用", amount: "金额", ratio: "比例", migrated_from: "迁移自",
+  date: "日期", price: "价格", fee: "费用", amount: "金额", ratio: "比例", migrated_from: "迁移自", written_at: "当初写下时间",
   metric: "读数", direction: "预期方向", reason: "理由",
   trade_id: "所属交易", playbook: "打法", as_planned: "按计划", planned_stop: "计划止损价", planned_target: "计划目标价",
   pnl_pct: "盈亏 %", planned_at: "标注时间",
@@ -246,6 +246,8 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       title: NONEMPTY(160),
       /** markdown 正文；回测 / 多空辩论会保留完整多阶段报告，不能沿用短笔记的 2 万字上限。 */
       body: TEXT(100000),
+      /** 从旧版导入的(个股深挖),记旧数据的来源,重复导入据此跳过 */
+      migrated_from: TEXT(80),
     },
     required: ["title"],
   },
@@ -263,6 +265,13 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       metric: { type: "string", enum: VERIFY_METRIC_KEYS },
       direction: { type: "string", enum: DIRECTIONS },
       reason: TEXT(200),
+      /** 从旧版导入的条件:记旧数据来源,重复导入据此跳过 */
+      migrated_from: TEXT(80),
+      /**
+       * 旧版里这条条件当初写下的时间(旧版那晚复盘写完的时刻)。只对从旧版导入、导入后没改过的条件生效,
+       * 用来判「事后」;不然导入那一刻就成了写下时间,全部算事后。见 shortline/verification.ts itemsByDate。
+       */
+      written_at: TEXT(40),
     },
     required: ["date", "metric", "direction"],
   },
@@ -308,6 +317,8 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       },
       /** 建议没采用的原因(格式不对、读数不在清单里……) */
       conditions_note: TEXT(300),
+      /** 从旧版导入的那一版:记旧数据来源,重复导入据此跳过;页面据此标「旧版导入、没按新版核对」 */
+      migrated_from: TEXT(80),
     },
     required: ["date", "sections"],
   },

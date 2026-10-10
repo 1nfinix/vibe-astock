@@ -186,6 +186,8 @@ export interface ReviewRun {
 export interface SavedReview {
   id: string; date: string; settled: boolean | null; ai: string; started_at: string; finished_at: string; created_at: string;
   sections: ReviewStage[]; gaps: string[]; conditions: ReviewCondition[]; conditions_note: string;
+  /** 从旧版导入的(原文照搬,数字和证据编号没按新版规则核对) */
+  imported?: boolean;
 }
 export interface ReviewResult {
   date: string;

@@ -608,6 +608,8 @@ export function resetReviews(): void {
 export interface SavedReview {
   id: string; date: string; settled: boolean | null; ai: string; started_at: string; finished_at: string; created_at: string;
   sections: StageState[]; gaps: string[]; conditions: Condition[]; conditions_note: string;
+  /** 从旧版导入的(原文照搬,数字没按新版规则核对) */
+  imported: boolean;
 }
 export interface ReviewViewResult {
   date: string;
@@ -641,15 +643,22 @@ export function savedOf(r: LedgerRecord, label: ReadonlyMap<string, string> = LA
     gaps: Array.isArray(r.gaps) ? (r.gaps as string[]) : [],
     conditions: Array.isArray(r.conditions) ? (r.conditions as Condition[]) : [],
     conditions_note: String(r.conditions_note ?? ""),
+    imported: typeof r.migrated_from === "string" && r.migrated_from.startsWith("va:"),
   };
 }
+
+/** 一版写完的时刻(没有就用存进来的时刻)。旧版导入的存进来时刻是导入那天,所以按写完时刻排,不按录入先后 */
+export const writtenAt = (r: LedgerRecord): number => {
+  const t = Date.parse(String(r.finished_at || r.created_at || ""));
+  return Number.isFinite(t) ? t : 0;
+};
 
 export async function shortlineReview(ctx: ServiceContext, query: Record<string, string>, _signal: AbortSignal): Promise<ReviewViewResult> {
   const date = query.date ?? "";
   if (!validDate(date)) throw new ServiceError("bad_query", "date 要写成 YYYY-MM-DD");
   sweep();
   const records = ledgerList(ctx, LEDGER_KIND)[LEDGER_KIND] ?? [];
-  const versions = records.filter((r) => r.date === date).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+  const versions = records.filter((r) => r.date === date).sort((a, b) => writtenAt(b) - writtenAt(a) || String(b.created_at).localeCompare(String(a.created_at)))
     .map((r) => savedOf(r)).filter((x): x is SavedReview => !!x);
   const counts = new Map<string, number>();
   for (const r of records) counts.set(String(r.date), (counts.get(String(r.date)) ?? 0) + 1);

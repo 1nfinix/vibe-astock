@@ -141,7 +141,12 @@ function TradeTable({ v, env, hide, act }: { v: Ready; env: Load<EnvView>; hide:
     try { await act({ action: "delete_tag", id: r.tag_id }); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   };
   if (!v.rows.length) {
-    return <div className="glass py-12 text-center text-sm text-muted-foreground">还没有记录。记第一笔试试:入场那天的情绪和板位会自动对上。</div>;
+    return (
+      <div className="glass py-12 text-center text-sm text-muted-foreground">
+        还没有记录。记第一笔试试:入场那天的情绪和板位会自动对上。
+        <p className="mt-2 text-[12px]">用过旧版 Vibe AStock?到<Link to="/settings" className="text-primary hover:underline">「接入 AI」</Link>页最下面的「从旧版导入」把以前的记录搬过来。</p>
+      </div>
+    );
   }
   return (
     <Panel title={`逐笔(${v.rows.length} 笔)`} hint="入场日新的在前。成交要改要删去「我的股票」的交易流水;这里改的是打法、备注、止损这些标注。"

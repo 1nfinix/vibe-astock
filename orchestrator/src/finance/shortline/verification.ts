@@ -53,6 +53,8 @@ export interface Item {
   reason: string;
   created_at: string;
   updated_at: string;
+  /** 从旧版导入、导入后没改过的条件:旧版里当初写下的时间(判「事后」用它,不用导入时刻) */
+  written_at?: string;
 }
 
 export interface Baseline {
@@ -171,7 +173,7 @@ export function verifyItems(items: Item[], prev: MetricValues, cur: MetricValues
       prev_value: p, cur_value: c, actual, actual_label: actual ? DIRECTION_LABELS[actual] : null,
       verified, late: isLate(it, nextDay), ...b,
       edge: verified === null || b.baseline === null ? null : roundTo((verified ? 1 : 0) - b.baseline, 3),
-      written_at: it.updated_at,
+      written_at: it.written_at || it.updated_at,
     });
   }
   return out;
@@ -192,9 +194,9 @@ export function summarize(results: Pick<ItemResult, "verified" | "baseline">[]):
   };
 }
 
-/** 下一场开盘竞价以后才写或改的条件(按最后一次修改算) */
-export function isLate(it: Pick<Item, "updated_at">, nextDay: string): boolean {
-  const at = Date.parse(it.updated_at);
+/** 下一场开盘竞价以后才写或改的条件(按最后一次修改算;旧版导入、没改过的按旧版当初写下的时间) */
+export function isLate(it: Pick<Item, "updated_at" | "written_at">, nextDay: string): boolean {
+  const at = Date.parse(it.written_at || it.updated_at);
   return !Number.isFinite(at) || at >= Date.parse(`${nextDay}T${CUTOFF_HM}:00+08:00`);
 }
 
@@ -219,6 +221,17 @@ export function metricValues(row: Pick<DayRow, "values" | "status"> | undefined,
   return out;
 }
 
+/**
+ * 旧版导入的条件当初写下的时间:只认带 `va:` 来源、导入后没改过(updated_at = created_at)、而且早于导入时刻的。
+ * 导入后改过的按改的时间算(和自己写的一样);写下时间读不出来的也按导入时刻(= 事后)。
+ */
+function originalTime(r: LedgerRecord): { written_at?: string } {
+  const w = typeof r.written_at === "string" ? r.written_at : "";
+  const at = Date.parse(w);
+  return typeof r.migrated_from === "string" && r.migrated_from.startsWith("va:") && r.updated_at === r.created_at
+    && Number.isFinite(at) && at <= Date.parse(r.created_at) ? { written_at: w } : {};
+}
+
 /** 台账记录 → 条件,按日期分组。不合规的跳过并说明;同一晚同一个读数重复时留最后改的那条 */
 export function itemsByDate(records: LedgerRecord[]): { byDate: Map<string, Item[]>; skipped: number } {
   const latest = new Map<string, Item>();
@@ -227,7 +240,7 @@ export function itemsByDate(records: LedgerRecord[]): { byDate: Map<string, Item
     const date = typeof r.date === "string" ? r.date : "";
     const metric = typeof r.metric === "string" ? r.metric : "";
     if (!validDate(date) || !BY_KEY.has(metric) || !isDirection(r.direction) || (r.reason !== undefined && typeof r.reason !== "string")) { skipped++; continue; }
-    const it: Item = { id: r.id, date, metric, direction: r.direction, reason: (r.reason as string | undefined) ?? "", created_at: r.created_at, updated_at: r.updated_at };
+    const it: Item = { id: r.id, date, metric, direction: r.direction, reason: (r.reason as string | undefined) ?? "", created_at: r.created_at, updated_at: r.updated_at, ...originalTime(r) };
     const k = `${date}|${metric}`;
     const prev = latest.get(k);
     if (prev) skipped++;
@@ -312,7 +325,7 @@ export async function shortlineVerify(ctx: ServiceContext, query: Record<string,
     const m = BY_KEY.get(it.metric);
     if (!m) return [];
     return [{ id: it.id, ...metricView(m), direction: it.direction, direction_label: DIRECTION_LABELS[it.direction], reason: it.reason,
-      base_value: values[last]![m.key] ?? null, ...withBaseline(planBaseline(m.key), it.direction, m), written_at: it.updated_at }];
+      base_value: values[last]![m.key] ?? null, ...withBaseline(planBaseline(m.key), it.direction, m), written_at: it.written_at || it.updated_at }];
   });
 
   return {

@@ -12,6 +12,7 @@ import { testAndSaveAi } from "@/lib/aiConnection";
 import { useAiRuntime } from "@/hooks/useAiRuntime";
 import { UpdateSettingsCard } from "@/components/UpdateSettingsCard";
 import { SecContactCard } from "@/components/SecContactCard";
+import { VaImportCard } from "@/components/VaImportCard";
 
 /**
  * 「接入 AI」—— Agent 运行时是产品的一部分；用户只在这里选择模型、填自己的 key。
@@ -634,6 +635,7 @@ export function Settings() {
 
       <div className="mb-4"><SecContactCard /></div>
       <div className="mb-4"><UpdateSettingsCard /></div>
+      <div className="mb-4"><VaImportCard /></div>
 
       <Disclaimer />
     </div>

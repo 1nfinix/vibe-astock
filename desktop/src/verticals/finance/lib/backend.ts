@@ -26,6 +26,7 @@ import type { AuditReport, HeadCheck } from "./auditView.ts";
 import type { RunCompareResult } from "./runCompareView.ts";
 import type { CostMethod, HoldingsView, ImportPreviewRow, MigrationResult, TradeIssue } from "./holdings.ts";
 import type { JournalView } from "./journal.ts";
+import type { VaImportInfo, VaImportPreview, VaImportResult } from "./vaImport.ts";
 import type { ReportSource, ToolReceipt } from "./chatSources.ts";
 import type { UpdateActionName, UpdateInfo } from "./update.ts";
 
@@ -473,6 +474,15 @@ export const backend = {
     call<{ imported: { backup: string; imported: number; ids: string[] }; view: HoldingsView }>("/view/holdings", { method: "POST", body: JSON.stringify({ action: "import", rows, method }) }),
   /** 收益率:服务端读台账流水、取历史日线逐日估值(慢,持仓多时十几秒);结果交给 perfView.parsePerf */
   holdingsPerf: (signal?: AbortSignal) => call<unknown>("/view/holdings_perf", { signal }),
+
+  /** 从旧版导入:旧版默认的数据目录和它在不在 */
+  vaImportInfo: (signal?: AbortSignal) => call<VaImportInfo>("/view/va_import", { signal }),
+  /** 预览:读旧版目录、算出要导哪些、会跳过哪些,什么都不写 */
+  vaImportPreview: (dir: string, signal?: AbortSignal) =>
+    call<VaImportPreview>("/view/va_import", { method: "POST", signal, body: JSON.stringify({ action: "preview", dir }) }),
+  /** 导入:先备份涉及的台账文件再写;已经导过的跳过 */
+  vaImportRun: (dir: string) =>
+    call<VaImportResult>("/view/va_import", { method: "POST", body: JSON.stringify({ action: "import", dir }) }),
 
   /**
    * 一轮对话。
