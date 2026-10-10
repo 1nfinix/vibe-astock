@@ -25,6 +25,7 @@ import type { VerdictResult } from "./verdicts.ts";
 import type { AuditReport, HeadCheck } from "./auditView.ts";
 import type { RunCompareResult } from "./runCompareView.ts";
 import type { CostMethod, HoldingsView, ImportPreviewRow, MigrationResult, TradeIssue } from "./holdings.ts";
+import type { JournalView } from "./journal.ts";
 import type { ReportSource, ToolReceipt } from "./chatSources.ts";
 import type { UpdateActionName, UpdateInfo } from "./update.ts";
 
@@ -434,6 +435,16 @@ export const backend = {
   /** 在时点窗口里手动存一张快照(窗口外后端会说哪几个时间能存) */
   shortlineIntradayCapture: <T>() =>
     call<T>("/view/shortline_intraday", { method: "POST", body: JSON.stringify({ action: "capture" }) }),
+
+  /**
+   * 交易日志(个人交易数据,不进 AI):主视图一次给全(流水切成的交易、分组、风险与纪律、复查清单、模式卡、设置),
+   * 写动作回来时带上新的主视图。最大浮盈浮亏、判断与执行归因、按入场日环境分组要取行情,各自单独一个视图。
+   * 类型在 `journal.ts`;后端见 orchestrator/src/finance/journal/。
+   */
+  journal: (signal?: AbortSignal) => call<JournalView>("/view/journal", { signal }),
+  journalAct: (body: { action: "tag" | "manual" | "record" | "delete_tag" | "settings" | "mode_save" | "mode_delete" } & Record<string, unknown>) =>
+    call<{ result: unknown; view: JournalView }>("/view/journal", { method: "POST", body: JSON.stringify(body) }),
+  journalExtra: <T>(id: "journal_excursion" | "journal_attribution" | "journal_env", signal?: AbortSignal) => call<T>(`/view/${id}`, { signal }),
 
   reviewTiers: (opts: { date: string; refresh?: boolean }) =>
     call<ReviewTiersResult>(`/view/review_tiers?date=${encodeURIComponent(opts.date)}${opts.refresh ? "&refresh=1" : ""}`),

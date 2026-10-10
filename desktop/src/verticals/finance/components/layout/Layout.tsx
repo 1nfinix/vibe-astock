@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigation } from "react-router-dom";
 import {
-  Activity, Bell, Flame, Gavel, Zap, CalendarDays, CandlestickChart, ChevronsLeft, ChevronsRight, Eye, EyeOff, FileText, FlaskConical, Github, Globe, Home, LayoutGrid, Library, ListFilter, Menu, X, Moon, NotebookPen, Radar, Settings, Star, Sun, Swords, Thermometer, UserRound, Wallet,
+  Activity, Bell, BookOpenCheck, Flame, Gavel, Zap, CalendarDays, CandlestickChart, ChevronsLeft, ChevronsRight, Eye, EyeOff, FileText, FlaskConical, Github, Globe, Home, LayoutGrid, Library, ListFilter, Menu, X, Moon, NotebookPen, Radar, Settings, Star, Sun, Swords, Thermometer, UserRound, Wallet,
   Atom, BatteryCharging, BatteryFull, Bot, BrainCircuit, Cable, Car, CircuitBoard, Cpu, Database, Dna, Glasses, MemoryStick, Microchip, Pickaxe, Pill, Plane, Rocket, Shield, UtilityPole,
   type LucideIcon,
 } from "lucide-react";
@@ -24,7 +24,7 @@ import { BRAND_MARK, PRODUCT_NAME, PRODUCT_TAGLINE, REPO_URL } from "@/lib/brand
 const X_URL = "https://x.com/linsizhen";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
-  Home, Swords, Activity, Flame, Zap, Gavel, Radar, Thermometer, LayoutGrid, CandlestickChart, FlaskConical, ListFilter, Star, Wallet, CalendarDays, Bell, Library, FileText, NotebookPen, Settings,
+  Home, Swords, Activity, Flame, Zap, Gavel, Radar, Thermometer, LayoutGrid, CandlestickChart, FlaskConical, ListFilter, Star, Wallet, CalendarDays, Bell, Library, FileText, NotebookPen, Settings, BookOpenCheck,
   Bot, Cpu, MemoryStick, Cable, CircuitBoard, Microchip, BatteryFull, Plane, Car, Pill,
   UtilityPole, Shield, Atom, Rocket, Dna, Pickaxe, BrainCircuit, Glasses, BatteryCharging, Database,
 };

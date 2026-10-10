@@ -11,6 +11,9 @@ export const HOME_FEATURE_GROUPS = [
     { to: "/shortline", title: "情绪复盘", detail: "赚钱效应、晋级率、亏钱效应与题材延续" },
     { to: "/daily-review", title: "每日复盘", detail: "盘面表现、资金、连板与涨停分档" },
   ] },
+  { title: "交易日志", detail: "自己的单子对上当时的情绪", features: [
+    { to: "/journal", title: "交易日志", detail: "按情绪环境、板位、打法分组看自己的胜率，在险资金、纪律与模式卡" },
+  ] },
   { title: "产业资讯", detail: "产业正在发生什么", features: [
     { to: "/intel", title: "资讯雷达", detail: "聚合新闻、公告与事件线索" },
     { to: "/signals", title: "产业信号", detail: "跟踪上下游的变化线索" },
