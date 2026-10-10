@@ -1,7 +1,9 @@
 /** Check the UI and its authenticated API proxy without exposing the bearer token. */
 import { fileURLToPath } from "node:url";
 
-export async function productUiReady(baseUrl = "http://127.0.0.1:5930", timeoutMs = 1_000): Promise<boolean> {
+import { UI_PORT } from "./brand.ts";
+
+export async function productUiReady(baseUrl = `http://127.0.0.1:${UI_PORT}`, timeoutMs = 1_000): Promise<boolean> {
   const signal = AbortSignal.timeout(timeoutMs);
   try {
     const [ui, api] = await Promise.all([

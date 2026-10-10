@@ -141,7 +141,7 @@ cd .. && node orchestrator/src/run.ts --symbol 300308 --market SZ --provider cli
   `get_evidence` / `list_runs` / `knowledge_recall`;`--repo-root` 或 `VRA_REPO_ROOT` 指定仓库)。接进你自己的 Agent,例如
   `claude mcp add vibe-research -- node <仓库绝对路径>/orchestrator/src/mcp.ts` 或 `codex mcp add vibe-research -- node <仓库绝对路径>/orchestrator/src/mcp.ts`
   (写进使用者自己的 Agent 配置,由使用者决定)。`start_research` 用后台默认 AI 来源,没有配置就报错。
-- **HTTP API** `node orchestrator/src/api.ts [--port 8765]`:页面背后的本机服务,默认只绑 127.0.0.1;**每个请求都要鉴权**
+- **HTTP API** `node orchestrator/src/api.ts [--port 8770]`:页面背后的本机服务,默认只绑 127.0.0.1;**每个请求都要鉴权**
   (`Authorization: Bearer <token>`,token 取 `VRA_API_TOKEN`,否则自动生成并写入 `.local/api.token`,权限 0600);
   非本机 Origin / 跨站 Sec-Fetch-Site / 非 `application/json` 的 POST 一律拒绝(防浏览器 CSRF);绑非回环地址必须显式设 `VRA_API_TOKEN`。
   主要路由:`GET /health` · `GET /product` · `GET /local-agents` · `GET /endpoints` · `POST /fetch` · `POST /chat` · `POST /tasks` ·

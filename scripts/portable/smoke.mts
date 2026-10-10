@@ -5,7 +5,7 @@
  * - 用包里的启动脚本起服务（不开浏览器），经页面代理查 /api/health，版本要和包信息一致；后端用的 Python 和数据目录都要是包里的；
  *   首页和一个深链接都要由打包好的页面提供（不是开发服务器）。
  * - 再用包里的 Node 跑一次体检：Node、Python 与取数依赖、calc 自检、注册表都要通过（不联网）。
- * - 最后停掉，确认 5930 / 8765 两个端口都放开了（没留下孤儿进程）。
+ * - 最后停掉，确认页面和 API 两个端口（brand.ts 的 UI_PORT / API_PORT）都放开了（没留下孤儿进程）。
  *
  * 用法：node scripts/portable/smoke.mts <解压后的包目录>   退出码 0 = 通过
  */
@@ -14,10 +14,11 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { API_PORT, UI_PORT } from "../../orchestrator/src/brand.ts";
 import { isMain, layoutOf, type Target } from "./build.mts";
 
-const UI = "http://127.0.0.1:5930";
-const PORTS = [5930, 8765];
+const UI = `http://127.0.0.1:${UI_PORT}`;
+const PORTS = [UI_PORT, API_PORT];
 /** 体检里必须通过的几项（AI 登录、联网这类与包无关的不算） */
 export const REQUIRED_CHECKS = ["node", "config", "python", "calc", "registry", "constitution", "skills", "data_root"];
 

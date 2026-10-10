@@ -29,6 +29,6 @@ test("Windows 启动器在打开浏览器前轮询就绪，并持续检查两棵
   assert.doesNotMatch(script, /Start-Sleep -Seconds 2/);
   assert.match(script, /startup_health\.ts/);
   assert.match(script, /while \(\[DateTime\]::UtcNow -lt \$readyDeadline\)/);
-  assert.ok(script.indexOf('if (-not $ready)') < script.indexOf('Start-Process "http://127.0.0.1:5930"'));
+  assert.ok(script.indexOf('if (-not $ready)') < script.indexOf('Start-Process "http://127.0.0.1:$UiPort"'));
   assert.match(script, /\$api\.Refresh\(\)[\s\S]*\$ui\.Refresh\(\)/);
 });

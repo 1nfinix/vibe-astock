@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type ProxyOptions } from "vite";
 import { apiTokenPath } from "./vite-token";
 import { remoteAccessMiddlewares } from "./remote-access";
+import { API_PORT, UI_PORT } from "./src/verticals/finance/lib/brand";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -38,18 +39,18 @@ function apiToken(): string {
 
 const apiProxy: Record<string, ProxyOptions> = {
   "/api": {
-    target: "http://127.0.0.1:8765",
+    target: `http://127.0.0.1:${API_PORT}`,
     changeOrigin: false,
     rewrite: (p) => p.replace(/^\/api/, ""),
     configure(proxy) {
       proxy.on("proxyReq", (proxyReq) => {
         // LAN / 远程请求已经通过前置同源检查，此处才归一化为后端认可的回环 Origin。
-        if (lan || remote) proxyReq.setHeader("origin", "http://127.0.0.1:5930");
+        if (lan || remote) proxyReq.setHeader("origin", `http://127.0.0.1:${UI_PORT}`);
         // 访问 cookie 只给页面服务器看，不往后端带。
         if (remote) proxyReq.removeHeader("cookie");
         const token = apiToken();
         if (token) proxyReq.setHeader("Authorization", `Bearer ${token}`);
-        // 后端 crossSiteReject 只接受本机 Origin;浏览器带的是 127.0.0.1:5930,本机、放行。
+        // 后端 crossSiteReject 只接受本机 Origin;浏览器带的是 127.0.0.1:<UI_PORT>,本机、放行。
       });
       proxy.on("error", (err, _req, res) => {
         // 默认错误页是一段 HTML,前端 res.json() 会炸在"Unexpected token <",把真正原因埋掉
@@ -97,15 +98,15 @@ export default defineConfig({
   server: {
     // 🔴 必须写死 IPv4:默认 localhost 在本机解析成 [::1],而后端绑的是 127.0.0.1,对不上会 502
     host: lan ? "0.0.0.0" : "127.0.0.1",
-    port: 5930,
-    // 启动器和 README 都只打开 5930；被占用时必须明确失败，不能静默漂到 5931 让用户看到旧页面。
+    port: UI_PORT,
+    // 启动器和 README 都只打开这一个端口；被占用时必须明确失败，不能静默漂到下一个端口让用户看到旧页面。
     strictPort: true,
     proxy: apiProxy,
   },
   // 只给远程访问模式用(startup.ts 先 vite build 再 vite preview)。
   preview: {
     host: remote ? "0.0.0.0" : "127.0.0.1",
-    port: 5930,
+    port: UI_PORT,
     strictPort: true,
     // 云平台分配的公网域名事先不知道；放行任意 Host，靠上面的访问口令把门(没口令连页面都拿不到)。
     allowedHosts: remote ? true : [],

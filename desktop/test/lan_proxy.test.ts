@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer } from "vite";
+import { UI_PORT } from "../src/verticals/finance/lib/brand.ts";
 
 test("#34 LAN 默认为关，仅同源请求可被归一化，跨站请求不得到达带 token 的代理", async () => {
   const previous = process.env.VRA_LAN;
@@ -37,7 +38,7 @@ test("#34 LAN 默认为关，仅同源请求可被归一化，跨站请求不得
         const origin = `http://127.0.0.1:${port}`;
         assert.equal((await fetch(`${origin}/api/probe`, { method: "POST", headers: { Origin: origin,
           "Content-Type": "application/json" }, body: "{}" })).status, 200);
-        assert.equal(forwardedOrigin, setting === "1" ? "http://127.0.0.1:5930" : origin);
+        assert.equal(forwardedOrigin, setting === "1" ? `http://127.0.0.1:${UI_PORT}` : origin);
         assert.equal(forwardedToken, "Bearer synthetic-lan-proxy-test-token");
         if (setting === "1") {
           for (const badOrigin of ["https://evil.example", "null", `${origin}/path`, origin.replace("http:", "https:")]) {

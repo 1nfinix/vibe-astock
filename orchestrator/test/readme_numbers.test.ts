@@ -81,23 +81,26 @@ test("README 栏目数和栏目名跟左侧导航一致", () => {
     ...(s.listsSectors ? [[s.label, `${sectorCount} 个板块`]] : []),
   ]);
   assert.ok(sections.length >= 5 && rows.length > sections.length, `只从导航里读到 ${sections.length} 个一级、${rows.length} 个页面`);
-  const tableRows = (md: string, head: string) => {
+  // 栏目表是 HTML 表格(标签列 nowrap,免得被挤成竖排):从表头那行取到 </table>,每行取前两格
+  const tableRows = (md: string, a: string, b: string) => {
+    const head = `<th nowrap>${a}</th><th nowrap>${b}</th>`;
     const at = md.indexOf(head);
     assert.ok(at >= 0, `README 里找不到表头 ${head}`);
-    return md.slice(at).split("\n\n")[0]!.split("\n").slice(2).map((row) => row.split("|").slice(1, 3).map((c) => c.trim()));
+    const body = md.slice(at, md.indexOf("</table>", at));
+    return [...body.matchAll(/<tr><td[^>]*>(.*?)<\/td><td[^>]*>(.*?)<\/td>/g)].map((m) => [m[1]!.trim(), m[2]!.trim()]);
   };
 
   allEqual(ZH, /\*\*(\d+) 个一级栏目\*\*/g, 1, sections.length, "中文 README「N 个一级栏目」");
   allEqual(ZH, /左侧共 (\d+) 个一级栏目/g, 1, sections.length, "中文 README「左侧共 N 个一级栏目」");
   const listed = ZH.match(/\*\*\d+ 个一级栏目\*\*：(.+?)。/)![1]!.split("、");
   assert.deepEqual(listed, sections, "中文 README 列出的一级栏目名和顺序要跟导航一致");
-  assert.deepEqual(tableRows(ZH, "| 一级栏目 | 二级栏目 |"), rows, "中文 README 栏目表要跟导航一致");
+  assert.deepEqual(tableRows(ZH, "一级栏目", "二级栏目"), rows, "中文 README 栏目表要跟导航一致");
 
   allEqual(EN, /\*\*(\d+) primary sections\*\*/g, 1, sections.length, "English README 'N primary sections'");
   allEqual(EN, /The sidebar has (\d+) primary sections/g, 1, sections.length, "English README sidebar count");
   const enListed = EN.match(/\*\*\d+ primary sections\*\*: (.+?)\.\s/)![1]!.split(/, (?:and )?/);
   assert.equal(enListed.length, sections.length, "English README 列出的一级栏目个数");
-  const enTable = tableRows(EN, "| Section | Page |");
+  const enTable = tableRows(EN, "Section", "Page");
   assert.equal(enTable.length, rows.length, "English README 栏目表行数");
   // 英文表的一级栏目名跟着中文表分组:同一组的行连在一起、组数相同,只有一个页面的二级同样写「—」
   assert.deepEqual(enTable.map(([, p]) => p === "—"), rows.map(([, p]) => p === "—"), "English README 哪几行没有二级要跟导航一致");

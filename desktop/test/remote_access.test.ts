@@ -9,6 +9,7 @@ import test from "node:test";
 import { preview, resolveConfig } from "vite";
 
 import { createAccessGate, createRemoteOriginGuard, requestIsHttps, type Middleware } from "../remote-access.ts";
+import { UI_PORT } from "../src/verticals/finance/lib/brand.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const TOKEN = "remote-access-test-token-0123456789abcdef";
@@ -126,7 +127,7 @@ test("远程访问配置:只有带合格口令时才对外,放行任意 Host;本
     const remote = await resolveConfig({ root: ROOT, logLevel: "silent" }, "serve", "production", "production", true);
     assert.equal(remote.preview.host, "0.0.0.0");
     assert.equal(remote.preview.allowedHosts, true);
-    assert.equal(remote.preview.port, 5930);
+    assert.equal(remote.preview.port, UI_PORT);
     assert.equal(remote.preview.strictPort, true);
   } finally { restore(); }
 
@@ -236,7 +237,7 @@ test("远程访问:没口令什么都拿不到;分享链接换 HttpOnly cookie �
       const reply = await post(headers);
       assert.equal(reply.status, 200, JSON.stringify(headers));
       assert.equal(seen, before + 1);
-      assert.equal(last.origin, "http://127.0.0.1:5930");
+      assert.equal(last.origin, `http://127.0.0.1:${UI_PORT}`);
       assert.equal(last.authorization, "Bearer synthetic-remote-proxy-test-token");
       assert.equal(last.cookie, undefined, "访问口令只给页面服务器,不往后端带");
     }

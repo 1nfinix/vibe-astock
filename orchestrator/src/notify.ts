@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { UI_PORT } from "./brand.ts";
 import { NOFOLLOW_FLAG, restrictPrivateFileAsync, writeJson } from "./fsutil.ts";
 import { ServiceError, type ServiceContext } from "./service.ts";
 
@@ -396,7 +397,7 @@ export function messageText(m: Pick<NotifyMessage, "title" | "lines" | "link">, 
 
 /** 推送里的链接:本机模式只在这台电脑上能打开;远程模式用对外地址(启动器经 VRA_PUSH_LINK_BASE 传给 API) */
 export function uiBase(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.VRA_PUSH_LINK_BASE || env.VRA_PUBLIC_URL || "http://127.0.0.1:5930").replace(/\/+$/, "");
+  return (env.VRA_PUSH_LINK_BASE || env.VRA_PUBLIC_URL || `http://127.0.0.1:${UI_PORT}`).replace(/\/+$/, "");
 }
 
 export interface Deps {

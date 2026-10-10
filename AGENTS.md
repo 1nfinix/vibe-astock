@@ -33,7 +33,7 @@ scripts/start     # Windows:scripts\start.cmd
 ```
 
 - `scripts/setup` 创建 `.venv`、安装依赖、生成产品私有层 `.local/` 并跑体检;`scripts/doctor` 可单独再跑(`--json` 给机器读)。
-- `scripts/start` 同时拉起本机 API 与页面,健康检查通过后打开 `http://127.0.0.1:5930`。
+- `scripts/start` 同时拉起本机 API 与页面,健康检查通过后打开 `http://127.0.0.1:5940`。
 - 页面打开后到左侧栏最下方的「接入 AI」选大脑并做一次真实对话测试,测试通过才会保存。
   本机 CLI 要先由使用者本人登录(`claude` / `codex login` / `codebuddy`);登录发生在使用者自己的终端和浏览器里,你不代填、不转存任何账号信息。
 - CLI 装在非默认位置(常见于 WorkBuddy)时页面会显示「未安装」:在「接入 AI」的 WorkBuddy 卡片里填它的位置,
@@ -53,12 +53,12 @@ scripts/start     # Windows:scripts\start.cmd
 git clone https://github.com/simonlin1212/Vibe-Research.git
 cd Vibe-Research
 scripts/setup
-scripts/start --remote --no-open --public-url https://<平台给 5930 端口分配的公网地址>
+scripts/start --remote --no-open --public-url https://<平台给 5940 端口分配的公网地址>
 ```
 
-1. 远程模式先把页面打包(首次约半分钟),再在 5930 端口对外提供页面;本机 API(8765)仍只听回环地址,不对外。
+1. 远程模式先把页面打包(首次约半分钟),再在 5940 端口对外提供页面;本机 API(8770)仍只听回环地址,不对外。
 2. 启动成功后终端打印「本机打开」和「发给使用者的链接」(`https://…/?access=<访问口令>`)两行。
-   不知道公网地址就省掉 `--public-url`,按提示把平台给 5930 端口的 https 地址接上 `/?access=…`;
+   不知道公网地址就省掉 `--public-url`,按提示把平台给 5940 端口的 https 地址接上 `/?access=…`;
    知道的话尽量带上:有的平台代理不告诉后台用户走的是 https,带上它访问 cookie 才能确定加 Secure 标记。
 3. 把「发给使用者的链接」交给使用者本人。第一次打开后,口令换成浏览器里的 HttpOnly cookie、地址栏里的口令被去掉;
    之后 30 天内直接打开公网地址即可,过期或换了浏览器再用一次完整链接。
@@ -69,7 +69,7 @@ scripts/start --remote --no-open --public-url https://<平台给 5930 端口分�
   或用平台自带的服务管理。**不要用 `nohup`**:启动器自己处理挂断信号(收到就连同页面和 API 一起退出),
   `nohup` 拦不住,终端会话一结束服务就停。**日志里有访问口令**,别外传。
 - **只用 https 公网地址。** 使用者会在页面里填自己的模型 API key,明文 http 会让 key 在网上裸奔;`--public-url` 是公网 http 时启动器会警告。
-- 页面只能挂在根地址(`https://xxx/`),不支持挂在子路径(如 `https://xxx/proxy/5930/`)下。
+- 页面只能挂在根地址(`https://xxx/`),不支持挂在子路径(如 `https://xxx/proxy/5940/`)下。
 - 访问口令存在 `.local/access.token`(权限 600),重启沿用同一条链接。换新链接、让旧链接失效:先停掉正在运行的服务
   (前台按 Ctrl+C;后台运行时给启动器进程发 SIGTERM,如 `pkill -TERM -f orchestrator/src/startup.ts`,它会一起关掉页面和 API),
   再运行 `scripts/start --remote --rotate-access`;新服务起来后,旧链接和旧 cookie 立即失效。

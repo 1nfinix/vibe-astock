@@ -16,6 +16,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { UI_PORT } from "../../orchestrator/src/brand.ts";
 
 export type Target = "mac-arm64" | "mac-x64" | "win-x64";
 export const TARGETS: readonly Target[] = ["mac-arm64", "mac-x64", "win-x64"];
@@ -150,7 +151,7 @@ export function readmeText(version: string, target: Target): string {
     `Vibe AStock ${version} 免安装版（${win ? "Windows x64" : target === "mac-arm64" ? "macOS Apple 芯片" : "macOS Intel"}）`,
     "",
     win ? "系统要求：64 位 Windows 10 或更新版本。" : `系统要求：macOS ${MIN_MACOS} 或更新版本。`,
-    `启动：双击 ${launcher}。会开一个${win ? "命令行" : "终端"}窗口，浏览器自动打开 http://127.0.0.1:5930；关掉那个窗口就退出。`,
+    `启动：双击 ${launcher}。会开一个${win ? "命令行" : "终端"}窗口，浏览器自动打开 http://127.0.0.1:${UI_PORT}；关掉那个窗口就退出。`,
     win
       ? "第一次双击如果弹出「Windows 已保护你的电脑」：这个包没有代码签名，点「更多信息」→「仍要运行」。"
       : "第一次如果提示「无法验证开发者」：这个包没有代码签名。在终端运行 xattr -dr com.apple.quarantine 加上这个文件夹的路径，再双击启动。",
@@ -164,7 +165,7 @@ export function readmeText(version: string, target: Target): string {
     `Vibe AStock ${version} portable (${target})`,
     "",
     win ? "Requires 64-bit Windows 10 or later." : `Requires macOS ${MIN_MACOS} or later.`,
-    `Start: double-click ${launcher}. A ${win ? "console" : "Terminal"} window opens and your browser goes to http://127.0.0.1:5930; close that window to quit.`,
+    `Start: double-click ${launcher}. A ${win ? "console" : "Terminal"} window opens and your browser goes to http://127.0.0.1:${UI_PORT}; close that window to quit.`,
     win
       ? "If Windows SmartScreen blocks it the first time: the package is not code-signed. Click \"More info\" -> \"Run anyway\"."
       : "If macOS says the developer cannot be verified: the package is not code-signed. In Terminal run xattr -dr com.apple.quarantine followed by this folder's path, then double-click again.",

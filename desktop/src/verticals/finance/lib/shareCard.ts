@@ -306,7 +306,7 @@ function paint(ctx: ShareCtx, r: ShareCardResult, layout: CardLayout, spread: nu
 
   // 页眉:左边品牌,右边研究编号(和报告对得上);醒目标记竖版排在副标题下面,横版放右上角
   let y = land ? 64 : 96;
-  const kw = put(ctx, "VIBE RESEARCH · 研究分享卡", P, y, inner * 0.6, { size: land ? 24 : 28, weight: 600, color: PAL.accent });
+  const kw = put(ctx, `${PRODUCT_NAME.toUpperCase()} · 研究分享卡`, P, y, inner * 0.6, { size: land ? 24 : 28, weight: 600, color: PAL.accent });
   put(ctx, `研究编号 ${r.run_id}`, W - P, y + 4, inner - kw - 32, { size: 22, color: PAL.muted }, "right");
   y += land ? 48 : 60;
   const flags = cardFlags(r);

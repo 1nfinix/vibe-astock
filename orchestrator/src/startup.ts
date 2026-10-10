@@ -12,14 +12,14 @@ import { fileURLToPath } from "node:url";
 
 import { ensureAccessToken, isPlainRemoteHttp, normalizePublicUrl, type AccessToken } from "./access_token.ts";
 import { readConfiguredDataRoot, resolveDataRoot } from "./data_root.ts";
-import { PRODUCT_NAME } from "./brand.ts";
+import { API_PORT, PRODUCT_NAME, UI_PORT } from "./brand.ts";
 
 export interface StartupArgs {
   openBrowser: boolean;
   help: boolean;
   /** 远程访问模式：页面对外开放（先打包再由 vite preview 提供），每个请求都要过访问口令 */
   remote: boolean;
-  /** 云平台给 5930 端口分配的公网根地址；给了就直接拼出发给使用者的链接 */
+  /** 云平台给页面端口（UI_PORT）分配的公网根地址；给了就直接拼出发给使用者的链接 */
   publicUrl: string | null;
   /** 重新生成访问口令，旧链接立即失效 */
   rotateAccess: boolean;
@@ -33,7 +33,7 @@ const USAGE = [
   "  --prebuilt         用已经打包好的页面（desktop/dist），不起开发服务器；远程模式下也不再重新打包",
   "  --remote           远程访问模式：页面对外开放，凭访问链接进入（先打包页面，首次约半分钟）。",
   "                     给云端 Agent 部署在自己的云电脑上、再把链接发给使用者用；本机自己用不需要它",
-  "  --public-url <地址> 云平台给 5930 端口分配的公网根地址（如 https://xxx.example.app），直接拼出发给使用者的链接",
+  `  --public-url <地址> 云平台给 ${UI_PORT} 端口分配的公网根地址（如 https://xxx.example.app），直接拼出发给使用者的链接`,
   "  --rotate-access    换一条新的访问链接（先停掉正在运行的服务；新服务起来后旧链接立即失效）",
 ].join("\n");
 
@@ -105,7 +105,7 @@ export function startupChildEnvs(env: NodeJS.ProcessEnv, access: Pick<AccessToke
 
 /** 两个固定端口的预检。换链接时端口被占 = 旧服务还拿着旧口令在跑:不停掉它,换了也不生效 */
 export async function assertStartupPorts(args: Pick<StartupArgs, "remote" | "rotateAccess">,
-  ports: { api: number; ui: number } = { api: 8765, ui: 5930 }): Promise<void> {
+  ports: { api: number; ui: number } = { api: API_PORT, ui: UI_PORT }): Promise<void> {
   try {
     await assertPortAvailable(ports.api);
     await assertPortAvailable(ports.ui, args.remote ? "0.0.0.0" : "127.0.0.1");
@@ -300,7 +300,7 @@ export async function runStartup(
   }
 
   const detached = true;
-  const api = spawn(process.execPath, ["orchestrator/src/api.ts", "--port", "8765", "--host", "127.0.0.1"], {
+  const api = spawn(process.execPath, ["orchestrator/src/api.ts", "--port", String(API_PORT), "--host", "127.0.0.1"], {
     cwd: repoRoot, env: apiEnv, detached, stdio: "inherit",
   });
   // 绑定策略交给 Vite 配置：默认回环；VRA_LAN=1 开放开发界面；远程模式由 vite preview 对外。API 始终只绑回环。
@@ -322,8 +322,8 @@ export async function runStartup(
           const token = apiToken(repoRoot, env);
           if (!token) return false;
           const [apiOk, uiOk] = await Promise.all([
-            reachable("http://127.0.0.1:8765/health", { Authorization: `Bearer ${token}` }),
-            reachable("http://127.0.0.1:5930", access ? { Cookie: `vra_access=${access.token}` } : undefined),
+            reachable(`http://127.0.0.1:${API_PORT}/health`, { Authorization: `Bearer ${token}` }),
+            reachable(`http://127.0.0.1:${UI_PORT}`, access ? { Cookie: `vra_access=${access.token}` } : undefined),
           ]);
           return apiOk && uiOk;
         },
@@ -333,7 +333,7 @@ export async function runStartup(
     if (startupOutcome.kind === "signal") return;
     if (startupOutcome.kind === "child_exit") throw new Error(startupOutcome.message);
 
-    const url = access ? `http://127.0.0.1:5930/?access=${access.token}` : "http://127.0.0.1:5930";
+    const url = access ? `http://127.0.0.1:${UI_PORT}/?access=${access.token}` : `http://127.0.0.1:${UI_PORT}`;
     if (access) console.log(remoteLinkLines(access, args.publicUrl, args.rotateAccess).join("\n"));
     else console.log(`\n${PRODUCT_NAME} 已启动:${url}\n按 Ctrl+C 关闭。`);
     if (args.openBrowser) openBrowser(url);
@@ -353,10 +353,10 @@ export function remoteLinkLines({ token, source }: AccessToken, publicUrl: strin
   const lines = [
     "",
     `${PRODUCT_NAME} 已启动（远程访问模式）。按 Ctrl+C 关闭。`,
-    `本机打开：${link("http://127.0.0.1:5930")}`,
+    `本机打开：${link(`http://127.0.0.1:${UI_PORT}`)}`,
     publicUrl
       ? `发给使用者的链接：${link(publicUrl)}`
-      : `发给使用者的链接：把云平台给 5930 端口分配的公网地址（只用 https 的那个）接上 /?access=${token}`,
+      : `发给使用者的链接：把云平台给 ${UI_PORT} 端口分配的公网地址（只用 https 的那个）接上 /?access=${token}`,
     source === "env" ? "（访问口令来自环境变量 VRA_ACCESS_TOKEN。）"
       : source === "file" ? "（沿用上次的访问链接，机器重启也不变。）"
       : rotated ? "（已换成新的访问链接；之前发出去的旧链接已经失效。）" : "（新生成的访问链接，之后重启沿用同一条。）",

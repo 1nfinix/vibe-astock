@@ -9,6 +9,7 @@ import {
   scrubSecrets, tick, uiBase, validateSchedule, type GateResult, type JobContext, type JobResult, type ScheduleDef,
 } from "../src/notify.ts";
 import { ServiceError, type ServiceContext } from "../src/service.ts";
+import { UI_PORT } from "../src/brand.ts";
 
 const FEISHU = "https://open.feishu.cn/open-apis/bot/v2/hook/0123abcd-4567-89ef-0123-456789abcdef";
 const WECOM = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=693a91f6-7xxx-4bc4-97a0-0ec2sifa5aaa";
@@ -93,7 +94,7 @@ test("推送正文:标题 + 事实行 + 本机链接,超长按字节截断", () 
   assert.equal(t, "【收盘摘要】\na\nb\n在本机打开:http://127.0.0.1:5930/daily-review");
   assert.equal(messageText({ title: "t", lines: [], link: "/x" }, "https://vr.example.app"), "【t】\n\n打开:https://vr.example.app/x", "远程模式的对外地址不写「在本机」");
   assert.equal(uiBase({ VRA_PUSH_LINK_BASE: "https://vr.example.app/" }), "https://vr.example.app");
-  assert.equal(uiBase({}), "http://127.0.0.1:5930");
+  assert.equal(uiBase({}), `http://127.0.0.1:${UI_PORT}`);
   const long = messageText({ title: "长", lines: ["汉".repeat(3000)] }, "http://x");
   assert.ok(Buffer.byteLength(long, "utf8") <= 2000);
   assert.match(long, /完整内容见收件箱/);

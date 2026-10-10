@@ -2,7 +2,7 @@
 /**
  * 薄 HTTP API(Phase 1 M3):默认只绑 127.0.0.1(非回环地址绑定需显式 VRA_API_TOKEN 且关闭 cookie 登录,见 isLoopbackHost);**每个请求都要鉴权**:Bearer token(VRA_API_TOKEN 或自动生成写入 .local/api.token)对所有路由有效,
  * 回环下 /login?token= 换来的 cookie 只放行 COOKIE_GET_ROUTES 白名单里的只读 GET;拒绝非本机 Origin / 跨站 / 非 JSON POST(防浏览器 CSRF);同一 service 层;返回只含相对路径,错误脱敏。
- * 用法:node orchestrator/src/api.ts [--port 8765] [--host 127.0.0.1]
+ * 用法:node orchestrator/src/api.ts [--port <API_PORT,见 brand.ts>] [--host 127.0.0.1]
  * 路由:GET /endpoints[?layer=&market=&q=]  POST /fetch {endpoint, symbol?, args?, session?}  POST /research {symbol, market?, stages?, endpoints?, knowledge?}
  *      GET /runs  GET /runs/:id/status|manifest|report|evidence[?field=&q=]|viewer  GET /knowledge/:market/:symbol  GET /health
  * 薄 UI(M4):GET /login?token=<token> 用 token 换 HttpOnly+SameSite=Strict Cookie 并跳 /ui;GET /ui(运行列表)/ GET /ui/runs/:id(报告 + 查看器链接)。
@@ -32,7 +32,7 @@ import "./finance/register_tasks.ts";
 import { VIEWER_CSP } from "./viewer.ts";
 import { loadSavedAgentPaths } from "./local_agent_runtime.ts";
 import { updateAction, updateStatus } from "./update_check.ts";
-import { PRODUCT_NAME } from "./brand.ts";
+import { API_PORT, PRODUCT_NAME } from "./brand.ts";
 const MAX_BODY = 256 * 1024;
 
 function send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8", htmlCsp = HTML_CSP): void {
@@ -483,7 +483,7 @@ export function isLoopbackHost(host: string): boolean {
  *    原来写的是 `Number(x || 8765) || 8765` —— `0` 是 falsy，两个 `||` 各吃掉它一次,
  *    于是 `--port 0` 会**静默变成 8765**：不报错、看着正常、绑到了另一个端口。
  */
-export function parsePortArg(args: readonly string[], fallback = 8765): number {
+export function parsePortArg(args: readonly string[], fallback = API_PORT): number {
   const i = args.indexOf("--port");
   if (i < 0 || i + 1 >= args.length) return fallback;
   const raw = args[i + 1]!;

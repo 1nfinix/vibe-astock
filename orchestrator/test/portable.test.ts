@@ -75,7 +75,7 @@ test("免安装包:构建脚本放运行时的位置和两个启动脚本找的�
   assert.match(ps, /Remove-Item Env:VRA_DATA_ROOT/);
   assert.match(ps, /start\.ps1"\) -Prebuilt -NoOpen:\$NoOpen/);
   assert.match(read("scripts/start.ps1"), /param\(\[switch\]\$Prebuilt, \[switch\]\$NoOpen\)/);
-  assert.match(read("scripts/start.ps1"), /if \(-not \$NoOpen\) \{ Start-Process "http:\/\/127\.0\.0\.1:5930" \}/);
+  assert.match(read("scripts/start.ps1"), /if \(-not \$NoOpen\) \{ Start-Process "http:\/\/127\.0\.0\.1:\$UiPort" \}/);
 });
 
 test("免安装包:包里的说明写清楚启动、未签名怎么放行、数据位置和升级;Windows 用 CRLF", () => {

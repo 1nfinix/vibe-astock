@@ -12,6 +12,8 @@ import { accessTokenPath, ensureAccessToken, isPlainRemoteHttp, normalizePublicU
 import {
   assertPortAvailable, assertStartupPorts, createShutdownMonitor, parseStartupArgs, remoteLinkLines, startupChildEnvs, startupMissingFiles, waitUntilReady,
 } from "../src/startup.ts";
+import { API_PORT, UI_PORT } from "../src/brand.ts";
+import * as desktopBrand from "../../desktop/src/verticals/finance/lib/brand.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -26,6 +28,25 @@ test("#34 两种启动器不覆盖 Vite 的 LAN 开关，API 继续只绑定回�
     assert.ok(api);
     assert.match(api, /"--host", "127\.0\.0\.1"/);
   }
+});
+
+test("本机端口只有一组值:启动器、Windows 启动脚本、页面服务器、设置页提示都跟 brand.ts 走,且和 Vibe Research 错开", () => {
+  // VR 是 5930 / 8765。同一个端口两个产品不能同时开,浏览器还会让两边共用同一份本地存储(接入 AI 设置、对话记录)
+  assert.notEqual(UI_PORT, 5930);
+  assert.notEqual(API_PORT, 8765);
+  assert.deepEqual([desktopBrand.UI_PORT, desktopBrand.API_PORT], [UI_PORT, API_PORT], "前端 brand.ts 和后端 brand.ts 要同值");
+  const ps1 = fs.readFileSync(path.join(REPO, "scripts/start.ps1"), "utf8");
+  assert.equal(Number(ps1.match(/^\$ApiPort = (\d+)$/m)?.[1]), API_PORT, "start.ps1 的 $ApiPort");
+  assert.equal(Number(ps1.match(/^\$UiPort = (\d+)$/m)?.[1]), UI_PORT, "start.ps1 的 $UiPort");
+  // 其余源码里不许再写死端口数字(注释里的说明不算)
+  const files = ["orchestrator/src/startup.ts", "orchestrator/src/api.ts", "orchestrator/src/notify.ts", "orchestrator/src/startup_health.ts",
+    "desktop/vite.config.ts", "desktop/src/verticals/finance/pages/Settings.tsx", "scripts/portable/build.mts", "scripts/portable/smoke.mts"];
+  for (const f of files) {
+    const code = fs.readFileSync(path.join(REPO, f), "utf8").split("\n").filter((l) => !/^\s*(?:\/\/|\*|\/\*\*)/.test(l)).join("\n");
+    for (const port of [5930, 8765, UI_PORT, API_PORT]) assert.doesNotMatch(code, new RegExp(`\\b${port}\\b`), `${f} 里写死了 ${port}`);
+  }
+  const ps1Code = ps1.split("\n").filter((l) => !/^\s*#/.test(l) && !/^\$(?:Api|Ui)Port = /.test(l)).join("\n");
+  for (const port of [5930, 8765, UI_PORT, API_PORT]) assert.doesNotMatch(ps1Code, new RegExp(`\\b${port}\\b`), `start.ps1 里写死了 ${port}`);
 });
 
 test("POSIX 安装入口在包目录内执行 npm ci，避免首次安装的绝对 prefix 兼容问题", () => {
@@ -147,7 +168,7 @@ test("远程模式只把口令交给页面服务器：API 进程的环境里没�
   }
   const source = fs.readFileSync(path.join(REPO, "orchestrator/src/startup.ts"), "utf8");
   assert.match(source, /const \{ apiEnv, uiEnv \} = startupChildEnvs\(env, access, args\.publicUrl\)/);
-  assert.match(source, /const api = spawn\([^)]*\{\s*cwd: repoRoot, env: apiEnv, detached/, "API 用剥掉口令的 apiEnv");
+  assert.match(source, /const api = spawn\(process\.execPath, \[[^\]]*\], \{\s*cwd: repoRoot, env: apiEnv, detached/, "API 用剥掉口令的 apiEnv");
   assert.match(source, /\[viteBin, "preview"\], \{ cwd: desktopDir, env: uiEnv/);
   assert.match(source, /"npm", \["run", "dev", "--prefix", "desktop"\], \{ cwd: repoRoot, env: uiEnv/);
   assert.match(source, /\[viteBin, "build"\][\s\S]*\[viteBin, "preview"\]/, "远程模式必须先 build 再 preview，不暴露开发服务器");
@@ -252,7 +273,7 @@ test("远程模式启动提示:链接拼对;首次 / 沿用 / 换新 / 环境变
     remoteLinkLines({ token, source }, publicUrl, rotated).join("\n");
 
   const first = text("new", "https://abc.example.app", false);
-  assert.match(first, new RegExp(`本机打开：http://127\\.0\\.0\\.1:5930/\\?access=${token}`));
+  assert.match(first, new RegExp(`本机打开：http://127\\.0\\.0\\.1:${UI_PORT}/\\?access=${token}`));
   assert.match(first, new RegExp(`发给使用者的链接：https://abc\\.example\\.app/\\?access=${token}`));
   assert.match(first, /新生成的访问链接，之后重启沿用同一条/);
   assert.doesNotMatch(first, /旧链接已经失效|明文/);

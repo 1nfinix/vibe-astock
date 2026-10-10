@@ -2,6 +2,9 @@
 # -NoOpen:启动后不自动打开浏览器
 param([switch]$Prebuilt, [switch]$NoOpen)
 $ErrorActionPreference = "Stop"
+# 本机端口:和 orchestrator/src/brand.ts 的 API_PORT / UI_PORT 同值(测试核对);和 Vibe Research 的 8765 / 5930 错开
+$ApiPort = 8770
+$UiPort = 5940
 $root = Split-Path -Parent $PSScriptRoot
 # Node 运行时预检:版本不够或构建未启用 TypeScript 支持时给出指引,而不是 ERR_UNKNOWN_FILE_EXTENSION(#38)
 & node (Join-Path $root "scripts\check-node.mjs")
@@ -41,7 +44,7 @@ function Stop-ProcessTree($Process) {
   }
 }
 try {
-  $api = Start-Process -FilePath node -ArgumentList @("orchestrator\src\api.ts", "--port", "8765", "--host", "127.0.0.1") -WorkingDirectory $root -PassThru -NoNewWindow
+  $api = Start-Process -FilePath node -ArgumentList @("orchestrator\src\api.ts", "--port", "$ApiPort", "--host", "127.0.0.1") -WorkingDirectory $root -PassThru -NoNewWindow
   # UI 由 Vite 按 VRA_LAN 决定绑定；默认回环，API 的回环绑定不变。打包好的页面由 vite preview 提供，同样只听回环。
   if ($Prebuilt) {
     $ui = Start-Process -FilePath node -ArgumentList @("node_modules\vite\bin\vite.js", "preview") -WorkingDirectory (Join-Path $root "desktop") -PassThru -NoNewWindow
@@ -53,19 +56,19 @@ try {
   while ([DateTime]::UtcNow -lt $readyDeadline) {
     $api.Refresh()
     $ui.Refresh()
-    if ($api.HasExited) { throw "API 启动失败（退出码 $($api.ExitCode)），请检查 8765 端口和产品配置。" }
+    if ($api.HasExited) { throw "API 启动失败（退出码 $($api.ExitCode)），请检查 $ApiPort 端口和产品配置。" }
     if ($ui.HasExited) { throw "界面启动失败（退出码 $($ui.ExitCode)）。" }
     # 经界面代理验证后端鉴权；令牌仍只留在本地服务，不传到浏览器或命令参数。
     & node (Join-Path $root "orchestrator\src\startup_health.ts")
     if ($LASTEXITCODE -eq 0) { $ready = $true; break }
     Start-Sleep -Milliseconds 250
   }
-  if (-not $ready) { throw "启动等待超过 60 秒。请检查上方日志、8765/5930 端口以及产品配置；浏览器尚未打开。" }
+  if (-not $ready) { throw "启动等待超过 60 秒。请检查上方日志、$ApiPort/$UiPort 端口以及产品配置；浏览器尚未打开。" }
   $api.Refresh()
   $ui.Refresh()
-  if ($api.HasExited) { throw "API 启动失败（退出码 $($api.ExitCode)），请检查 8765 端口和产品配置。" }
+  if ($api.HasExited) { throw "API 启动失败（退出码 $($api.ExitCode)），请检查 $ApiPort 端口和产品配置。" }
   if ($ui.HasExited) { throw "界面启动失败（退出码 $($ui.ExitCode)）。" }
-  if (-not $NoOpen) { Start-Process "http://127.0.0.1:5930" }
+  if (-not $NoOpen) { Start-Process "http://127.0.0.1:$UiPort" }
   while (-not $api.HasExited -and -not $ui.HasExited) {
     Start-Sleep -Milliseconds 250
     $api.Refresh()

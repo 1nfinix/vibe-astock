@@ -13,6 +13,7 @@ import { useAiRuntime } from "@/hooks/useAiRuntime";
 import { UpdateSettingsCard } from "@/components/UpdateSettingsCard";
 import { SecContactCard } from "@/components/SecContactCard";
 import { VaImportCard } from "@/components/VaImportCard";
+import { API_PORT } from "@/lib/brand";
 
 /**
  * 「接入 AI」—— Agent 运行时是产品的一部分；用户只在这里选择模型、填自己的 key。
@@ -319,7 +320,7 @@ export function Settings() {
         <GlassCard className="border-destructive/40">
           <p className="text-sm text-destructive">读不到后端配置:{err}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            先把编排器 API 起起来:<span className="font-mono">node orchestrator/src/api.ts --port 8765</span>
+            先把编排器 API 起起来:<span className="font-mono">node orchestrator/src/api.ts --port {API_PORT}</span>
           </p>
         </GlassCard>
       )}

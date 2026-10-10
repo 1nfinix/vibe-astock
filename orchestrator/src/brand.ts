@@ -9,3 +9,9 @@ export const PRODUCT_NAME = "Vibe AStock";
 export const PRODUCT_SLUG = "vibe-astock";
 /** GitHub 仓库(owner/name):新版提示查它的 Releases */
 export const REPO_SLUG = "simonlin1212/vibe-astock";
+/**
+ * 本机端口:页面 / API。和 Vibe Research(5930 / 8765)错开,两个能同时开;浏览器按「地址 + 端口」分开存东西,
+ * 错开以后两边的接入 AI 设置、对话记录也不会混在一起。启动脚本、页面服务器、免安装包、提示文字都从这里取。
+ */
+export const UI_PORT = 5940;
+export const API_PORT = 8770;

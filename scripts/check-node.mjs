@@ -11,7 +11,7 @@ if (!versionOk) problems.push(`当前 Node ${process.version}，本仓库需要 
 if (!feature) problems.push(`当前 Node 构建未启用 TypeScript 支持（process.features.typescript = ${JSON.stringify(feature ?? null)}）。`);
 if (problems.length) {
   console.error([
-    "[vibe-research] 无法直接运行 .ts 入口：",
+    "[vibe-astock] 无法直接运行 .ts 入口：",
     ...problems.map((p) => `  - ${p}`),
     "  请改用 nodejs.org 官方安装包，或用 nvm / fnm / Volta 安装 Node 22.18+ / 24 LTS；",
     "  发行版 apt / yum 仓库里的 Node 可能是关闭了 TypeScript 支持的构建。",
