@@ -1,5 +1,6 @@
 """映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
-cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live)。约定同 mappers.py。
+cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder / cn_shortline_turnover_top /
+cn_shortline_bigcaps)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
 - 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
@@ -19,6 +20,7 @@ from sources.shortline_emotion import render_cycle, render_daily, render_metrics
 from sources.shortline_facts import render_facts  # noqa: E402
 from sources.shortline_live import render_live  # noqa: E402
 from sources.shortline_themes import render_firstboard, render_themes  # noqa: E402
+from sources.shortline_watch import render_bigcaps, render_ladder, render_turnover_top  # noqa: E402
 
 _UNSETTLED = "这一天还没收盘：数字收盘前还会变，本次结果不缓存"
 
@@ -376,3 +378,54 @@ def shortline_live_map(result: dict, ctx: dict) -> dict:
     extra = {"date": day, "as_of": result.get("as_of"), "phase": result.get("phase"), "prev_date": prev, "settled": result.get("settled"),
              "text": render_live(result), "result": result, "computation": _computation("shortline_live.build_live", {})}
     return a.finish(True, extra, "盘中情绪一项都没算出来")
+
+
+# ---------------------------------------------------------------- 盯盘名单
+def shortline_ladder_map(result: dict, ctx: dict) -> dict:
+    """昨日梯队:样本日(前一交易日)已收盘,结果不变。"""
+    if not result:
+        return empty("昨日梯队计算为空")
+    day = result["sample_date"]
+    a = _Acc(ctx, day)
+    n = f"{day} 东财涨停池，盯 {result['quote_date']} 这一场"
+    a.num("ladder_sample_count", result.get("total"), "只", note=n)
+    a.num("ladder_highest", result.get("highest"), "板", note=n)
+    for t in result.get("tiers") or []:
+        a.num("ladder_tier_count", t["count"], "只", key=f"{t['boards']}板", note=n)
+    for st in result.get("stocks") or []:
+        a.num("ladder_boards", st["boards"], "板", key=st["code"], note=f"{st['name']}｜{st['label']}｜{st['sector'] or '—'}")
+    extra = {"quote_date": result["quote_date"], "sample_date": day, "text": render_ladder(result), "result": result,
+             "computation": _computation("shortline_watch.build_ladder", {"date": result["quote_date"]}, note="东财涨停池(前一交易日)")}
+    return a.finish(True, extra, "昨日梯队一只都没有")
+
+
+def shortline_turnover_top_map(result: dict, ctx: dict) -> dict:
+    """某日成交额前 N:字段名和单位与 em_turnover_rank 一致(record_key = stock|代码),期间是那一天。"""
+    if not result:
+        return empty("成交额前 N 计算为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    for st in result.get("stocks") or []:
+        k, n = f"stock|{st['code']}", f"{st['name']}({st['code']})；{day} 成交额第 {st['rank']} 名（通达信盘后包，有成交的 A 股 {result.get('total_traded')} 只）"
+        a.num("turnover_amount", st["amount"], "元", key=k, note=n)
+        a.num("turnover_rank", st["rank"], "名", key=k, note=n)
+        a.num("close", st.get("close"), "元", key=k, note=n)
+        a.num("change_pct", st.get("pct"), "%", key=k, note=n + "；收盘价 ÷ 前收 − 1")
+    extra = {"date": day, "top": result.get("top"), "text": render_turnover_top(result), "result": result,
+             "computation": _computation("shortline_watch.build_turnover_top", {"date": day, "top": result.get("top")}, note=f"通达信盘后包 {result.get('source_url')}")}
+    return a.finish(True, extra, "成交额前 N 一只都没有")
+
+
+def shortline_bigcaps_map(result: dict, ctx: dict) -> dict:
+    """大市值名单:只出总市值(价格和涨跌幅界面另取实时行情)。新鲜度靠注册表 cache_max_age_sec。"""
+    if not result:
+        return empty("大市值名单为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    n = f"新浪总市值降序（{day} 行情，{result.get('as_of')} 取）；门槛 {result.get('min_cap_yi'):g} 亿"
+    a.num("bigcap_count", result.get("count"), "只", note=n)
+    for st in result.get("stocks") or []:
+        a.num("market_cap", st["mcap"], "元", key=f"stock|{st['code']}", note=f"{st['name']}({st['code']})；{n}")
+    extra = {"date": day, "as_of": result.get("as_of"), "min_cap_yi": result.get("min_cap_yi"), "text": render_bigcaps(result), "result": result,
+             "computation": _computation("shortline_watch.build_bigcaps", {"min_cap_yi": result.get("min_cap_yi")}, note="新浪 hs_a 节点按总市值降序翻页")}
+    return a.finish(True, extra, "大市值名单一只都没有")
