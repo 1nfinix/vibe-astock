@@ -1,4 +1,5 @@
-"""映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily)。约定同 mappers.py。
+"""映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
+cn_shortline_themes / cn_shortline_firstboard)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
 - 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
@@ -16,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources.mappers import empty, ev, out  # noqa: E402
 from sources.shortline_emotion import render_cycle, render_daily, render_metrics  # noqa: E402
 from sources.shortline_facts import render_facts  # noqa: E402
+from sources.shortline_themes import render_firstboard, render_themes  # noqa: E402
 
 _UNSETTLED = "这一天还没收盘：数字收盘前还会变，本次结果不缓存"
 
@@ -67,9 +69,9 @@ def _src_note(d: dict) -> str:
     return "定稿记录（东财昨日涨停池当日表现）" if d.get("source") == "settled" else "腾讯实时行情兜底（已核对行情时间属于这一天）"
 
 
-def _computation(fn: str, params: dict) -> dict:
+def _computation(fn: str, params: dict, note: str = "池子取东财涨停 / 炸板 / 跌停 / 昨日涨停池") -> dict:
     return {"kind": "computed_endpoint", "library": f"sources.{fn}", "params": params,
-            "note": "取数层确定性计算(非 calc DAG);移植自 Vibe AStock v2.0.0,池子取东财涨停 / 炸板 / 跌停 / 昨日涨停池"}
+            "note": f"取数层确定性计算(非 calc DAG);移植自 Vibe AStock v2.0.0,{note}"}
 
 
 # ---------------------------------------------------------------- 当天四项
@@ -266,3 +268,74 @@ def shortline_facts_map(result: dict, ctx: dict) -> dict:
     extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_facts(result), "result": result,
              "computation": _computation("shortline_facts.build_facts", {"date": day})}
     return a.finish(bool(result.get("settled")), extra, "盘面事实六张表都没算出来")
+
+
+# ---------------------------------------------------------------- 题材事件树
+def shortline_themes_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("题材事件树计算为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+    tree: dict = result.get("tree") or {}
+    if a.block("tree", tree):
+        src = tree.get("source_note") or ""
+        a.num("topic_count", tree.get("tag_count"), "个", note="当天有涨停或昨日有涨停的事件题材个数（已滤掉国企改革、破净等属性词）")
+        a.num("topic_concentration", tree.get("concentration"), "小数", note="第一题材涨停 ÷ 全部涨停")
+        a.num("reason_covered", tree.get("covered"), "只", note="涨停原因对上当天东财涨停池的只数；" + src)
+        a.num("reason_coverage_rate", tree.get("coverage_rate"), "小数", note="涨停原因覆盖 ÷ 东财涨停只数")
+        a.num("prev_reason_covered", tree.get("prev_covered"), "只", note=f"{prev} 涨停股里有事件题材的只数")
+        a.num("prev_limit_up_total", tree.get("prev_total"), "只", note=f"{prev} 东财涨停池只数")
+        n = f"按涨停原因串归组（一只票可属于多个题材）；昨日 = {prev}"
+        for t in tree.get("themes") or []:
+            k = t["tag"]
+            a.text("topic_state", t["state"], key=k, note="只由已发生的读数推出，不含对明天的判断")
+            a.num("topic_limit_up", t["limit_up"], "只", key=k, note=n)
+            a.num("topic_first_boards", t["first_boards"], "只", key=k)
+            a.num("topic_consec_boards", t["consec_boards"], "只", key=k)
+            a.num("topic_highest", t["highest"], "板", key=k)
+            a.num("topic_broken", t["broken"], "只", key=k, note="东财炸板池里属于这个题材的（今天没涨停的用昨日题材串归组）")
+            a.num("topic_limit_down", t["limit_down"], "只", key=k)
+            a.num("topic_broken_rate", t.get("broken_rate"), "小数", key=k, note="炸板 ÷ (涨停 + 炸板)")
+            a.text("topic_first_seal", t.get("first_seal"), key=k, note="该题材第一只涨停的首封时间（HHMMSS）")
+            a.text("topic_last_seal", t.get("last_seal"), key=k, note="该题材最后一只涨停的首封时间（HHMMSS）")
+            if t["prev_members"]:
+                a.num("topic_prev_members", t["prev_members"], "只", key=k, note=f"{prev} 这个题材的涨停只数")
+                a.num("topic_prev_still_up", t["prev_still_up"], "只", key=k, note=f"其中 {day} 仍涨停的只数")
+                a.num("topic_continuation_rate", t.get("continuation_rate"), "小数", key=k)
+            names = "、".join(f"{m['name']}（{m['code']}）{m['label']}" for m in t.get("members") or [])
+            a.text("topic_members", names, key=k, note="按有效高度排的前 8 只")
+        if not tree.get("has_prev"):
+            a.degraded.append("昨日涨停池或昨日题材串没取到，题材新旧与延续没法判断")
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_themes(result), "result": result,
+             "computation": _computation("shortline_themes.build_themes", {"date": day, "top": result.get("top")},
+                                         "题材串取问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘,池子取东财涨停 / 炸板 / 跌停池")}
+    return a.finish(bool(result.get("settled")), extra, "题材事件树没算出来")
+
+
+# ---------------------------------------------------------------- 首板名单
+def shortline_firstboard_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("首板名单计算为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    if a.block("firstboard", result):
+        a.num("limit_up_count", result.get("total_limit_up"), "只", note="东财涨停池只数")
+        a.num("first_board_count", result.get("first_count"), "只", note="东财连板数 = 1（含反包）")
+        a.num("first_board_rebound_count", result.get("rebound_count"), "只", note="连板数 1 但涨停统计 N 天 M 板（M ≥ 2）的反包票")
+        if result.get("reason_available"):
+            a.num("first_board_reason_covered", result.get("reason_covered"), "只", note=result.get("reason_note"))
+        else:
+            a.missing.append({"field": "first_board_reason", "period": day, "reason": result.get("reason_note") or "涨停原因没取到"})
+        for s in result.get("stocks") or []:
+            k = s["code"]
+            a.text("first_board", f"{s['name']}（{k}）｜{s['label']}｜{s['sector'] or '未分类'}", key=k)
+            a.text("first_board_seal_time", s.get("first_seal"), key=k, note="首次封板时间（HHMMSS）")
+            a.num("first_board_broken_times", s.get("broken_times"), "次", key=k, note="当天开板次数")
+            a.num("first_board_ret", s.get("ret"), "%", key=k)
+            a.num("first_board_amount", s.get("amount"), "元", key=k, note="成交额")
+            a.num("first_board_float_cap", s.get("float_cap"), "元", key=k, note="流通市值")
+            a.text("first_board_reason", s.get("reason"), key=k, note="源站编辑归因，非公司确认")
+    extra = {"date": day, "settled": result.get("settled"), "text": render_firstboard(result), "result": result,
+             "computation": _computation("shortline_themes.build_firstboard", {"date": day},
+                                         "名单取东财涨停池,原因取问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘")}
+    return a.finish(bool(result.get("settled")), extra, "首板名单没算出来")

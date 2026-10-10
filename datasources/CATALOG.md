@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 172 个)
+# 数据源端点目录(registry v1.0.0,共 174 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -100,7 +100,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `wscn_lives` | 华尔街见闻 7×24 快讯 | CN | wallstreetcn | cn-public | none | - | channel 例 global-channel / a-stock-channel / us-stock-channel;cursor 翻页(上一页的 next_cursor);快讯常无标题,证据取正文前 300 字。上游 a-stock-data §5 |
 | `cctv_news` | 新闻联播文字稿(标题 + 正文) | CN | cctv | cn-public | none | - | 每天都播(含节假日);date 缺省 = 北京时间 20 点后取今天、否则昨天;只陈述原文,不做政策解读。上游 a-stock-data §5 |
 
-## 8 打板(10)
+## 8 打板(12)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -114,6 +114,8 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `em_price_anomaly_count` | 异常波动统计(按标的聚合) | CN | eastmoney | cn-public | none | - |  |
 | `ths_limit_up_pool` | 同花顺涨停揭秘(原因题材 / 封板率 / 板型) | CN | ths | cn-public | none | - |  |
 | `cn_shortline_facts` | 短线盘面事实(封板质量 / 亏钱效应 / 昨日强势股反馈矩阵 / 题材结构 / 关键事件 / 分涨跌幅制度生态) | CN | eastmoney+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。主板 ST 跌停按 2026-07-06 起的 10% 判(此前 5%) |
+| `cn_shortline_themes` | 短线题材事件树(按涨停原因串归组:每个题材的涨停数 / 首板与连板 / 最高板 / 炸板 / 跌停 / 首封末封时间 / 昨日该题材涨停股今日延续率 / 状态) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。涨停原因配了 IWENCAI_API_KEY 先问问财(用列名日期核对场次),问财出错或没配走同花顺涨停揭秘(逐行核对封板时间,不含北交所);取不到原因整棵树不可用,不拿行业分类冒充题材。已收盘的日子长期缓存;没收盘的那一天一律 partial。top 3–30 |
+| `cn_shortline_firstboard` | 短线首板名单(东财连板数 = 1 的涨停股,按首封时间排,含涨停原因、开板次数、成交额、流通市值;反包票单独标出) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。涨停原因来源同 cn_shortline_themes;原因取不到时名单照出、标 partial(不缓存,下次再取)。已收盘的日子长期缓存;没收盘的那一天一律 partial |
 
 ## 10 情绪(11)
 
