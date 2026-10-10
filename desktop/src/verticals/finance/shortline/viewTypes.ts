@@ -167,10 +167,12 @@ export interface WeeklyResult { date: string; days: WeeklyDay[]; lineage: Lineag
 
 // ── AI 复盘(orchestrator/src/finance/shortline/review.ts) ──
 export type ReviewSectionId = "sentiment" | "capital" | "theme" | "dragon_tiger" | "leader" | "summary";
+/** AI 周报的分段(orchestrator/src/finance/shortline/weekly_review.ts);和日复盘共用一套段落显示 */
+export type WeeklySectionId = "trend" | "themes" | "verify" | "summary";
 export type ReviewStageStatus = "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
 export interface ReviewAudit { total: number; bound: number; derived: number; loose: number; bad_math: { raw: string; stated: number; recomputed: number; percent: boolean }[] }
 export interface ReviewStage {
-  id: ReviewSectionId; label: string; desc: string; status: ReviewStageStatus;
+  id: ReviewSectionId | WeeklySectionId; label: string; desc: string; status: ReviewStageStatus;
   text: string; error?: string; evidence_count: number;
   audit?: ReviewAudit; cited?: { id: string; line: string }[]; unknown_cites?: string[];
 }
@@ -192,5 +194,16 @@ export interface ReviewResult {
   directions: { key: Direction; label: string }[];
   versions: SavedReview[];
   dates: { date: string; count: number }[];
+  runs: ReviewRun[];
+}
+export interface SavedWeekly extends Omit<SavedReview, "conditions" | "conditions_note"> { week_start: string; days: string[] }
+export interface WeeklyReviewResult {
+  date: string;
+  /** 这一天所在那周的周一 */
+  week_start: string;
+  sections: { id: WeeklySectionId; label: string; desc: string }[];
+  /** 这一周存下的各版,新的在前 */
+  versions: SavedWeekly[];
+  weeks: { week_start: string; count: number }[];
   runs: ReviewRun[];
 }

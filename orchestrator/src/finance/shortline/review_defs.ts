@@ -13,6 +13,17 @@ export const REVIEW_SECTIONS = [
 
 export type ReviewSectionId = (typeof REVIEW_SECTIONS)[number]["id"];
 export const REVIEW_SECTION_IDS: ReviewSectionId[] = REVIEW_SECTIONS.map((s) => s.id);
+
+/** AI 周报的分段:情绪走势 / 题材轮动 / 验证回看 + 汇总(VA 没有,沿用日复盘那套分段写、程序核对) */
+export const WEEKLY_SECTIONS = [
+  { id: "trend", label: "情绪走势" },
+  { id: "themes", label: "题材轮动" },
+  { id: "verify", label: "验证回看" },
+  { id: "summary", label: "本周汇总" },
+] as const;
+
+export type WeeklySectionId = (typeof WEEKLY_SECTIONS)[number]["id"];
+export const WEEKLY_SECTION_IDS: WeeklySectionId[] = WEEKLY_SECTIONS.map((s) => s.id);
 export const REVIEW_SECTION_STATUSES = ["done", "failed", "skipped", "cancelled"] as const;
 /** 汇总里给明日验证提的建议最多几条 —— 多了就没重点 */
 export const MAX_CONDITIONS = 4;

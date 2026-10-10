@@ -301,7 +301,9 @@ test("链路:各段只看自己的证据;之后的数不进;只给当天的来�
     assert.doesNotMatch(msg("sentiment"), /还没收盘/);
     const sum = msg("summary");
     assert.ok(sum.includes(TEXTS.sentiment) && sum.includes(TEXTS.leader), "汇总看到各段正文");
-    assert.match(sum, /这些分项没写成,别当它们不存在】龙虎榜/);
+    assert.match(sum, /这些分项跳过了,原因如下;别当它们不存在,也别说成没写成】\n- 龙虎榜:资料都没取到,这一段不写/, "跳过的写原因,不说成没写成");
+    assert.doesNotMatch(sum, /没写成,别当它们不存在】/, "没有真没写成的段");
+    assert.match(sum, /每段只看到自己那几块数据/);
     assert.ok(!sum.includes("【资料包"), "汇总不再给资料包");
     assert.equal(new Set(turn.seen.map((x) => x.session)).size, turn.seen.length, "每段一个新会话");
 

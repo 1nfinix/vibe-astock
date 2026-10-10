@@ -100,8 +100,8 @@ export function friendlyAgentError(error: unknown): string {
 const isAgentPath = (path: string): boolean =>
   path === "/chat" || path.startsWith("/chat/") || path.startsWith("/tasks") || path === "/research" || path.startsWith("/debate") ||
   path === "/import" || path === "/llm-probe" || path === "/translate-headlines" || path.startsWith("/guided-tool/") ||
-  // 情绪复盘 · AI 复盘的开工 / 停止(只认 POST 那个不带查询串的地址;按日期查进度的 GET 是普通视图)
-  path === "/view/shortline_review";
+  // 情绪复盘 · AI 复盘 / AI 周报的开工 / 停止(只认 POST 那个不带查询串的地址;按日期查进度的 GET 是普通视图)
+  path === "/view/shortline_review" || path === "/view/shortline_weekly_review";
 
 export type TaskMode = "auto" | "quick" | "deep";
 export type TaskRouteTarget = "deterministic" | "quick" | "deep";
@@ -272,7 +272,18 @@ async function ensureSelectedLocalAgentReady(llm: unknown, signal?: AbortSignal)
   throw new ApiError(message, 409, code);
 }
 
-export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly" | "shortline_review";
+export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly" | "shortline_review" | "shortline_weekly_review";
+
+/** AI 复盘 / AI 周报开工:先确认选中的本地订阅能用,再带上 AI 配置发给后端 */
+async function startShortlineAi<T>(view: "shortline_review" | "shortline_weekly_review", date: string, signal?: AbortSignal): Promise<T> {
+  const runtime = requestRuntime();
+  await ensureSelectedLocalAgentReady(runtime.llm, signal);
+  signal?.throwIfAborted();
+  return await call<T>(`/view/${view}`, {
+    method: "POST", signal,
+    body: JSON.stringify({ action: "start", date, ai: aiSourceName(String((runtime.llm as { provider?: unknown } | null)?.provider ?? "")), llm: runtime.llm, executionMode: runtime.executionMode }),
+  });
+}
 
 export const backend = {
   importPositions: (files: { name: string; content_base64: string }[], signal?: AbortSignal) => {
@@ -412,17 +423,13 @@ export const backend = {
    * AI 复盘:开工后在后台一段段写(切走页面不打断),进度按日期查 `shortlineView("shortline_review")`。
    * 返回的是这次复盘当时的状态(类型见 shortline/viewTypes.ts 的 ReviewRun)。
    */
-  shortlineReviewStart: async <T>(date: string, signal?: AbortSignal) => {
-    const runtime = requestRuntime();
-    await ensureSelectedLocalAgentReady(runtime.llm, signal);
-    signal?.throwIfAborted();
-    return await call<T>("/view/shortline_review", {
-      method: "POST", signal,
-      body: JSON.stringify({ action: "start", date, ai: aiSourceName(String((runtime.llm as { provider?: unknown } | null)?.provider ?? "")), llm: runtime.llm, executionMode: runtime.executionMode }),
-    });
-  },
+  shortlineReviewStart: <T>(date: string, signal?: AbortSignal) => startShortlineAi<T>("shortline_review", date, signal),
   shortlineReviewCancel: <T>(id: string) =>
     call<T>("/view/shortline_review", { method: "POST", body: JSON.stringify({ action: "cancel", id }) }),
+  /** AI 周报:写 date 所在那一周(周一起、到 date 为止);和 AI 复盘一样在后台写,进度按日期查 `shortlineView("shortline_weekly_review")` */
+  shortlineWeeklyReviewStart: <T>(date: string, signal?: AbortSignal) => startShortlineAi<T>("shortline_weekly_review", date, signal),
+  shortlineWeeklyReviewCancel: <T>(id: string) =>
+    call<T>("/view/shortline_weekly_review", { method: "POST", body: JSON.stringify({ action: "cancel", id }) }),
   /**
    * 盯盘 · 实时动态:页面开着时每隔几秒问一次,后台取行情、判断异动(几个窗口共用一份,不会重复报)。
    * 下一次隔多久听后端回的 `poll_ms`。类型见 shortline/watchTypes.ts。

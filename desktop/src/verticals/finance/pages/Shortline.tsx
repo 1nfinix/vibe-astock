@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarDays, CalendarRange, ClipboardCheck, Flame, History, RefreshCw, RotateCcw, Shuffle, Sigma, Sparkles } from "lucide-react";
+import { CalendarDays, CalendarRange, ClipboardCheck, Flame, History, NotebookPen, RefreshCw, RotateCcw, Shuffle, Sigma, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageTabs, type PageTab } from "@/components/ui/PageTabs";
 import { Disclaimer } from "@/components/ui/Disclaimer";
@@ -10,15 +10,17 @@ import { TodayTab, type TodayPanels } from "@/shortline/TodayTab";
 import { WeeklyTab } from "@/shortline/WeeklyTab";
 import { HistoryTab } from "@/shortline/HistoryTab";
 import { ReviewTab } from "@/shortline/ReviewTab";
+import { WeeklyReviewTab } from "@/shortline/WeeklyReviewTab";
 import { VerifyTab } from "@/shortline/VerifyTab";
 import { SamplesTab } from "@/shortline/SamplesTab";
 import { StructureTab } from "@/shortline/StructureTab";
 import type { EmotionResult } from "@/shortline/types";
 
-type Tab = "today" | "review" | "weekly" | "history" | "verify" | "samples" | "structure";
+type Tab = "today" | "review" | "weekreview" | "weekly" | "history" | "verify" | "samples" | "structure";
 const TABS: PageTab<Tab>[] = [
   { key: "today", label: "今日情绪", icon: Flame },
   { key: "review", label: "AI 复盘", icon: Sparkles },
+  { key: "weekreview", label: "AI 周报", icon: NotebookPen },
   { key: "weekly", label: "近 5 天", icon: CalendarRange },
   { key: "history", label: "情绪历史", icon: History },
   { key: "verify", label: "明日验证", icon: ClipboardCheck },
@@ -175,6 +177,7 @@ export function Shortline() {
         : tab === "today" ? <TodayTab day={day} panels={panels} />
         : !viewProps ? <p role="status" className="glass p-6 text-sm text-muted-foreground">正在确定复盘日…</p>
         : tab === "review" ? <ReviewTab key={day} {...viewProps} />
+        : tab === "weekreview" ? <WeeklyReviewTab key={day} {...viewProps} />
         : tab === "weekly" ? <WeeklyTab key={day} {...viewProps} />
         : tab === "history" ? <HistoryTab key={day} {...viewProps} />
         : tab === "verify" ? <VerifyTab key={day} {...viewProps} />

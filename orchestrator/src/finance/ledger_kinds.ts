@@ -10,7 +10,7 @@
  *    界面只做两件事:把他写的原样呈现出来,以及把"哪条到期了"算出来。
  */
 import type { LedgerKindDef } from "../plugin.ts";
-import { CITED_MAX, MAX_CONDITIONS, REVIEW_SECTIONS, REVIEW_SECTION_IDS, REVIEW_SECTION_STATUSES, SECTION_TEXT_MAX } from "./shortline/review_defs.ts";
+import { CITED_MAX, MAX_CONDITIONS, REVIEW_SECTIONS, REVIEW_SECTION_IDS, REVIEW_SECTION_STATUSES, SECTION_TEXT_MAX, WEEKLY_SECTIONS, WEEKLY_SECTION_IDS } from "./shortline/review_defs.ts";
 import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, VERIFY_METRIC_KEYS } from "./shortline/verify_metrics.ts";
 import { DEFAULT_RULES, PLAYBOOKS, isFractionRule, type RuleKey } from "./journal/defs.ts";
 import { MAX_RATE } from "./journal/fees.ts";
@@ -37,11 +37,11 @@ const TEXT = (max = 500) => ({ type: "string", maxLength: max });
 const NONEMPTY = (max = 500) => ({ type: "string", minLength: 1, maxLength: max, pattern: "\\S" });
 const COUNT = { type: "integer", minimum: 0 };
 
-/** AI 复盘的一段:正文 + 数字核对(三档分开)+ 引到的证据行(「查看依据」) */
-const REVIEW_SECTION = {
+/** AI 复盘 / 周报的一段:正文 + 数字核对(三档分开)+ 引到的证据行(「查看依据」) */
+const reviewSection = (ids: readonly string[]) => ({
   type: "object", additionalProperties: false, required: ["id", "label", "status"],
   properties: {
-    id: { type: "string", enum: REVIEW_SECTION_IDS },
+    id: { type: "string", enum: ids },
     label: TEXT(20),
     status: { type: "string", enum: REVIEW_SECTION_STATUSES },
     text: TEXT(SECTION_TEXT_MAX),
@@ -65,7 +65,7 @@ const REVIEW_SECTION = {
     /** 引了、但资料包里没有的编号 */
     unknown_cites: { type: "array", maxItems: 40, items: TEXT(60) },
   },
-};
+});
 
 /**
  * 字段键 / 枚举值的**中文显示名**。
@@ -297,7 +297,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       ai: TEXT(80),
       started_at: TEXT(40),
       finished_at: TEXT(40),
-      sections: { type: "array", minItems: 1, maxItems: REVIEW_SECTIONS.length, items: REVIEW_SECTION },
+      sections: { type: "array", minItems: 1, maxItems: REVIEW_SECTIONS.length, items: reviewSection(REVIEW_SECTION_IDS) },
       gaps: { type: "array", maxItems: 80, items: TEXT(400) },
       conditions: {
         type: "array", maxItems: MAX_CONDITIONS,
@@ -310,6 +310,26 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       conditions_note: TEXT(300),
     },
     required: ["date", "sections"],
+  },
+
+  /** AI 周报:一周(周一起)的情绪走势、题材轮动、明日验证对账回看 + 汇总。只看市场数据,不含个人交易 */
+  shortline_weekly_review: {
+    label: "AI 周报",
+    properties: {
+      /** 写到哪一天为止(这一周里的最后一个交易日,或写的那天) */
+      date: { type: "string", format: "date" },
+      /** 这一周的周一:同一周写的几版按它归在一起 */
+      week_start: { type: "string", format: "date" },
+      /** 这一周算进来的交易日 */
+      days: { type: "array", maxItems: 7, items: { type: "string", format: "date" } },
+      settled: { type: "boolean" },
+      ai: TEXT(80),
+      started_at: TEXT(40),
+      finished_at: TEXT(40),
+      sections: { type: "array", minItems: 1, maxItems: WEEKLY_SECTIONS.length, items: reviewSection(WEEKLY_SECTION_IDS) },
+      gaps: { type: "array", maxItems: 80, items: TEXT(400) },
+    },
+    required: ["date", "week_start", "sections"],
   },
 
   /**

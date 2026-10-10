@@ -12,6 +12,7 @@
  * - 在后台一段段跑(切走页面不会打断),页面按日期查进度;跑完自动存进台账 `shortline_review`,每次一版,不覆盖旧版。
  *   一段都没写成、或用户中途停了,不存。
  * 🔴 资料包只放取数层的确定性数字(和辩论同一条契约);股票名、题材名这类外部文字只在证据行里出现,剥控制字符、限长。
+ * 分段跑、核对、存台账这套(launchRun 起)AI 周报(./weekly_review.ts)也用:两边只在资料包和各段提示词上不同。
  */
 import crypto from "node:crypto";
 import { auditNumbers } from "../../arithmetic.ts";
@@ -38,7 +39,7 @@ const FETCH_CONCURRENCY = 3;
 // ---------------------------------------------------------------- 资料来源
 /** 每个来源最多放几条带 record_key 的记录(按端点给的顺序取前 head 个、后 tail 个);不带 key 的汇总数全放 */
 interface Cap { fields?: string[]; head: number; tail?: number }
-interface SourceDef {
+export interface SourceDef {
   key: string;
   endpoint: string;
   title: string;
@@ -48,6 +49,8 @@ interface SourceDef {
   todayOnly?: true;
   /** 一条证据都没拿到时改取这个(口径不同,缺口里说明) */
   fallback?: SourceDef;
+  /** 只要这几个字段(其余证据不进资料包;周报每天只看几项,全放会挤爆资料包) */
+  keep?: string[];
 }
 
 export const SOURCES: Record<string, SourceDef> = {
@@ -112,7 +115,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "summary", sources: [], desc: "最重要的几点、分项之间的矛盾、明日验证建议",
     prompt: [
-      "你写「汇总」。前面五段是同一天的分项复盘。",
+      "你写「汇总」。前面几段是同一天的分项复盘。",
       "① 用 3–5 句说这一天最重要的几点,数字沿用分项里的证据编号;",
       "② 指出分项之间互相矛盾、或者证据撑不住结论的地方;",
       `③ 最后给明日验证提建议:从下面清单里挑读数,写下一个交易日它往哪个方向走才支持今天的判断。建议放在全文最后一个 \`\`\`json 代码块里,格式 [{"metric":"清单里的键","direction":"up / down / flat","reason":"60 字以内,写成带前提的条件"}],最多 ${MAX_CONDITIONS} 条;不该提就写 []。`,
@@ -124,11 +127,11 @@ const SECTIONS: SectionDef[] = [
 const LABEL = new Map(REVIEW_SECTIONS.map((s) => [s.id, s.label]));
 
 // ---------------------------------------------------------------- 资料包
-interface Evidence { id: string; field: string; value: unknown; unit?: string; period?: string; record_key?: string; note?: string }
-interface Fetched { source: SourceDef; evidence: Evidence[]; gaps: string[]; settled: boolean | null }
+export interface Evidence { id: string; field: string; value: unknown; unit?: string; period?: string; record_key?: string; note?: string }
+export interface Fetched { source: SourceDef; evidence: Evidence[]; gaps: string[]; settled: boolean | null }
 export interface Dossier { text: string; count: number; values: number[]; lines: Map<string, string>; gaps: string[] }
 
-function safeNote(v: unknown): string {
+export function safeNote(v: unknown): string {
   const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
   return t.length > MAX_NOTE ? `${t.slice(0, MAX_NOTE)}…` : t;
 }
@@ -220,7 +223,7 @@ export function renderDossier(parts: Fetched[], date: string): Dossier {
   return { text, count, values, lines, gaps };
 }
 
-async function fetchSource(ctx: ServiceContext, src: SourceDef, date: string, today: string, signal: AbortSignal): Promise<Fetched> {
+export async function fetchSource(ctx: ServiceContext, src: SourceDef, date: string, today: string, signal: AbortSignal): Promise<Fetched> {
   const r = await fetchOne(ctx, src, date, today, signal);
   if (r.evidence.length || !src.fallback || (src.todayOnly && date !== today)) return r;
   const b = await fetchOne(ctx, src.fallback, date, today, signal);
@@ -235,7 +238,8 @@ async function fetchOne(ctx: ServiceContext, src: SourceDef, date: string, today
     const settled = typeof env?.extra?.settled === "boolean" ? env.extra.settled : null;
     if (env?.status === "failed") return { source: src, evidence: [], gaps: [`${src.title}:没取到(${failedNote(env) || "原因不明"})`], settled };
     const raw = (Array.isArray(env?.evidence) ? env.evidence : []).filter((e): e is Evidence =>
-      !!e && typeof e === "object" && typeof (e as Evidence).id === "string" && typeof (e as Evidence).field === "string");
+      !!e && typeof e === "object" && typeof (e as Evidence).id === "string" && typeof (e as Evidence).field === "string"
+      && (!src.keep || src.keep.includes((e as Evidence).field)));
     const { kept, gaps } = selectEvidence(src, raw, date);
     if (env?.status === "partial") gaps.unshift(`${src.title}:不完整${typeof env.extra?.degraded === "string" && env.extra.degraded ? `(${safeNote(env.extra.degraded)})` : ""}`);
     return { source: src, evidence: kept, gaps, settled };
@@ -302,7 +306,8 @@ export function formatOk(text: string): boolean {
 // ---------------------------------------------------------------- 一次复盘
 export type StageStatus = "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
 export interface StageState {
-  id: ReviewSectionId; label: string; desc: string; status: StageStatus;
+  /** 日复盘是 ReviewSectionId,周报是 WeeklySectionId;汇总段两边都叫 summary */
+  id: string; label: string; desc: string; status: StageStatus;
   text: string; error?: string; evidence_count: number;
   audit?: Audit; cited?: { id: string; line: string }[]; unknown_cites?: string[];
 }
@@ -314,13 +319,32 @@ export interface ReviewRun {
   outcome: "running" | "completed" | "completed_with_errors" | "failed" | "cancelled";
   saved_id: string | null; save_error: string | null;
 }
-interface Session extends Omit<ReviewRun, "outcome"> {
-  dossiers: Map<ReviewSectionId, Dossier>;
+export interface Session extends Omit<ReviewRun, "outcome"> {
+  spec: RunSpec;
+  dossiers: Map<string, Dossier>;
   abort: AbortController;
   finishedAt: number | null;
   finished: Promise<void>;
 }
 export type TurnFn = (message: string, session: string, signal?: AbortSignal) => Promise<string>;
+
+/** 一种分段 AI 稿(日复盘 / 周报)跟别的不一样的地方;分段跑、核对、存台账共用 */
+export interface RunSpec {
+  /** 存进哪个台账种类 */
+  kind: string;
+  /** 同一份稿归在哪(日复盘 = 日期,周报 = 那周的周一):同一组不能同时写两份,视图按它列进度 */
+  group: string;
+  /** 报错里的称呼:「复盘」「周报」 */
+  noun: string;
+  /** 一段的提示词(汇总段也由它拼) */
+  message: (s: Session, st: StageState) => string;
+  /** 汇总段末尾带明日验证建议(json 代码块,拆出来单存) */
+  conditions: boolean;
+  /** 前面各段都没写成时汇总段的说明 */
+  summarySkip: string;
+  /** 存台账时额外的字段(周报的 week_start、days) */
+  extra: Record<string, unknown>;
+}
 
 const sessions = new Map<string, Session>();
 
@@ -342,15 +366,29 @@ function project(s: Session): ReviewRun {
   };
 }
 
-function messageFor(s: Session, st: StageState, def: SectionDef): string {
+/**
+ * 汇总段看到的「前面各段」:写好的原文;跳过的写明原因(比如本周没有要对账的条件),不说成没写成;真没写成的单列。
+ * 日复盘和周报共用。每段只看自己那几块数据,所以要提醒汇总:一段说资料包里没有某类数据,只指它自己那份。
+ */
+export function summaryInputs(s: Session): string[] {
+  const others = s.stages.filter((x) => x.id !== "summary");
+  const seen = others.filter((x) => x.status === "done" && x.text).map((x) => `## ${x.label}\n${x.text}`).join("\n\n");
+  const skipped = others.filter((x) => x.status === "skipped").map((x) => `- ${x.label}:${x.error || "原因不明"}`);
+  const failed = others.filter((x) => x.status !== "done" && x.status !== "skipped").map((x) => x.label);
+  return [
+    `【前面已经写好的分项】(每段只看到自己那几块数据:某段说资料包里没有某类数据,只指它自己那份,不算分项之间的矛盾)\n${seen}`,
+    skipped.length ? `【这些分项跳过了,原因如下;别当它们不存在,也别说成没写成】\n${skipped.join("\n")}` : "",
+    failed.length ? `【这些分项没写成,别当它们不存在】${failed.join("、")}` : "",
+  ];
+}
+
+function messageFor(s: Session, st: StageState): string {
+  const def = SECTIONS.find((x) => x.id === st.id)!;
   const head = `复盘日:${s.date}。资料包里的「今天」只指这一天;没标日期的证据都是这一天的。${s.settled === false ? "这一天还没收盘,数字收盘前还会变,写的时候要说明。" : ""}`;
   if (def.id === "summary") {
-    const seen = s.stages.filter((x) => x.id !== "summary" && x.status === "done" && x.text).map((x) => `## ${x.label}\n${x.text}`).join("\n\n");
-    const missing = s.stages.filter((x) => x.id !== "summary" && x.status !== "done").map((x) => x.label);
     return [
       head,
-      `【前面已经写好的分项】\n${seen}`,
-      missing.length ? `【这些分项没写成,别当它们不存在】${missing.join("、")}` : "",
+      ...summaryInputs(s),
       `【你的角色】\n${def.prompt}`,
       RULES.replace("300 字左右,分 2–3 段:主要观察;反证与缺口;接下来要看什么。", "400 字以内,正文之后接 json 代码块。"),
       "【交付格式】用简体中文直接提交正文,保留证据编号;不要输出思考草稿、写作计划或自我讨论。",
@@ -368,16 +406,16 @@ function messageFor(s: Session, st: StageState, def: SectionDef): string {
 }
 
 async function runStage(s: Session, st: StageState, turn: TurnFn): Promise<void> {
-  const def = SECTIONS.find((x) => x.id === st.id)!;
-  if (def.id === "summary" && !s.stages.some((x) => x.id !== "summary" && x.status === "done")) {
+  const summary = st.id === "summary";
+  if (summary && !s.stages.some((x) => x.id !== "summary" && x.status === "done")) {
     st.status = "skipped";
-    st.error = "前面五段都没写成,不汇总";
+    st.error = s.spec.summarySkip;
     return;
   }
   st.status = "running";
   const signal = s.abort.signal;
   try {
-    const message = messageFor(s, st, def);
+    const message = s.spec.message(s, st);
     const key = `review-${s.id}-${st.id}`;
     let text = await turn(message, key, signal);
     if (signal.aborted) throw new ServiceError("cancelled", "已停止");
@@ -387,7 +425,7 @@ async function runStage(s: Session, st: StageState, turn: TurnFn): Promise<void>
       if (!formatOk(text)) throw new ServiceError("bad_output_format", "模型没有交回可用的中文正文,已重试一次");
     }
     let body = text.trim();
-    if (def.id === "summary") {
+    if (summary && s.spec.conditions) {
       const p = parseConditions(body);
       body = p.body;
       s.conditions = p.conditions;
@@ -397,8 +435,8 @@ async function runStage(s: Session, st: StageState, turn: TurnFn): Promise<void>
       body = body.slice(0, SECTION_TEXT_MAX);
       s.gaps.push(`「${st.label}」正文超过 ${SECTION_TEXT_MAX} 字,存的时候截掉了后面`);
     }
-    // 汇总段没有自己的资料包:数字和编号对照前五段的资料包
-    const pool_ = def.id === "summary" ? [...s.dossiers.values()] : [s.dossiers.get(def.id)!];
+    // 汇总段没有自己的资料包:数字和编号对照前面各段的资料包
+    const pool_ = summary ? [...s.dossiers.values()] : [s.dossiers.get(st.id)!];
     const values = pool_.flatMap((d) => d.values);
     const lines = new Map(pool_.flatMap((d) => [...d.lines]));
     const c = citationsOf(body, lines);
@@ -426,6 +464,7 @@ function save(ctx: ServiceContext, s: Session): void {
   if (!s.stages.some((x) => x.status === "done") || s.stages.some((x) => x.status === "cancelled")) return;
   const record: Record<string, unknown> = {
     date: s.date,
+    ...s.spec.extra,
     ...(s.settled !== null ? { settled: s.settled } : {}),
     ai: s.ai, started_at: s.started_at, finished_at: s.finished_at ?? "",
     sections: s.stages.map((x) => ({
@@ -435,13 +474,13 @@ function save(ctx: ServiceContext, s: Session): void {
       ...(x.audit ? { audit: x.audit } : {}), ...(x.cited ? { cited: x.cited } : {}), ...(x.unknown_cites ? { unknown_cites: x.unknown_cites } : {}),
     })),
     gaps: s.gaps.slice(0, 80).map((g) => g.slice(0, 400)),
-    conditions: s.conditions,
+    ...(s.spec.conditions ? { conditions: s.conditions } : {}),
     ...(s.conditions_note ? { conditions_note: s.conditions_note.slice(0, 300) } : {}),
   };
-  const why = ledgerCheck(ctx, LEDGER_KIND, record);
+  const why = ledgerCheck(ctx, s.spec.kind, record);
   if (why) { s.save_error = `没存上:${why}`; return; }
   try {
-    s.saved_id = ledgerInsertMany(ctx, { kind: LEDGER_KIND, records: [record] })[0]?.id ?? null;
+    s.saved_id = ledgerInsertMany(ctx, { kind: s.spec.kind, records: [record] })[0]?.id ?? null;
   } catch (e) {
     s.save_error = `没存上:${e instanceof Error ? e.message : String(e)}`;
   }
@@ -460,6 +499,44 @@ async function runAll(ctx: ServiceContext, s: Session, turn: TurnFn, now: () => 
 }
 
 /**
+ * 开工前的检查:同一组(同一天 / 同一周)不能同时写两份;日复盘和周报合起来最多同时跑 MAX_RUNNING 份。
+ * `label` 是报错里说的那一组(「2026-10-09 的复盘」「2026-10-05 起这一周的周报」)。
+ */
+export function ensureCapacity(kind: string, group: string, label: string): void {
+  sweep();
+  const busy = [...sessions.values()].filter((s) => !s.done);
+  if (busy.some((s) => s.spec.kind === kind && s.spec.group === group)) throw new ServiceError("review_busy", `${label}正在写,等它写完或先停掉`);
+  if (busy.length >= MAX_RUNNING) throw new ServiceError("capacity_full", `同时在写的 AI 复盘和周报合计最多 ${MAX_RUNNING} 份,等前面的写完`);
+}
+
+/** 请求里带的 AI 显示名(剥控制字符、限长) */
+export const aiName = (body: Record<string, unknown>) => typeof body.ai === "string" ? body.ai.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 80) : "";
+
+/**
+ * 资料包备好以后:建一次会话,在后台一段段跑,跑完存台账。立即返回当前状态。
+ * 资料都没取到的段由调用方标成 skipped 传进来。
+ */
+export function launchRun(ctx: ServiceContext, spec: RunSpec, init: { date: string; settled: boolean | null; ai: string; stages: StageState[]; gaps: string[]; dossiers: Map<string, Dossier> }, turn: TurnFn, now: Date): ReviewRun {
+  let resolveFinished!: () => void;
+  const s: Session = {
+    id: `r${now.getTime().toString(36)}${crypto.randomBytes(4).toString("hex")}`,
+    ...init, started_at: now.toISOString(), finished_at: null,
+    conditions: [], conditions_note: "",
+    done: false, saved_id: null, save_error: null,
+    spec, abort: new AbortController(), finishedAt: null,
+    finished: new Promise<void>((r) => { resolveFinished = r; }),
+  };
+  sessions.set(s.id, s);
+  // 后台跑:请求本身结束不影响它;停要走 action=cancel
+  void runAll(ctx, s, turn, () => new Date()).catch((e) => {
+    for (const x of s.stages) if (x.status === "running" || x.status === "pending") { x.status = "failed"; x.error = e instanceof Error ? e.message : String(e); }
+    s.done = true;
+    s.finishedAt = Date.now();
+  }).finally(resolveFinished);
+  return project(s);
+}
+
+/**
  * 开一次复盘:先确认接了 AI,再取一次资料包,然后在后台一段段跑。立即返回当前状态。
  * `turn` 只给测试注入(不真去起 AI)。
  */
@@ -468,13 +545,10 @@ export async function startReview(ctx: ServiceContext, body: Record<string, unkn
   if (!validDate(date)) throw new ServiceError("bad_request", "date 要写成 YYYY-MM-DD");
   const today = localClock(now, SCHEDULE_TZ).day;
   if (date > today) throw new ServiceError("bad_request", `${date} 还没到`);
-  sweep();
-  const busy = [...sessions.values()].filter((s) => !s.done);
-  if (busy.some((s) => s.date === date)) throw new ServiceError("review_busy", `${date} 的复盘正在写,等它写完或先停掉`);
-  if (busy.length >= MAX_RUNNING) throw new ServiceError("capacity_full", `同时在写的复盘最多 ${MAX_RUNNING} 份,等前面的写完`);
+  ensureCapacity(LEDGER_KIND, date, `${date} 的复盘`);
   // 没接 AI 就别白取一遍数
   const agent = turn ? { turn, fingerprint: "" } : agentTurnFor(ctx, body);
-  const ai = typeof body.ai === "string" ? body.ai.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 80) : "";
+  const ai = aiName(body);
 
   const used = [...new Set(SECTIONS.flatMap((d) => d.sources))];
   const fetched = new Map((await pool(used, FETCH_CONCURRENCY, (k) => fetchSource(ctx, SOURCES[k]!, date, today, signal))).map((f) => [f.source.key, f]));
@@ -483,7 +557,7 @@ export async function startReview(ctx: ServiceContext, body: Record<string, unkn
   // 🔴 情绪数据一条都没有就不开:多半是这天不是交易日、还没开盘或东财整片没取到,写出来的只会是空话
   if (!emotion.evidence.length) throw new ServiceError("no_data", `${date} 的情绪数据没取到,先不复盘:${emotion.gaps.join(";") || "原因不明"}`);
 
-  const dossiers = new Map<ReviewSectionId, Dossier>();
+  const dossiers = new Map<string, Dossier>();
   const stages: StageState[] = SECTIONS.map((def) => {
     const label = LABEL.get(def.id)!;
     if (def.id === "summary") return { id: def.id, label, desc: def.desc, status: "pending", text: "", evidence_count: 0 };
@@ -494,31 +568,26 @@ export async function startReview(ctx: ServiceContext, body: Record<string, unkn
       : { id: def.id, label, desc: def.desc, status: "skipped", text: "", error: `资料都没取到,这一段不写:${d.gaps.join(";") || "原因不明"}`, evidence_count: 0 };
   });
   const gaps = [...new Set([...fetched.values()].flatMap((f) => f.gaps))];
+  const spec: RunSpec = { kind: LEDGER_KIND, group: date, noun: "复盘", message: messageFor, conditions: true, summarySkip: "前面五段都没写成,不汇总", extra: {} };
+  return launchRun(ctx, spec, { date, settled: emotion.settled, ai, stages, gaps, dossiers }, agent.turn, now);
+}
 
-  let resolveFinished!: () => void;
-  const s: Session = {
-    id: `r${now.getTime().toString(36)}${crypto.randomBytes(4).toString("hex")}`,
-    date, settled: emotion.settled, ai, started_at: now.toISOString(), finished_at: null,
-    stages, gaps, conditions: [], conditions_note: "",
-    done: false, saved_id: null, save_error: null,
-    dossiers, abort: new AbortController(), finishedAt: null,
-    finished: new Promise<void>((r) => { resolveFinished = r; }),
-  };
-  sessions.set(s.id, s);
-  // 后台跑:请求本身结束不影响它;停要走 action=cancel
-  void runAll(ctx, s, agent.turn, () => new Date()).catch((e) => {
-    for (const x of s.stages) if (x.status === "running" || x.status === "pending") { x.status = "failed"; x.error = e instanceof Error ? e.message : String(e); }
-    s.done = true;
-    s.finishedAt = Date.now();
-  }).finally(resolveFinished);
+/** 停一次复盘 / 周报。只认这个台账种类的(日复盘页停不掉周报,反过来也一样) */
+export function cancelRun(id: string, kind: string, noun: string): ReviewRun {
+  const s = sessions.get(id);
+  if (!s || s.spec.kind !== kind) throw new ServiceError("not_found", `没有这次${noun}(可能已经写完很久、被清掉了)`);
+  if (!s.done) s.abort.abort();
   return project(s);
 }
 
 export function cancelReview(id: string): ReviewRun {
-  const s = sessions.get(id);
-  if (!s) throw new ServiceError("not_found", "没有这次复盘(可能已经写完很久、被清掉了)");
-  if (!s.done) s.abort.abort();
-  return project(s);
+  return cancelRun(id, LEDGER_KIND, "复盘");
+}
+
+/** 内存里某一组正在写 / 刚写完的(新的在前) */
+export function runsOf(kind: string, group: string): ReviewRun[] {
+  sweep();
+  return [...sessions.values()].filter((s) => s.spec.kind === kind && s.spec.group === group).sort((a, b) => b.started_at.localeCompare(a.started_at)).map(project);
 }
 
 /** 测试用:等后台跑完 */
@@ -555,13 +624,14 @@ export interface ReviewViewResult {
 
 const descOf = new Map(SECTIONS.map((d) => [d.id, d.desc]));
 
-function savedOf(r: LedgerRecord): SavedReview | null {
+/** 台账里的一版 → 页面用的形状;分段的显示名和说明按种类传进来 */
+export function savedOf(r: LedgerRecord, label: ReadonlyMap<string, string> = LABEL, desc: ReadonlyMap<string, string> = descOf): SavedReview | null {
   if (!Array.isArray(r.sections)) return null;
   return {
     id: r.id, date: String(r.date), settled: typeof r.settled === "boolean" ? r.settled : null, ai: String(r.ai ?? ""),
     started_at: String(r.started_at ?? ""), finished_at: String(r.finished_at ?? ""), created_at: String(r.created_at ?? ""),
     sections: (r.sections as Record<string, unknown>[]).map((x) => ({
-      id: x.id as ReviewSectionId, label: String(x.label ?? LABEL.get(x.id as ReviewSectionId) ?? x.id), desc: descOf.get(x.id as ReviewSectionId) ?? "",
+      id: String(x.id), label: String(x.label ?? label.get(String(x.id)) ?? x.id), desc: desc.get(String(x.id)) ?? "",
       status: x.status as StageStatus, text: String(x.text ?? ""), ...(x.error ? { error: String(x.error) } : {}),
       evidence_count: Number(x.evidence_count ?? 0),
       ...(x.audit ? { audit: x.audit as Audit } : {}),
@@ -580,7 +650,7 @@ export async function shortlineReview(ctx: ServiceContext, query: Record<string,
   sweep();
   const records = ledgerList(ctx, LEDGER_KIND)[LEDGER_KIND] ?? [];
   const versions = records.filter((r) => r.date === date).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-    .map(savedOf).filter((x): x is SavedReview => !!x);
+    .map((r) => savedOf(r)).filter((x): x is SavedReview => !!x);
   const counts = new Map<string, number>();
   for (const r of records) counts.set(String(r.date), (counts.get(String(r.date)) ?? 0) + 1);
   return {
@@ -590,7 +660,7 @@ export async function shortlineReview(ctx: ServiceContext, query: Record<string,
     directions: DIRECTIONS.map((k) => ({ key: k, label: DIRECTION_LABELS[k] })),
     versions,
     dates: [...counts].map(([d, count]) => ({ date: d, count })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
-    runs: [...sessions.values()].filter((s) => s.date === date).sort((a, b) => b.started_at.localeCompare(a.started_at)).map(project),
+    runs: runsOf(LEDGER_KIND, date),
   };
 }
 
