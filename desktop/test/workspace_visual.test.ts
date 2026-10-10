@@ -90,7 +90,7 @@ test("左上角使用官网凤凰原始矢量图，不增加外部请求或品�
   const logo = read("verticals/finance/components/ui/PhoenixTreeLogo.tsx");
   assert.match(layout, /<PhoenixTreeLogo/);
   assert.doesNotMatch(layout, /LineChart/);
-  assert.match(layout, /to="\/" aria-label="Vibe Research 首页"/);
+  assert.match(layout, /to="\/" aria-label=\{`\$\{PRODUCT_NAME\} 首页`\}/);
   assert.match(logo, /viewBox="0 0 674\.547814 1040\.507203"/);
   assert.match(logo, /aria-hidden="true" focusable="false"/);
   assert.match(logo, /fill="currentColor"/);

@@ -23,6 +23,7 @@ import type { LedgerIssue, LedgerRecord } from "../ledger.ts";
 import { ServiceError, ledgerCheck, ledgerInsertMany, ledgerList, ledgerRemove, ledgerSnapshot, ledgerUpsert, runTool, safePath, type ServiceContext } from "../service.ts";
 import { SCHEDULE_TZ } from "./schedule.ts";
 import { COST_METHODS, replayOrder, replayTrades, tradeOf, tradeProblem, type CostMethod, type ReplayResult, type Trade } from "./holdings.ts";
+import { PRODUCT_NAME } from "../brand.ts";
 
 export const BACKUP_PREFIX = "持仓迁移备份";
 export const IMPORT_BACKUP_PREFIX = "持仓导入备份";
@@ -196,7 +197,7 @@ function backup(ctx: ServiceContext, now: Date, why: string, prefix = BACKUP_PRE
     ...copied.map((f) => `- ${f}${f === "position.json" ? ":旧持有记录(一只一条:数量 + 均价)" : ":改动前的交易流水"}`),
     ...(copied.includes("trade.json") ? [] : ["- (改动前还没有交易流水,所以没有 trade.json)"]),
     "",
-    "恢复:先退出 Vibe Research,把这里的文件复制回上一级 ledger 文件夹、覆盖同名文件;"
+    `恢复:先退出 ${PRODUCT_NAME},把这里的文件复制回上一级 ledger 文件夹、覆盖同名文件;`
       + (copied.includes("trade.json") ? "" : "改动前没有 trade.json 的,把 ledger 里的 trade.json 删掉;") + "再打开就回到改动前。",
     "",
   ];

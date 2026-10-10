@@ -256,7 +256,7 @@ test("迁移:旧持有记录转成期初持仓流水;先备份原样文件;数�
   assert.deepEqual(fs.readdirSync(dir).sort(), ["README.md", "position.json", "trade.json"]);
   assert.ok(fs.readFileSync(path.join(dir, "position.json")).equals(posBefore), "备份是迁移前的原样字节");
   assert.ok(fs.readFileSync(path.join(dir, "trade.json")).equals(tradeBefore));
-  assert.match(fs.readFileSync(path.join(dir, "README.md"), "utf8"), /恢复:先退出 Vibe Research/);
+  assert.match(fs.readFileSync(path.join(dir, "README.md"), "utf8"), /恢复:先退出 Vibe AStock/);
   assert.deepEqual(result.migrated.map((m) => [m.symbol, m.position_id]), [["600519", a.id], ["00700.HK", b.id]]);
   assert.deepEqual(result.failed, []);
 

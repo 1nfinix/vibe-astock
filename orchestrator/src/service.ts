@@ -41,6 +41,7 @@ import { redact } from "./service_redact.ts";
 import { CredentialError, authEnvValue, savedCredential } from "./saved_credentials.ts";
 import { runMetrics, type RunMetrics } from "./run_compare.ts";
 import { AuditError, appendAudit, checkHead, formatHead, ledgerSeal, registerAudit, verifyAudit, type AuditInput, type AuditReport, type AuditSnapshot, type HeadCheck } from "./audit_chain.ts";
+import { PRODUCT_NAME } from "./brand.ts";
 
 export { redact } from "./service_redact.ts";
 
@@ -1726,7 +1727,7 @@ export async function chatSend(
           baseURL: provider.baseURL, apiKey: provider.apiKey, model: provider.model, timeoutMs: 120_000, signal,
           messages: [
             { role: "system", content: [
-              "你在 Vibe Research 的模型直连模式中回答一次性问题。",
+              `你在 ${PRODUCT_NAME} 的模型直连模式中回答一次性问题。`,
               "不得声称调用了 Agent、工具、网络或持久记忆；只能根据本请求给出的内容作答。",
               "若提供了本地资料，使用资料时保留 [资料:<id> p.<页码>] 引用；没有页码写 p.-，没看到的不猜。",
               "只报可核实信息、分析框架与概率，不给操作建议。",

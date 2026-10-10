@@ -49,7 +49,7 @@ test("免安装包:只在对应平台构建;SHA256 对不上就报错;包名带�
   assert.equal(h, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
   checkSha256(f, h);
   assert.throws(() => checkSha256(f, "0".repeat(64)), /SHA256 对不上.*这个文件不用/);
-  assert.equal(packageName("2.0.0", "win-x64"), "VibeResearch-2.0.0-win-x64");
+  assert.equal(packageName("2.0.0", "win-x64"), "VibeAStock-2.0.0-win-x64");
 });
 
 test("免安装包:构建脚本放运行时的位置和两个启动脚本找的位置一致", () => {
@@ -64,8 +64,8 @@ test("免安装包:构建脚本放运行时的位置和两个启动脚本找的�
   assert.ok(ps.includes(`"${path.posix.basename(win.node)}"`));
   for (const t of TARGETS) assert.ok(fs.existsSync(path.join(portable, layoutOf(t).launcher)), layoutOf(t).launcher);
   // 双击启动文件:Windows 批处理在 chcp 之前按本地代码页读,只能是 ASCII
-  assert.ok(/^[\x00-\x7f]*$/.test(read("scripts/portable/Start-VibeResearch.cmd")), "Start-VibeResearch.cmd 只能有 ASCII");
-  assert.ok((fs.statSync(path.join(portable, "Start-VibeResearch.command")).mode & 0o111) !== 0, ".command 要可执行");
+  assert.ok(/^[\x00-\x7f]*$/.test(read("scripts/portable/Start-VibeAStock.cmd")), "Start-VibeAStock.cmd 只能有 ASCII");
+  assert.ok((fs.statSync(path.join(portable, "Start-VibeAStock.command")).mode & 0o111) !== 0, ".command 要可执行");
   // PowerShell 5.1 认中文要带 BOM
   for (const f of ["scripts/start.ps1", "scripts/portable/start-portable.ps1"]) assert.equal(fs.readFileSync(path.join(root, f)).subarray(0, 3).toString("hex"), "efbbbf", f);
   assert.match(ps, /^\ufeff(?:#[^\n]*\n)*param\(\[switch\]\$NoOpen\)\n/, "param 必须是第一条语句(前面只能有注释)");
@@ -80,7 +80,7 @@ test("免安装包:构建脚本放运行时的位置和两个启动脚本找的�
 
 test("免安装包:包里的说明写清楚启动、未签名怎么放行、数据位置和升级;Windows 用 CRLF", () => {
   const mac = readmeText("2.1.0", "mac-arm64");
-  assert.match(mac, /双击 Start-VibeResearch\.command/);
+  assert.match(mac, /双击 Start-VibeAStock\.command/);
   assert.match(mac, /xattr -dr com\.apple\.quarantine/);
   assert.match(mac, /\.local/);
   assert.match(mac, /旧文件夹里的 \.local 整个复制过去/);
@@ -93,7 +93,7 @@ test("免安装包:包里的说明写清楚启动、未签名怎么放行、数�
   assert.match(mac, /Finder hides folders .*Command\+Shift\+\./);
   assert.ok(!mac.includes("\r\n"));
   const win = readmeText("2.1.0", "win-x64");
-  assert.match(win, /双击 Start-VibeResearch\.cmd/);
+  assert.match(win, /双击 Start-VibeAStock\.cmd/);
   assert.match(win, /更多信息.*仍要运行/);
   assert.match(win, /More info.*Run anyway/);
   assert.match(win, /64 位 Windows 10 或更新版本/);
@@ -189,17 +189,17 @@ test("免安装包:启动脚本只用包里的依赖;没解压完整就双击时
   const b = read("scripts/portable/build.mts");
   assert.match(b, /PYTHONNOUSERSITE: "1",\n\s*PIP_USER: "0"/);
   assert.match(b, /"PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE", "VIRTUAL_ENV", "PIP_TARGET", "PIP_PREFIX", "PIP_REQUIRE_VIRTUALENV"\]\) delete env\[k\]/);
-  const cmd = fs.readFileSync(path.join(portable, "Start-VibeResearch.cmd"), "utf8");
+  const cmd = fs.readFileSync(path.join(portable, "Start-VibeAStock.cmd"), "utf8");
   assert.match(cmd, /if not exist "%~dp0scripts\\portable\\start-portable\.ps1" \(\r\n\s+echo [^()\r\n]*Extract All[^()\r\n]*\r\n\s+pause\r\n\s+exit \/b 1\r\n\)/,
     "解压检查在调用 PowerShell 之前;块里的 echo 不能有括号(会提前结束 if 块)");
   assert.ok(cmd.indexOf("if not exist") < cmd.indexOf("powershell.exe"));
-  const command = read("scripts/portable/Start-VibeResearch.command");
+  const command = read("scripts/portable/Start-VibeAStock.command");
   assert.match(command, /if \[ ! -f scripts\/portable\/start-portable\.sh \]; then\n\s+echo "[^"]*先把整个压缩包解压/);
   if (process.platform !== "win32") {
     // 行为:只有 .command 一个文件(没解压完整)→ 说明后退出 1,不去找不存在的脚本
     const lone = tmp();
-    fs.copyFileSync(path.join(portable, "Start-VibeResearch.command"), path.join(lone, "Start-VibeResearch.command"));
-    const r = spawnSync("/bin/sh", [path.join(lone, "Start-VibeResearch.command")], { encoding: "utf8", input: "\n" });
+    fs.copyFileSync(path.join(portable, "Start-VibeAStock.command"), path.join(lone, "Start-VibeAStock.command"));
+    const r = spawnSync("/bin/sh", [path.join(lone, "Start-VibeAStock.command")], { encoding: "utf8", input: "\n" });
     assert.equal(r.status, 1);
     assert.match(r.stdout, /先把整个压缩包解压/);
   }
@@ -207,11 +207,11 @@ test("免安装包:启动脚本只用包里的依赖;没解压完整就双击时
   for (const line of ["*.cmd text eol=crlf", "*.sh text eol=lf", "*.command text eol=lf", "scripts/start text eol=lf", "scripts/setup text eol=lf"]) {
     assert.ok(attrs.split("\n").includes(line), line);
   }
-  for (const f of ["scripts/start.cmd", "scripts/setup-windows.cmd", "scripts/portable/Start-VibeResearch.cmd"]) {
+  for (const f of ["scripts/start.cmd", "scripts/setup-windows.cmd", "scripts/portable/Start-VibeAStock.cmd"]) {
     const t = fs.readFileSync(path.join(root, f), "utf8");
     assert.ok(t.includes("\r\n") && !/[^\r]\n/.test(t), `${f} 要全是 CRLF`);
   }
-  for (const f of ["scripts/start", "scripts/setup", "scripts/portable/start-portable.sh", "scripts/portable/Start-VibeResearch.command"]) {
+  for (const f of ["scripts/start", "scripts/setup", "scripts/portable/start-portable.sh", "scripts/portable/Start-VibeAStock.command"]) {
     assert.ok(!read(f).includes("\r"), `${f} 要是 LF`);
   }
 });

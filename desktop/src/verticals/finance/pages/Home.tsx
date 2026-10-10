@@ -4,6 +4,7 @@ import { FinanceHomeAgent } from "@/components/ui/FinanceAiDock";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { HOME_FEATURE_GROUPS } from "@/lib/homeFeatures";
+import { PRODUCT_NAME } from "@/lib/brand";
 
 /**
  * 首页：指数 → 我的自选 / 我的持仓 → 对话 → 各栏目入口。
@@ -12,7 +13,7 @@ import { HOME_FEATURE_GROUPS } from "@/lib/homeFeatures";
 export function Home() {
   return (
     <div>
-      <h1 className="sr-only">Vibe Research 研究工作台</h1>
+      <h1 className="sr-only">{PRODUCT_NAME} 研究工作台</h1>
       <HomeDashboard />
       <FinanceHomeAgent />
       <section id="home-features" className="mt-5" aria-labelledby="feature-heading">

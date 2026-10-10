@@ -5,6 +5,7 @@
  * 颜色只用墨色 + 一个蓝色强调:红涨绿跌,卡片上不用红绿。
  */
 import { sourceName } from "./chatSources.ts";
+import { PRODUCT_NAME, REPO_SLUG } from "./brand.ts";
 
 export type GapKind = "source_failed" | "source_partial" | "upstream_missing" | "insufficient_periods"
   | "not_supported_market" | "upstream_not_meaningful" | "other" | "optional_skipped";
@@ -28,7 +29,7 @@ export interface ShareCardResult {
 }
 
 export const STATEMENT = "只汇总这次研究取到的公开数据和数量,不含报告里的判断,不评分,不构成投资建议;数据以交易所和公司公告为准。";
-export const REPO_LINE = "由 Vibe-Research 生成 · github.com/simonlin1212/Vibe-Research";
+export const REPO_LINE = `由 ${PRODUCT_NAME} 生成 · github.com/${REPO_SLUG}`;
 export const GAP_POINTER = "原因见报告「数据缺口」一节";
 export const GAP_KIND_LABEL: Record<GapKind, string> = {
   source_failed: "没取到", source_partial: "只取到一部分", upstream_missing: "缺上游数据没算", insufficient_periods: "期数不够没算",

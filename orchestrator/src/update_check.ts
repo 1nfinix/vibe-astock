@@ -11,9 +11,10 @@ import path from "node:path";
 import { readJsonIfExists, writeJson } from "./fsutil.ts";
 import { ServiceError } from "./service.ts";
 import { productVersion } from "./version.ts";
+import { PRODUCT_NAME, REPO_SLUG } from "./brand.ts";
 
-export const RELEASES_API = "https://api.github.com/repos/simonlin1212/Vibe-Research/releases/latest";
-export const RELEASE_PAGE = "https://github.com/simonlin1212/Vibe-Research/releases";
+export const RELEASES_API = `https://api.github.com/repos/${REPO_SLUG}/releases/latest`;
+export const RELEASE_PAGE = `https://github.com/${REPO_SLUG}/releases`;
 export const CHECK_INTERVAL_MS = 24 * 3600 * 1000;
 /** 查失败(没网 / 被限流)隔一小时再试,别等一整天 */
 export const RETRY_INTERVAL_MS = 3600 * 1000;
@@ -122,7 +123,7 @@ async function fetchLatest(d: UpdateDeps, current: string): Promise<{ latest: La
   let res: Response;
   try {
     res = await f(RELEASES_API, {
-      headers: { "User-Agent": `VibeResearch/${current}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      headers: { "User-Agent": `${PRODUCT_NAME.replace(/\s+/g, "")}/${current}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
       redirect: "follow",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });

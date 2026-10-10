@@ -14,6 +14,7 @@ import type { Stage } from "../config.ts";
 import { RUN_TOOLS } from "../run_tools.ts";
 import { LOCAL_AGENT_STOP_LIMITS, StopGuard } from "../stop_guard.ts";
 import { LocalAgentError, runLocalAgent, type LocalAgentId, type RunLocalAgentOptions } from "../local_agent_runtime.ts";
+import { PRODUCT_NAME } from "../brand.ts";
 
 type Complete = (agent: LocalAgentId, options: RunLocalAgentOptions) => Promise<string>;
 
@@ -72,7 +73,7 @@ function changedFiles(before: Map<string, string>, after: Map<string, string>): 
 }
 
 const SYSTEM_PROMPT = `
-你正在 Vibe Research 的受控六阶段执行器中工作。
+你正在 ${PRODUCT_NAME} 的受控六阶段执行器中工作。
 宿主 Shell、任意文件读写、浏览器、网络和子 Agent 都不可用。
 只使用显式提供的 VRA MCP 工具：list_run_files、read_run_file、calculate、write_stage、write_report。
 用户消息里若有 shell 命令示例，它们只表达要完成的操作；必须翻译成上述受控工具，不得尝试执行命令。

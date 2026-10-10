@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { ensureAccessToken, isPlainRemoteHttp, normalizePublicUrl, type AccessToken } from "./access_token.ts";
 import { readConfiguredDataRoot, resolveDataRoot } from "./data_root.ts";
+import { PRODUCT_NAME } from "./brand.ts";
 
 export interface StartupArgs {
   openBrowser: boolean;
@@ -121,7 +122,7 @@ export async function assertPortAvailable(port: number, host = "127.0.0.1"): Pro
     const server = net.createServer();
     server.unref();
     server.once("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "EADDRINUSE") reject(new Error(`端口 ${port} 已被占用，请先关闭旧的 Vibe Research 窗口或进程。`));
+      if (error.code === "EADDRINUSE") reject(new Error(`端口 ${port} 已被占用，请先关闭旧的 ${PRODUCT_NAME} 窗口或进程。`));
       else reject(error);
     });
     server.listen(port, host, () => server.close((error) => error ? reject(error) : resolve()));
@@ -334,7 +335,7 @@ export async function runStartup(
 
     const url = access ? `http://127.0.0.1:5930/?access=${access.token}` : "http://127.0.0.1:5930";
     if (access) console.log(remoteLinkLines(access, args.publicUrl, args.rotateAccess).join("\n"));
-    else console.log(`\nVibe Research 已启动:${url}\n按 Ctrl+C 关闭。`);
+    else console.log(`\n${PRODUCT_NAME} 已启动:${url}\n按 Ctrl+C 关闭。`);
     if (args.openBrowser) openBrowser(url);
     const stopOutcome = await shutdown.wait;
     if (stopOutcome.kind === "child_exit") throw new Error(stopOutcome.message);
@@ -351,7 +352,7 @@ export function remoteLinkLines({ token, source }: AccessToken, publicUrl: strin
   const link = (base: string) => `${base}/?access=${token}`;
   const lines = [
     "",
-    `Vibe Research 已启动（远程访问模式）。按 Ctrl+C 关闭。`,
+    `${PRODUCT_NAME} 已启动（远程访问模式）。按 Ctrl+C 关闭。`,
     `本机打开：${link("http://127.0.0.1:5930")}`,
     publicUrl
       ? `发给使用者的链接：${link(publicUrl)}`

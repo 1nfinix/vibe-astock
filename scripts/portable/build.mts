@@ -126,11 +126,11 @@ export function layoutOf(target: Target) {
     node: win ? "runtime/node/node.exe" : "runtime/node/bin/node",
     npmCli: win ? "runtime/node/node_modules/npm/bin/npm-cli.js" : "runtime/node/lib/node_modules/npm/bin/npm-cli.js",
     python: win ? "runtime/python/python.exe" : "runtime/python/bin/python3",
-    launcher: win ? "Start-VibeResearch.cmd" : "Start-VibeResearch.command",
+    launcher: win ? "Start-VibeAStock.cmd" : "Start-VibeAStock.command",
   };
 }
 
-export const packageName = (version: string, target: Target) => `VibeResearch-${version}-${target}`;
+export const packageName = (version: string, target: Target) => `VibeAStock-${version}-${target}`;
 
 /** 要进包的源码：git 记录的文件（删了还没提交的跳过，符号链接不进） */
 export function sourceFiles(root: string): string[] {
@@ -147,7 +147,7 @@ export function readmeText(version: string, target: Target): string {
   const win = target === "win-x64";
   const launcher = layoutOf(target).launcher;
   return [
-    `Vibe Research ${version} 免安装版（${win ? "Windows x64" : target === "mac-arm64" ? "macOS Apple 芯片" : "macOS Intel"}）`,
+    `Vibe AStock ${version} 免安装版（${win ? "Windows x64" : target === "mac-arm64" ? "macOS Apple 芯片" : "macOS Intel"}）`,
     "",
     win ? "系统要求：64 位 Windows 10 或更新版本。" : `系统要求：macOS ${MIN_MACOS} 或更新版本。`,
     `启动：双击 ${launcher}。会开一个${win ? "命令行" : "终端"}窗口，浏览器自动打开 http://127.0.0.1:5930；关掉那个窗口就退出。`,
@@ -161,7 +161,7 @@ export function readmeText(version: string, target: Target): string {
     "AI：沿用你电脑上已登录的 Claude Code / Codex / WorkBuddy，或在设置页填模型 API。",
     "新版提示：每天联网查一次 GitHub 上有没有新版本（只发送版本号；没查成隔一小时再试），可在「接入 AI」页最下面关掉。",
     "",
-    `Vibe Research ${version} portable (${target})`,
+    `Vibe AStock ${version} portable (${target})`,
     "",
     win ? "Requires 64-bit Windows 10 or later." : `Requires macOS ${MIN_MACOS} or later.`,
     `Start: double-click ${launcher}. A ${win ? "console" : "Terminal"} window opens and your browser goes to http://127.0.0.1:5930; close that window to quit.`,

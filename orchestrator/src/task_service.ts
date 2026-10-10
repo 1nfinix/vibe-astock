@@ -8,6 +8,7 @@ import { assertExecutionMode, resolveDirectProvider, resolveRuntimeProvider, res
 import { ServiceError, type ServiceContext } from "./service.ts";
 import { ProductTaskOperations, ReportTaskMaterials } from "./task_adapters.ts";
 import { TaskRouteError, TaskRouter, type AgentEngineFamily, type RouteDecision, type TaskEvent } from "./task_router.ts";
+import { PRODUCT_SLUG } from "./brand.ts";
 
 export interface UnifiedTaskRequest {
   readonly task: unknown;
@@ -84,7 +85,7 @@ function quickProviderOf(ctx: ServiceContext, llm?: LlmOverride): QuickProvider 
 }
 
 function agentQuickProvider(llm?: LlmOverride): QuickProvider {
-  const label = String(llm?.provider ?? "vibe-research-agent").trim() || "vibe-research-agent";
+  const label = String(llm?.provider ?? `${PRODUCT_SLUG}-agent`).trim() || `${PRODUCT_SLUG}-agent`;
   return Object.freeze({
     name: label,
     // 下面的 complete 被 Agent 适配器完整接管，这些字段只用于 QuickEngine 的结构与事件投影。

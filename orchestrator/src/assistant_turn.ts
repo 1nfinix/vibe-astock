@@ -3,9 +3,10 @@ import { chatSend, ChatError } from "./chat.ts";
 import type { AssistantTool } from "./assistant_bridge.ts";
 import { NUMBER_GATE_RULE } from "./number_gate.ts";
 import { chatLengthProblem, MAX_WITH_PAGE, splitPageContext } from "./page_context.ts";
+import { PRODUCT_NAME } from "./brand.ts";
 
 const history = new Map<string, { turns: { role: string; text: string }[]; used: number; busy: boolean }>();
-const PROMPT = `你是 Vibe Research 的研究助手。使用本轮实际提供的工具主动完成请求。
+const PROMPT = `你是 ${PRODUCT_NAME} 的研究助手。使用本轮实际提供的工具主动完成请求。
 你可以联网搜索、读取公开网页、调用产品数据源、查询研究记录与知识档案、运行工具目录里的确定性计算。
 需要新信息就实际调用工具，不要让用户自己换页面，不要声称不能联网或没有工具。
 解释概念、梳理思路、翻译这类不需要新数据的问题直接回答，不必调用工具。

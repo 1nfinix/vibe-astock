@@ -112,7 +112,7 @@ test("侧栏展示用户指定的品牌官网，并安全打开新标签", () =>
   assert.equal((layoutSrc.match(/href="https:\/\/phoenixtree\.ai\/"/g) ?? []).length, 1);
   // 实际可见性由浏览器验收；源码断言不假设容器必须是 footer 标签。
   assert.match(layoutSrc, /<Globe[^>]*aria-hidden="true"/);
-  assert.match(layoutSrc, /to="\/" aria-label="Vibe Research 首页"/);
+  assert.match(layoutSrc, /to="\/" aria-label=\{`\$\{PRODUCT_NAME\} 首页`\}/);
 });
 
 test("首屏后端失败态给普通用户一键启动命令与重试入口", () => {
@@ -142,7 +142,7 @@ test("根路径是极简功能首页,首屏可直接与 Agent 交流", () => {
   assert.match(homeSrc, /<FinanceHomeAgent\s*\/>/);
   // M23 首屏改为聊天与快捷接入，状态在侧栏显示；不强制跳离首页。
   const featuresSrc = fs.readFileSync(path.join(FINANCE, "lib", "homeFeatures.ts"), "utf8");
-  assert.match(homeSrc, /<h1\b[^>]*>Vibe Research 研究工作台<\/h1>/);
+  assert.match(homeSrc, /<h1\b[^>]*>\{PRODUCT_NAME\} 研究工作台<\/h1>/);
   assert.match(layoutSrc, /aiConnectionLabel\(aiRuntime\)/);
   assert.doesNotMatch(layoutSrc, /<Navigate/);
   assert.ok(!/Codex Harness 研究流程|全部功能，一页直达|先看清今天发生了什么/.test(homeSrc),

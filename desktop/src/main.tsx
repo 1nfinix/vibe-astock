@@ -6,6 +6,7 @@ import "./index.css";
 import { router } from "./verticals/finance/router";
 import { hydrateNotes } from "./verticals/finance/lib/notes";
 import { hydrateWatch } from "./verticals/finance/lib/watchlist";
+import { PRODUCT_NAME } from "./verticals/finance/lib/brand";
 
 /**
  * **组装根**:唯一一处把垂类接进外壳的地方。
@@ -18,7 +19,7 @@ import { hydrateWatch } from "./verticals/finance/lib/watchlist";
  *    `verticals/finance/lib/{api,llm,agents,notes,watchlist}.ts` 与「接入 AI」页,其余一律照搬。
  */
 
-document.title = "Vibe Research";
+document.title = PRODUCT_NAME;
 
 const root = document.getElementById("root");
 if (!root) throw new Error("找不到 #root");

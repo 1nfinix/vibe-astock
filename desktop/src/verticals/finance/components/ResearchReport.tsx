@@ -5,6 +5,7 @@ import { noRemoteImages } from "../../../core/ai/noRemoteImages";
 import { useId, useMemo, useRef } from "react";
 import type { Components } from "react-markdown";
 import { appendixIds, citationPlugin } from "../lib/reportCitations";
+import { PRODUCT_NAME } from "@/lib/brand";
 
 
 export function ResearchReport({ result }: { result: Awaited<ReturnType<typeof backend.report>> }) {
@@ -30,7 +31,7 @@ export function ResearchReport({ result }: { result: Awaited<ReturnType<typeof b
     {result.run_status === "incomplete" && <p role="status" className="mb-2 text-sm text-muted-foreground">这份报告资料不完整，请先查看报告中的数据缺口。</p>}
     <div className={result.appendix ? "grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,.65fr)]" : "min-w-0"}>
       <article className="research-paper rounded border border-border" aria-label="已校验研究报告">
-        <p className="workspace-kicker mb-6 border-b border-border pb-4">Vibe Research / Research Note</p>
+        <p className="workspace-kicker mb-6 border-b border-border pb-4">{PRODUCT_NAME} / Research Note</p>
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm, citationPlugin(ids, prefix)]} components={components}>{result.report}</ReactMarkdown>
         </div>

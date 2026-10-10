@@ -23,6 +23,7 @@ import { CHOKE_FILE_REL, loadChokeTable, scanChokepoints, writeChokeFile } from 
 import { buildGateRewritePrompt, buildStagePrompt } from "./stages.ts";
 import { INDUSTRY_FILE_REL, applyIndustryGate, detectIndustryTags, loadIndustryTags, writeIndustryFile } from "./industry.ts";
 import { appendThermoLedger, applyThermometerHistory, readThermoLedger, thermoDir, thermoLedgerOverview, thermoLedgerPath } from "./thermo_history.ts";
+import { PRODUCT_NAME } from "../brand.ts";
 
 /** 阶段顺序:摸清公司 → 财务 → 一致预期 → 估值 → 风险 → 成文 */
 export const FINANCE_STAGES = ["profile", "financials", "estimates", "valuation", "risk", "report"] as const;
@@ -382,10 +383,10 @@ export const FINANCE_PLUGIN: Plugin = {
   },
   /** MCP 使用说明里的金融文字;研究范围与 service 的 assertSymbol(symbol, "cn6") 一致 */
   mcpGuide: {
-    intro: "Vibe Research（VR）是 A 股、美股、港股的投研工作台。",
+    intro: `${PRODUCT_NAME}（VA）是以 A 股短线复盘与盯盘为主的投研工作台，也能研究美股、港股。`,
     researchScope: "支持 A 股 6 位代码(market 可不传)、港股 5 位代码(market=HK)、美股代码(market=US);港股 / 美股必须传 market",
     dataSizes: "单只股票的行情、档案几 KB;全市场榜单(涨停池、龙虎榜、行业对比、批量行情)100–200 KB;板块资金流接近 1 MB。",
-    boundaries: "VR 不给买卖建议、目标价或评级。",
+    boundaries: `${PRODUCT_NAME} 不给买卖建议、目标价或评级。`,
   },
   lexicon: FINANCE_LEXICON,
 };

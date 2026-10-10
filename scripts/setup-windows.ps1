@@ -24,7 +24,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 & $venvPython -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
-if ($LASTEXITCODE -ne 0) { throw "Vibe Research 需要 Python 3.11 或更高版本（推荐 3.12）。请删除 .venv 后重新运行安装。" }
+if ($LASTEXITCODE -ne 0) { throw "Vibe AStock 需要 Python 3.11 或更高版本（推荐 3.12）。请删除 .venv 后重新运行安装。" }
 
 & $venvPython -m pip install --upgrade pip
 Assert-NativeSuccess "升级 pip"
@@ -43,4 +43,4 @@ if (-not $SkipDoctor) {
   if ($doctorExit -eq 2) { Write-Warning "产品体检有待处理警告；安装已完成，请按上方提示处理。" }
 }
 
-Write-Host "Windows 初始化完成。运行 scripts\start.cmd 打开 Vibe Research。" -ForegroundColor Green
+Write-Host "Windows 初始化完成。运行 scripts\start.cmd 打开 Vibe AStock。" -ForegroundColor Green

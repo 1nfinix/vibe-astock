@@ -17,6 +17,7 @@ import { ServiceError, fetchEndpoint, getEvidence, getReport, knowledgeRecall, l
 // (Core 消费者靠副作用 import 硬接某个包,换垂类时靠入口 import 恢复不了 —— ESM 会缓存)。
 import "./finance/register.ts";
 import { currentPlugin } from "./plugin.ts";
+import { PRODUCT_NAME, PRODUCT_SLUG } from "./brand.ts";
 function text(obj: unknown): { content: { type: "text"; text: string }[] } {
   return { content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 1) }] };
 }
@@ -39,7 +40,7 @@ const ERROR_GUIDE: Record<string, { retryable: boolean; next: string }> = {
   unknown_endpoint: { retryable: false, next: "先用 list_endpoints 查到正确的端点 id,不要猜" },
   missing_symbol: { retryable: false, next: "这个端点要给 symbol" },
   run_exists: { retryable: false, next: "这个 run_id 已经用过,用过的编号不能覆盖(传 overwrite 也一样);换一个没用过的,或不传 run_id 让服务自动生成" },
-  engine_removed: { retryable: false, next: "去掉 engine 参数;用哪个模型由用户在 Vibe Research 里接入的 AI 来源决定" },
+  engine_removed: { retryable: false, next: `去掉 engine 参数;用哪个模型由用户在 ${PRODUCT_NAME} 里接入的 AI 来源决定` },
   agent_required: { retryable: false, next: NOT_SET_NEXT },
   ai_source_not_configured: { retryable: false, next: NOT_SET_NEXT },
   ...Object.fromEntries([
@@ -114,7 +115,7 @@ export function serverInstructions(ctx: ServiceContext): string {
 const READ_LOCAL = { readOnlyHint: true, openWorldHint: false } as const;
 
 export function buildServer(ctx: ServiceContext): McpServer {
-  const server = new McpServer({ name: "vibe-research-agent", version: productVersion() }, { instructions: serverInstructions(ctx) });
+  const server = new McpServer({ name: `${PRODUCT_SLUG}-agent`, version: productVersion() }, { instructions: serverInstructions(ctx) });
   const scope = currentPlugin().mcpGuide?.researchScope;
   server.registerTool("list_endpoints", { title: "列出数据端点", description: "按层 / 市场 / 关键词列出 datasources/registry.json 里的端点(id / 标题 / 市场 / 源 / 合规级 / symbol_kind / 阶段 / 是否需要环境变量)。",
     annotations: READ_LOCAL,

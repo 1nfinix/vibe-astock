@@ -44,7 +44,7 @@ const DENY_HTML = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"
   + '<meta name="viewport" content="width=device-width,initial-scale=1"><title>需要访问链接</title>'
   + '<style>body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:560px;margin:15vh auto;padding:0 20px;color:#1f2328;line-height:1.7}</style>'
   + "</head><body><h1>需要访问链接</h1>"
-  + "<p>这个 Vibe Research 页面只对拿到访问链接的人开放。请用部署者发给你的<strong>完整链接</strong>打开(链接里带 <code>access=…</code>)。</p>"
+  + "<p>这个 Vibe AStock 页面只对拿到访问链接的人开放。请用部署者发给你的<strong>完整链接</strong>打开(链接里带 <code>access=…</code>)。</p>"
   + "<p>以前能打开、现在打不开:多半是部署者换了新链接,请向对方要新的。</p></body></html>";
 
 function deny(req: IncomingMessage, res: ServerResponse): void {

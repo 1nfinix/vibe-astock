@@ -18,8 +18,8 @@ import { aiConnectionLabel } from "@/lib/aiConnection";
 import { useNotifyUnread } from "@/hooks/useNotifyUnread";
 import { NAV_SECTIONS, isGroup, navPageOf, navTitle, sectionHome, withSectors, type NavIcon, type NavSection } from "@/lib/nav";
 import sectorsData from "@/data/sectors.json";
+import { PRODUCT_NAME, REPO_URL } from "@/lib/brand";
 
-const REPO_URL = "https://github.com/simonlin1212/Vibe-Research";
 // 作者联系方式
 const X_URL = "https://x.com/linsizhen";
 
@@ -239,7 +239,7 @@ export function Layout() {
         )}>
           <div className={cn("border-b border-border", compact ? "p-3" : "px-4 py-3")}>
             <div className="flex items-center justify-between">
-              <Link to="/" aria-label="Vibe Research 首页" className="flex items-center gap-2.5">
+              <Link to="/" aria-label={`${PRODUCT_NAME} 首页`} className="flex items-center gap-2.5">
                 <PhoenixTreeLogo className="h-7 w-5 shrink-0 text-primary" />
                 {!compact && <span className="workspace-brand text-base font-semibold tracking-tight">Vibe-<span className="text-primary">Research</span></span>}
               </Link>

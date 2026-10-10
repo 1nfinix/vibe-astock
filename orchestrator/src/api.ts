@@ -32,6 +32,7 @@ import "./finance/register_tasks.ts";
 import { VIEWER_CSP } from "./viewer.ts";
 import { loadSavedAgentPaths } from "./local_agent_runtime.ts";
 import { updateAction, updateStatus } from "./update_check.ts";
+import { PRODUCT_NAME } from "./brand.ts";
 const MAX_BODY = 256 * 1024;
 
 function send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8", htmlCsp = HTML_CSP): void {
@@ -139,7 +140,7 @@ function cookieToken(req: http.IncomingMessage): string | null {
 
 function uiIndex(ctx: ServiceContext): string {
   const rows = listRuns(ctx, 200).map((r) => `<tr><td><a href="/ui/runs/${esc(r.run_id)}">${esc(r.run_id)}</a></td><td>${esc(r.symbol)}</td><td><span class="tag ${esc(r.status)}">${esc(r.status)}</span></td><td>${esc(r.started_at)}</td><td>${esc(r.finished_at)}</td><td><a href="/runs/${esc(r.run_id)}/viewer">查看器</a></td></tr>`).join("");
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Vibe Research · 运行列表</title><style>${UI_CSS}</style></head><body><header><h1>Vibe Research · 运行列表</h1><div>本机只读页面;本页不提供任何投资动作建议。</div></header><main><table><thead><tr><th>run_id</th><th>主体</th><th>状态</th><th>开始</th><th>结束</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6">(尚无运行;用 node orchestrator/src/run.ts 跑一次)</td></tr>'}</tbody></table></main></body></html>`;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${PRODUCT_NAME} · 运行列表</title><style>${UI_CSS}</style></head><body><header><h1>${PRODUCT_NAME} · 运行列表</h1><div>本机只读页面;本页不提供任何投资动作建议。</div></header><main><table><thead><tr><th>run_id</th><th>主体</th><th>状态</th><th>开始</th><th>结束</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6">(尚无运行;用 node orchestrator/src/run.ts 跑一次)</td></tr>'}</tbody></table></main></body></html>`;
 }
 
 function uiRun(ctx: ServiceContext, id: string): string | null {
@@ -148,7 +149,7 @@ function uiRun(ctx: ServiceContext, id: string): string | null {
   const rep = getReport(ctx, id);
   const reportText = rep.report ?? (rep.availability === "unvalidated" ? "报告尚未通过最终校验，正文暂不可用。本地草稿保留供排查。" : "这次运行尚无报告文件。");
   const stages = st.stages.map((s) => `<li>${esc(s.stage)} <span class="tag ${esc(s.status)}">${esc(s.status)}</span> × ${s.attempts}</li>`).join("");
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Vibe Research · ${esc(id)}</title><style>${UI_CSS}</style></head><body><header><h1>${esc(st.run_id)} · <span class="tag ${esc(st.status)}">${esc(st.status)}</span></h1><div><a style="color:#9cf" href="/ui">← 运行列表</a> · 证据 ${st.evidence_count ?? "-"} · 计算 ${st.calculation_count ?? "-"} · ${st.viewer && rep.availability === "ready" ? `<a style="color:#9cf" href="/runs/${esc(id)}/viewer">打开证据查看器</a>` : "查看器尚不可用"}</div></header><main><h2>阶段</h2><ul>${stages}</ul><h2>report.md</h2><pre>${esc(reportText)}</pre></main></body></html>`;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${PRODUCT_NAME} · ${esc(id)}</title><style>${UI_CSS}</style></head><body><header><h1>${esc(st.run_id)} · <span class="tag ${esc(st.status)}">${esc(st.status)}</span></h1><div><a style="color:#9cf" href="/ui">← 运行列表</a> · 证据 ${st.evidence_count ?? "-"} · 计算 ${st.calculation_count ?? "-"} · ${st.viewer && rep.availability === "ready" ? `<a style="color:#9cf" href="/runs/${esc(id)}/viewer">打开证据查看器</a>` : "查看器尚不可用"}</div></header><main><h2>阶段</h2><ul>${stages}</ul><h2>report.md</h2><pre>${esc(reportText)}</pre></main></body></html>`;
 }
 
 /** 把浏览器主动停止 / 连接中断变成模型调用的 AbortSignal，避免页面停了后台仍继续计费。 */

@@ -65,4 +65,4 @@ if [ "$SKIP_DOCTOR" -eq 0 ]; then
   esac
 fi
 
-echo "[setup] 安装完成。运行 scripts/start 打开 Vibe Research。"
+echo "[setup] 安装完成。运行 scripts/start 打开 Vibe AStock。"
