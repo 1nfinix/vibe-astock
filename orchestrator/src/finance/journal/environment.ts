@@ -15,7 +15,7 @@
 import { localClock } from "../../notify.ts";
 import { fetchEndpoint, type ServiceContext } from "../../service.ts";
 import { readRawDoc } from "../candidates.ts";
-import { parsePool, type ZtStock } from "../review_tiers.ts";
+import { UNCLASSIFIED, parsePool, type ZtStock } from "../review_tiers.ts";
 import { SCHEDULE_TZ, failedNote, pool } from "../schedule.ts";
 import { consistencyFor, noteOf, retentionFloor, valuesOf } from "../shortline/history.ts";
 import { MIN_REGIME_DAYS, REGIMES, entryScore, regimeCuts, regimeOf, type Regime } from "../shortline/samples.ts";
@@ -55,18 +55,27 @@ export interface EnvRow {
   board: BoardGroup | null;
   boards: number | null;
   first_seal: string | null;
+  /** 炸板次数:涨停的是封住前炸开过几次,炸板的是当天炸了几次 */
+  broken_times: number | null;
+  /** 东财行业;不在两张池里、或没归类的是 null */
+  industry: string | null;
 }
 
+export type BoardInfo = Pick<EnvRow, "boards" | "first_seal" | "broken_times" | "industry"> & { board: BoardGroup };
+const NONE = { boards: null, first_seal: null, broken_times: null, industry: null } as const;
+const industryOf = (s: ZtStock) => (s.industry && s.industry !== UNCLASSIFIED ? s.industry : null);
+
 /** 这只票入场那天的板位。涨停池里没给连板数的按首板(VA 同) */
-export function boardOf(symbol: string, zt: readonly ZtStock[] | null, zb: readonly ZtStock[] | null): { board: BoardGroup; boards: number | null; first_seal: string | null } {
-  if (!zt) return { board: "没取到", boards: null, first_seal: null };
+export function boardOf(symbol: string, zt: readonly ZtStock[] | null, zb: readonly ZtStock[] | null): BoardInfo {
+  if (!zt) return { board: "没取到", ...NONE };
   const hit = zt.find((s) => s.symbol === symbol);
   if (hit) {
     const b = hit.boards ?? 1;
-    return { board: b === 1 ? "首板" : b === 2 ? "2板" : "3板及以上", boards: b, first_seal: hit.first_seal ?? null };
+    return { board: b === 1 ? "首板" : b === 2 ? "2板" : "3板及以上", boards: b, first_seal: hit.first_seal ?? null, broken_times: hit.broken_times ?? null, industry: industryOf(hit) };
   }
-  if (!zb) return { board: "非涨停(没分出炸板)", boards: null, first_seal: null };
-  return { board: zb.some((s) => s.symbol === symbol) ? "炸板" : "没碰涨停", boards: null, first_seal: null };
+  if (!zb) return { board: "非涨停(没分出炸板)", ...NONE };
+  const broke = zb.find((s) => s.symbol === symbol);
+  return broke ? { board: "炸板", ...NONE, broken_times: broke.broken_times ?? null, industry: industryOf(broke) } : { board: "没碰涨停", ...NONE };
 }
 
 export const settledDay = (day: string, now: Date) => now.toISOString() >= `${day}${SETTLE_UTC}`;
@@ -85,7 +94,7 @@ export function computeEnvironment(rows: readonly JournalRow[], days: ReadonlyMa
   for (const r of recent) {
     const d = days.get(r.date);
     if (!d) {
-      out.push({ key: r.key, date: r.date, regime: null, score: null, money_effect: null, board: null, boards: null, first_seal: null });
+      out.push({ key: r.key, date: r.date, regime: null, score: null, money_effect: null, board: null, ...NONE });
       continue;
     }
     const regime = regimeOf(d.score, cuts);

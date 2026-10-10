@@ -141,7 +141,13 @@ export type AttributionView = (Off & AttrSkips & { window?: { from: string; to: 
 });
 
 export type BoardGroup = "首板" | "2板" | "3板及以上" | "炸板" | "没碰涨停" | "非涨停(没分出炸板)" | "没取到";
-export interface EnvRow { key: string; date: string; regime: string | null; score: number | null; money_effect: number | null; board: BoardGroup | null; boards: number | null; first_seal: string | null }
+export interface EnvRow {
+  key: string; date: string; regime: string | null; score: number | null; money_effect: number | null;
+  board: BoardGroup | null; boards: number | null; first_seal: string | null;
+  /** 炸板次数:涨停的是封住前炸开过几次,炸板的是当天炸了几次 */
+  broken_times: number | null;
+  industry: string | null;
+}
 export type EnvView = (Off & { gaps?: string[] }) | {
   available: true; rows: EnvRow[]; by_regime: Group[]; by_board: Group[];
   regime_cuts: { low: number | null; high: number | null }; scored_days: number; unsettled_trades: number; scanned: number;
@@ -189,12 +195,15 @@ export function violationText(v: Violation, hide: boolean): string {
   return maskJournalText(v.detail, hide);
 }
 
-/** 当时在涨停池里的位置 */
+/** 当时在涨停池里的位置;涨停的带首封、炸开过几次、行业,炸板的带炸了几次、行业(VA 同) */
 export function boardText(e: EnvRow | undefined): string {
   if (!e || !e.board) return "—";
   const seal = e.first_seal ? ` · 首封 ${e.first_seal.slice(0, 5)}` : "";
-  if (e.board === "首板") return `首板${seal}`;
-  if (e.board === "2板" || e.board === "3板及以上") return `${e.boards ? `${e.boards}板` : e.board}${seal}`;
+  const ind = e.industry ? ` · ${e.industry}` : "";
+  const broke = e.broken_times ? ` · 炸 ${e.broken_times} 次` : "";
+  if (e.board === "首板") return `首板${seal}${broke}${ind}`;
+  if (e.board === "2板" || e.board === "3板及以上") return `${e.boards ? `${e.boards}板` : e.board}${seal}${broke}${ind}`;
+  if (e.board === "炸板") return `炸板${e.broken_times ? ` ${e.broken_times} 次` : ""}${ind}`;
   return e.board;
 }
 

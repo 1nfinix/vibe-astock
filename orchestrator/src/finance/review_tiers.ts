@@ -29,6 +29,8 @@ export interface ZtStock {
   symbol: string; name: string; industry: string; boards: number | null;
   /** 首次封板时间 HH:MM:SS(东财 fbt);没有或格式不对是 null。同样连板数时,封得早的排前面 */
   first_seal?: string | null;
+  /** 炸板次数(东财 zbc):涨停池里是封住前炸开过几次,炸板池里是当天炸了几次;没有或不合法是 null */
+  broken_times?: number | null;
 }
 export interface TierStock extends ZtStock { tags: string[] }
 export interface TierGroup {
@@ -58,7 +60,7 @@ export interface ReviewTiersResult {
 }
 
 export const TIERS_SOURCE = "东财涨停池(按东财行业归类)、同花顺强势股题材标签";
-const UNCLASSIFIED = "未分类";
+export const UNCLASSIFIED = "未分类";
 /** 当天的池盘中会变:缓存最多用 5 分钟;过去的日子收盘后就不变了 */
 const TODAY_MAX_AGE_MS = 5 * 60 * 1000;
 const PAST_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
@@ -85,7 +87,8 @@ export function parsePool(doc: unknown): ZtStock[] | null {
     seen.add(symbol);
     const industry = typeof r.hybk === "string" && r.hybk.trim() ? r.hybk.trim() : UNCLASSIFIED;
     const boards = typeof r.lbc === "number" && Number.isInteger(r.lbc) && r.lbc >= 1 ? r.lbc : null;
-    out.push({ symbol, name: typeof r.n === "string" ? r.n.replace(/\s/g, "") : "", industry, boards, first_seal: sealTime(r.fbt) });
+    const broken_times = typeof r.zbc === "number" && Number.isInteger(r.zbc) && r.zbc >= 0 ? r.zbc : null;
+    out.push({ symbol, name: typeof r.n === "string" ? r.n.replace(/\s/g, "") : "", industry, boards, first_seal: sealTime(r.fbt), broken_times });
   }
   return out;
 }

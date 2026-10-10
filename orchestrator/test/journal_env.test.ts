@@ -20,18 +20,21 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const PY = process.env.VRA_PYTHON ?? detectPython(REPO) ?? detectPython(path.join(REPO, "..")) ?? "python3";
 const sig = new AbortController().signal;
 
-const zt = (symbol: string, boards: number | null, first_seal: string | null = null): ZtStock => ({ symbol, name: "", industry: "", boards, first_seal });
+const zt = (symbol: string, boards: number | null, first_seal: string | null = null, extra: Partial<ZtStock> = {}): ZtStock => ({ symbol, name: "", industry: "", boards, first_seal, ...extra });
+const NONE = { boards: null, first_seal: null, broken_times: null, industry: null };
 
-test("当时板位:涨停池里按连板数分;不在涨停池看炸板池;池没取到分别说清,不当「非涨停」", () => {
-  const pool = [zt("600519", 2, "09:30:00"), zt("600000", null), zt("002594", 5)];
-  assert.deepEqual(boardOf("600519", pool, []), { board: "2板", boards: 2, first_seal: "09:30:00" });
-  // 没给连板数的按首板(VA 同)
-  assert.deepEqual(boardOf("600000", pool, null), { board: "首板", boards: 1, first_seal: null });
+test("当时板位:涨停池里按连板数分;不在涨停池看炸板池;池没取到分别说清,不当「非涨停」;带炸板次数和行业(VA 同)", () => {
+  const pool = [zt("600519", 2, "09:30:00", { broken_times: 1, industry: "白酒" }), zt("600000", null, null, { industry: "未分类" }), zt("002594", 5)];
+  assert.deepEqual(boardOf("600519", pool, []), { board: "2板", boards: 2, first_seal: "09:30:00", broken_times: 1, industry: "白酒" });
+  // 没给连板数的按首板(VA 同);「未分类」和空行业都不写
+  assert.deepEqual(boardOf("600000", pool, null), { board: "首板", boards: 1, first_seal: null, broken_times: null, industry: null });
   assert.equal(boardOf("002594", pool, null).board, "3板及以上");
-  assert.equal(boardOf("000001", pool, [zt("000001", null)]).board, "炸板");
-  assert.equal(boardOf("000001", pool, [zt("300750", null)]).board, "没碰涨停");
-  assert.equal(boardOf("000001", pool, null).board, "非涨停(没分出炸板)");
-  assert.deepEqual(boardOf("600519", null, [zt("600519", null)]), { board: "没取到", boards: null, first_seal: null });
+  assert.equal(boardOf("002594", pool, null).industry, null);
+  // 炸板池里的也带当天炸了几次、行业;连板数和首封不写
+  assert.deepEqual(boardOf("000001", pool, [zt("000001", 2, "10:00:00", { broken_times: 3, industry: "银行" })]), { board: "炸板", ...NONE, broken_times: 3, industry: "银行" });
+  assert.deepEqual(boardOf("000001", pool, [zt("300750", null, null, { broken_times: 2, industry: "电池" })]), { board: "没碰涨停", ...NONE });
+  assert.deepEqual(boardOf("000001", pool, null), { board: "非涨停(没分出炸板)", ...NONE });
+  assert.deepEqual(boardOf("600519", null, [zt("600519", null)]), { board: "没取到", ...NONE });
 });
 
 const FAKE = String.raw`import json,sys,os
@@ -50,7 +53,7 @@ if ep in ('em_zt_pool','em_zb_pool'):
   p=cfg.get('zt' if ep=='em_zt_pool' else 'zb',{}).get(d)
   if p is None: done({'status':'failed','reason':'池子取不到','evidence':[]},3)
   ref='raw/%s_%s_%d.json'%(ep,d,os.getpid())
-  json.dump({'data':{'pool':[{'c':c,'n':'x','lbc':b,'fbt':t,'hybk':'行业'} for c,b,t in p]}},open(os.path.join(out,ref),'w'))
+  json.dump({'data':{'pool':[dict({'c':e[0],'n':'x','lbc':e[1],'fbt':e[2],'hybk':'行业'},**({'zbc':e[3]} if len(e)>3 else {})) for e in p]}},open(os.path.join(out,ref),'w'))
   done({'status':'ok','evidence':[{'field':'pool_size','value':len(p),'raw_ref':ref}]})
 done({'status':'failed','reason':'unknown','evidence':[]},3)
 `;
@@ -95,11 +98,11 @@ test("按入场日环境分组:情绪三等分、当时板位;没取到 / 超过
         "2026-09-17": day(30, 2, 0.5), "2026-09-18": day(60, 4, 0.2), "2026-09-21": day(20, 1, 0.4), "2026-09-22": day(10, 1, null),
       },
       zt: {
-        "20260914": [["600519", 2, 93000], ["300750", 1, 100000]], "20260915": [["600519", 3, 93000]], "20260916": [["600000", 1, 141000]],
+        "20260914": [["600519", 2, 93000, 1], ["300750", 1, 100000]], "20260915": [["600519", 3, 93000]], "20260916": [["600000", 1, 141000]],
         "20260917": [["600519", 1, 93000]], "20260918": [["002594", 4, 92500]], "20260921": [["000001", 1, 93000]], "20260923": [["000002", 1, 100000]],
       },
       zb: {
-        "20260914": [], "20260915": [["000001", 1, 93000]], "20260916": [["300750", 1, 93000]], "20260917": [["000001", 1, 93000]],
+        "20260914": [], "20260915": [["000001", 1, 93000, 2]], "20260916": [["300750", 1, 93000]], "20260917": [["000001", 1, 93000]],
         "20260918": [["600000", 1, 93000]], "20260921": [], "20260923": [["000001", 1, 93000]],
       },
     });
@@ -137,9 +140,14 @@ test("按入场日环境分组:情绪三等分、当时板位;没取到 / 超过
     ]);
     assert.equal(new Set(r.rows.map((x) => x.key)).size, 10);
     const a = r.rows.find((x) => x.date === "2026-09-14")!;
-    assert.deepEqual({ ...a, key: "" }, { key: "", date: "2026-09-14", regime: "情绪中", score: 160, money_effect: 1.5, board: "2板", boards: 2, first_seal: "09:30:00" });
+    assert.deepEqual({ ...a, key: "" }, { key: "", date: "2026-09-14", regime: "情绪中", score: 160, money_effect: 1.5, board: "2板", boards: 2, first_seal: "09:30:00", broken_times: 1, industry: "行业" });
+    // 炸板的带当天炸了几次和行业;没碰涨停的都不写
+    const b = r.rows.find((x) => x.date === "2026-09-15")!;
+    assert.deepEqual([b.board, b.boards, b.first_seal, b.broken_times, b.industry], ["炸板", null, null, 2, "行业"]);
+    const d = r.rows.find((x) => x.date === "2026-09-17")!;
+    assert.deepEqual([d.board, d.broken_times, d.industry], ["没碰涨停", null, null]);
     const j = r.rows.find((x) => x.date === "2026-10-12")!;
-    assert.deepEqual([j.regime, j.board, j.score], [null, null, null]);
+    assert.deepEqual([j.regime, j.board, j.score, j.broken_times, j.industry], [null, null, null, null, null]);
     assert.deepEqual(r.gaps, [
       "1 笔的入场日还没收盘,不分组",
       "1 天的情绪读数没取到(超过东财保留期,当时也没缓存):2026-09-01",

@@ -14,14 +14,14 @@ const VIEW = JSON.parse(readFileSync(new URL("./fixtures/journal-view.json", imp
 const keyOf = (symbol: string) => VIEW.rows.find((r) => r.symbol === symbol)!.key;
 const envRow = (symbol: string, extra: Partial<EnvRow>): EnvRow => ({
   key: keyOf(symbol), date: VIEW.rows.find((r) => r.symbol === symbol)!.date,
-  regime: "情绪中", score: 100, money_effect: null, board: "没碰涨停", boards: null, first_seal: null, ...extra,
+  regime: "情绪中", score: 100, money_effect: null, board: "没碰涨停", boards: null, first_seal: null, broken_times: null, industry: null, ...extra,
 });
 const ENV = {
   available: true, scored_days: 6, unsettled_trades: 1, scanned: 4, days: 4, gaps: ["1 天的涨停池没取到(东财 502):2026-10-08"], note: "按入场那天的市场环境分组。", source: "测试",
   regime_cuts: { low: 80, high: 160 },
   rows: [
-    envRow("600001", { regime: "情绪强", score: 200, money_effect: 1.2, board: "首板", boards: 1, first_seal: "09:31:05" }),
-    envRow("002002", { regime: "情绪弱", score: 40, money_effect: -2.5, board: "炸板" }),
+    envRow("600001", { regime: "情绪强", score: 200, money_effect: 1.2, board: "首板", boards: 1, first_seal: "09:31:05", broken_times: 1, industry: "半导体" }),
+    envRow("002002", { regime: "情绪弱", score: 40, money_effect: -2.5, board: "炸板", broken_times: 2, industry: "银行" }),
     envRow("300003", { regime: null, score: null, board: null }),
   ],
   by_regime: [{ key: "情绪强", count: 1, scored: 1, money_scored: 1, net_pnl: 984.29, win_rate: 1, avg: 9.84, best: 9.84, worst: 9.84 }],
@@ -72,9 +72,11 @@ test("隐私模式:后端句子里的「N 元」和「中位仓位(N)」遮掉,�
 
 test("板位、规矩的写法和行状态", () => {
   assert.equal(boardText(undefined), "—");
-  assert.equal(boardText(ENV.rows[0]), "首板 · 首封 09:31");
-  assert.equal(boardText({ ...ENV.rows[0]!, board: "3板及以上", boards: 4, first_seal: null }), "4板");
-  assert.equal(boardText(ENV.rows[1]), "炸板");
+  assert.equal(boardText(ENV.rows[0]), "首板 · 首封 09:31 · 炸 1 次 · 半导体");
+  assert.equal(boardText({ ...ENV.rows[0]!, board: "3板及以上", boards: 4, first_seal: null, broken_times: 0, industry: null }), "4板");
+  assert.equal(boardText({ ...ENV.rows[0]!, board: "2板", boards: 2, broken_times: null }), "2板 · 首封 09:31 · 半导体");
+  assert.equal(boardText(ENV.rows[1]), "炸板 2 次 · 银行");
+  assert.equal(boardText({ ...ENV.rows[1]!, broken_times: null, industry: null }), "炸板");
   assert.equal(boardText(ENV.rows[2]), "—");
   assert.equal(ruleValueText("max_unplanned_ratio", 0.2), "20%");
   assert.equal(ruleValueText("max_positions", 3), "3 只");
@@ -99,10 +101,13 @@ test("交易记录:体检读数、分组表、逐笔里的情绪和板位都画�
   assert.match(text, /1 笔入场日当天还没收盘/);
   // 逐笔:情绪 + 赚钱效应、板位、没卖完的股数、补记、事后补
   assert.match(text, /情绪强 · 赚钱效应 \+1\.20%/);
-  assert.match(text, /首板 · 首封 09:31/);
+  assert.match(text, /首板 · 首封 09:31 · 炸 1 次 · 半导体/);
+  assert.match(text, /炸板 2 次 · 银行/);
   assert.match(text, /情绪弱 · 赚钱效应 -2\.50%/);
   assert.match(text, /当天未收盘/);
-  assert.match(text, /没卖完 · 300 股/);
+  // 一笔都没卖的写占用(VA 同),卖过一部分的写已卖部分
+  assert.match(text, /没卖完 · 300 股 · 占用 4,500/);
+  assert.match(text, /没卖完 · 500 股 · 占用 15,000/);
   assert.match(text, /示例银行 000001 半路 [^|]*\+3\.20% 补记/);
   assert.match(text, /止损 9\.5/);
   // 两笔没卖完的才有「补成交」
@@ -115,8 +120,8 @@ test("交易记录:体检读数、分组表、逐笔里的情绪和板位都画�
 
 test("交易记录:隐私模式下金额、股数、止损价遮掉,百分比照常", async () => {
   const { text } = await render("RecordsTab.tsx", "RecordsTab", { v: VIEW, env: done(ENV), hide: true, act: noop });
-  for (const s of ["2,055.71", "984.29", "3,040", "300 股", "9.5"]) assert.ok(!text.includes(s), `隐私模式下还露出 ${s}`);
-  assert.match(text, new RegExp(`没卖完 · ${MASK} 股`));
+  for (const s of ["2,055.71", "984.29", "3,040", "300 股", "9.5", "4,500", "15,000"]) assert.ok(!text.includes(s), `隐私模式下还露出 ${s}`);
+  assert.match(text, new RegExp(`没卖完 · ${MASK} 股 · 占用 ${MASK}`));
   assert.match(text, new RegExp(`止损 ${MASK}`));
   assert.match(text, /\+9\.84%/);
   assert.match(text, /-7\.60%/);
@@ -142,6 +147,14 @@ test("交易记录:读数取到但天数太少写「不分强中弱」;没填简
 });
 
 /* ---------------- 风险与纪律 ---------------- */
+
+test("交易记录:没卖完但卖过一部分的写已卖部分,不写占用", async () => {
+  const v = { ...VIEW, rows: VIEW.rows.map((r) => (r.symbol === "600004" && r.episode ? { ...r, episode: { ...r.episode, realized_pnl: 120 } } : r)) };
+  const { text } = await render("RecordsTab.tsx", "RecordsTab", { v, env: done(ENV), hide: false, act: noop });
+  assert.match(text, /没卖完 · 300 股 · 已卖部分 \+120/);
+  assert.doesNotMatch(text, /占用 4,500/);
+  assert.match(text, /没卖完 · 500 股 · 占用 15,000/);
+});
 
 test("风险与纪律:在险资金、权益曲线、纪律、规矩都在;亏损是绿色;隐私模式遮掉金额", async () => {
   const shown = await render("RiskTab.tsx", "RiskTab", { v: VIEW, hide: false, act: noop });

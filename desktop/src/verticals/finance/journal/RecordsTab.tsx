@@ -117,7 +117,9 @@ function MoneyCell({ r, hide }: { r: JournalRow; hide: boolean }) {
   return (
     <span className="text-muted-foreground">
       <span className="text-warning">没卖完</span> · {hideIf(hide, sharesText(ep.open_shares))} 股
-      {ep.realized_pnl !== null && <> · 已卖部分 <b className={tone(ep.realized_pnl)}>{hideIf(hide, moneySigned(ep.realized_pnl))}</b></>}
+      {ep.realized_pnl !== null
+        ? <> · 已卖部分 <b className={tone(ep.realized_pnl)}>{hideIf(hide, moneySigned(ep.realized_pnl))}</b></>
+        : <> · 占用 {hideIf(hide, money(ep.amount))}</>}
     </span>
   );
 }

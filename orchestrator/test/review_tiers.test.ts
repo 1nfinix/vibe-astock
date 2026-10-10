@@ -25,21 +25,21 @@ test("四档的名字和规则:前后端一致", () => {
   assert.deepEqual(TIERS.map((t) => t.id), ["mainline", "today", "scattered", "single"]);
 });
 
-test("涨停池解析:池不是数组返回 null;代码要 6 位、去重;行业空写「未分类」;连板数不合法写 null", () => {
+test("涨停池解析:池不是数组返回 null;代码要 6 位、去重;行业空写「未分类」;连板数、炸板次数不合法写 null", () => {
   for (const d of [null, {}, { data: null }, { data: { pool: null } }, { data: { pool: "x" } }]) assert.equal(parsePool(d), null);
   assert.deepEqual(parsePool({ data: { pool: [] } }), []);
   assert.deepEqual(parsePool({ data: { pool: [
-    { c: "600001", n: "*ST 某 某", hybk: " 半导体 ", lbc: 3, fbt: 93021 },
+    { c: "600001", n: "*ST 某 某", hybk: " 半导体 ", lbc: 3, fbt: 93021, zbc: 2 },
     { c: "600001", n: "重复", hybk: "银行", lbc: 1 },
     { c: "60000", n: "短", hybk: "银行", lbc: 1 }, { c: 600002, n: "数字代码", hybk: "银行" }, null, "x",
-    { c: "000001", n: "平安银行", hybk: "", lbc: 0, fbt: 96000 },
-    { c: "000002", n: "万科A", lbc: 1.5, fbt: "92500" },
-    { c: "000003", hybk: "地产", lbc: "2", fbt: 150001 },
+    { c: "000001", n: "平安银行", hybk: "", lbc: 0, fbt: 96000, zbc: 0 },
+    { c: "000002", n: "万科A", lbc: 1.5, fbt: "92500", zbc: 1.5 },
+    { c: "000003", hybk: "地产", lbc: "2", fbt: 150001, zbc: -1 },
   ] } }), [
-    { symbol: "600001", name: "*ST某某", industry: "半导体", boards: 3, first_seal: "09:30:21" },
-    { symbol: "000001", name: "平安银行", industry: "未分类", boards: null, first_seal: null },
-    { symbol: "000002", name: "万科A", industry: "未分类", boards: null, first_seal: null },
-    { symbol: "000003", name: "", industry: "地产", boards: null, first_seal: null },
+    { symbol: "600001", name: "*ST某某", industry: "半导体", boards: 3, first_seal: "09:30:21", broken_times: 2 },
+    { symbol: "000001", name: "平安银行", industry: "未分类", boards: null, first_seal: null, broken_times: 0 },
+    { symbol: "000002", name: "万科A", industry: "未分类", boards: null, first_seal: null, broken_times: null },
+    { symbol: "000003", name: "", industry: "地产", boards: null, first_seal: null, broken_times: null },
   ]);
 });
 
