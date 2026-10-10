@@ -2,7 +2,8 @@
  * 交易日志视图(`GET /view/journal`)与写入动作(`POST /view/journal`)。移植自 VA v2.0.0 的交易日志。
  *
  * 读:交易流水(`trade`,和「我的股票」同一份)切成一轮一轮(episodes.ts),挂上交易标注(rows.ts),
- *     按打法 / 是否按计划 / 持有天数分组统计(stats.ts)。设置(费率、规矩、账户规模)一起给。
+ *     按打法 / 是否按计划 / 持有天数分组统计(stats.ts);风险与纪律、在险资金(risk.ts)、复查清单(inbox.ts)。
+ *     设置(费率、规矩、账户规模)一起给。
  * 写(act):
  *   - `tag`:给某一笔交易写打法、是否按计划、计划止损 / 目标、备注(一笔一条标注,有就改);
  *   - `manual`:没有成交明细的补记(日期 + 盈亏 %),新建或修改;
@@ -21,7 +22,9 @@ import { replayTrades, tradeOf, tradeProblem, type Trade } from "../holdings.ts"
 import { DEFAULT_RULES, PLAYBOOKS, RULE_KEYS, RULE_LABELS, ruleProblem, type Rules } from "./defs.ts";
 import { A_SHARE, buildEpisodes, type Episode, type EpisodeIssue } from "./episodes.ts";
 import { DEFAULT_FEES, FEE_KEYS, FEE_LABELS, feeProblem, type FeeConfig } from "./fees.ts";
+import { buildInbox } from "./inbox.ts";
 import { realDay } from "./num.ts";
+import { atRisk, discipline, equityCurve, rolling, violations } from "./risk.ts";
 import { buildRows, tagOf, type JournalRow, type Tag, type TagProblem } from "./rows.ts";
 import { journalStats, type JournalStats } from "./stats.ts";
 
@@ -112,9 +115,24 @@ export function computeJournal(d: JournalData, fees: FeeConfig): JournalComputed
   return { episodes: ep.episodes, rows: rows.rows, issues: ep.issues, orphans: rows.orphans, conflicts: rows.conflicts, skipped_non_a: ep.skipped_non_a, orphan_dividends: ep.orphan_dividends };
 }
 
+/** 风险与纪律、在险资金、复查清单:都只对照用户自己的规矩和历史 */
+export function journalRisk(rows: readonly JournalRow[], s: JournalSettings) {
+  return {
+    risk: {
+      equity: equityCurve(rows),
+      rolling: rolling(rows),
+      discipline: discipline(rows),
+      violations: violations(rows, s.rules, s.rules_default, s.equity_base),
+    },
+    at_risk: atRisk(rows, s.rules, s.rules_default, s.equity_base),
+    inbox: buildInbox(rows, s.rules, s.rules_default),
+  };
+}
+export type JournalRisk = ReturnType<typeof journalRisk>;
+
 export type JournalView =
   | { available: false; reason: string; settings: JournalSettings; playbooks: readonly string[]; today: string }
-  | ({ available: true; settings: JournalSettings; stats: JournalStats; playbooks: readonly string[]; today: string } & JournalComputed);
+  | ({ available: true; settings: JournalSettings; stats: JournalStats; playbooks: readonly string[]; today: string } & JournalComputed & JournalRisk);
 
 const today = (now: Date) => localClock(now, SCHEDULE_TZ).day;
 
@@ -123,7 +141,7 @@ export function buildJournalView(ctx: ServiceContext, now = new Date()): Journal
   const common = { settings: d.settings, playbooks: PLAYBOOKS, today: today(now) };
   if (!d.settings.fees) return { available: false, reason: d.settings.problem ?? "交易日志设置有问题", ...common };
   const c = computeJournal(d, d.settings.fees);
-  return { available: true, ...common, ...c, stats: journalStats(c.rows) };
+  return { available: true, ...common, ...c, stats: journalStats(c.rows), ...journalRisk(c.rows, d.settings) };
 }
 
 export async function journalView(ctx: ServiceContext, _query: Record<string, string>, _signal?: AbortSignal, now = new Date()): Promise<JournalView> {

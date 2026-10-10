@@ -138,6 +138,9 @@ export function buildRows(
     };
   });
   rows.push(...manual);
-  rows.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // VA 的列表顺序:入场日新的在前,同一天后录的在前(风险计算按这个顺序累加,见 risk.ts vaOrder)
+  rows.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1)
+    : a.created_at !== b.created_at ? (a.created_at < b.created_at ? 1 : -1)
+      : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return { rows, orphans, conflicts };
 }

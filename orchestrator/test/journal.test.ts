@@ -11,7 +11,7 @@ import { ServiceError, ledgerList, ledgerRemove, ledgerUpsert, type ServiceConte
 import { replayTrades, tradeOf, type Trade } from "../src/finance/holdings.ts";
 import { T0_WARNING, buildEpisodes } from "../src/finance/journal/episodes.ts";
 import { DEFAULT_FEES, estimateFee } from "../src/finance/journal/fees.ts";
-import { median, pyRound, sum } from "../src/finance/journal/num.ts";
+import { mean, median, pyRound, sum } from "../src/finance/journal/num.ts";
 import { buildRows, type JournalRow, type Tag } from "../src/finance/journal/rows.ts";
 import { bucketStats, journalStats } from "../src/finance/journal/stats.ts";
 import { journalAct, journalView, type JournalView } from "../src/finance/journal/view.ts";
@@ -40,6 +40,18 @@ test("pyRound 与 Python round 一致:恰好一半取偶、按 double 精确值�
   assert.equal(sum([0.1, 0.2, 0.3, -0.6]), 2.7755575615628914e-17);
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 3, 2]), 2.5);
+  // 平均数和 statistics.mean 一样只舍入一次(期望值由 Python 实算);sum / n 两次舍入,保留两位时差一分
+  const m1 = [39.25, -485.94, -496.36, -97.95, 431.44, 405.31, 224.73, -494.88, -100.95, 21.09, -370.9, 268.34];
+  assert.equal(mean(m1), -54.735);
+  assert.equal(pyRound(mean(m1), 2), -54.73);
+  assert.equal(pyRound(sum(m1) / m1.length, 2), -54.74);
+  assert.equal(mean([-1.698, 1.942, -2.585, -0.998, 2.649, -1.772, -0.822, -0.431, 2.522, 1.77, -2.294, 2.257]), 0.045);
+  // 恰好落在两个 double 正中间:取偶(期望值由 Python 实算)
+  assert.equal(mean([1, 1 + 2 ** -52]), 1);
+  assert.equal(mean([1 + 2 ** -52, 1 + 2 ** -51]), 1 + 2 ** -51);
+  assert.equal(mean([1, 1, 1 + 2 ** -51]), 1 + 2 ** -52);
+  assert.equal(mean([5e-324, 5e-324]), 5e-324);
+  assert.equal(mean([1e308, 1e308]), 1e308);
 });
 
 test("费用估算:佣金有最低、印花税只在卖出", () => {
@@ -226,6 +238,16 @@ const row = (f: Partial<JournalRow>): JournalRow => ({
   pnl_pct: null, realized_pnl: null, hold_days: null, ...f,
 });
 
+test("交易记录顺序:入场日新的在前,同一天后录的在前(和 VA 一样,不按 id)", () => {
+  const early = tr({ id: "aa1", created_at: "2026-01-01T00:00:00.000Z", symbol: "600001", type: "buy", date: "2025-08-01", shares: 100, price: 10, fee: 5 });
+  const late = tr({ id: "zz1", created_at: "2026-01-02T00:00:00.000Z", symbol: "600002", type: "buy", date: "2025-08-01", shares: 100, price: 10, fee: 5 });
+  const older = tr({ id: "mm1", created_at: "2026-01-03T00:00:00.000Z", symbol: "600003", type: "buy", date: "2025-07-01", shares: 100, price: 10, fee: 5 });
+  const ep = buildEpisodes([early, late, older], DEFAULT_FEES);
+  const out = buildRows(ep.episodes, [], new Map(), new Set([early.id, late.id, older.id]));
+  assert.deepEqual(out.rows.map((r) => r.key), ["zz1", "aa1", "mm1"]);
+  assert.deepEqual(out.rows.map((r) => r.created_at), [late.created_at, early.created_at, older.created_at]);
+});
+
 test("分组统计:胜率不算持平、全持平给 null;补记只进 %;持有天数分组", () => {
   const b = bucketStats([row({ pnl_pct: 5, realized_pnl: 100 }), row({ pnl_pct: -3, realized_pnl: -40 }), row({ pnl_pct: 0, realized_pnl: 0 }), row({ kind: "manual", pnl_pct: 2 }), row({})]);
   assert.deepEqual(b, { count: 5, scored: 4, money_scored: 3, net_pnl: 60, win_rate: 0.667, avg: 1, best: 5, worst: -3 });
@@ -266,6 +288,10 @@ test("视图:空账本也能打开;设置默认值标出来;没有流水就没�
   assert.equal(a.settings.equity_base, null);
   assert.deepEqual(a.settings.fees, DEFAULT_FEES);
   assert.equal(a.stats.overall.count, 0);
+  assert.equal(a.risk.equity.available, false);
+  assert.equal(a.risk.violations.available, false);
+  assert.equal(a.at_risk.available, false);
+  assert.equal(a.inbox.available, false);
   assert.equal(a.today, "2026-10-09");
 }));
 
@@ -289,6 +315,12 @@ test("记一笔:成交整批写进交易流水并写标注;算不了的一条都
   assert.equal(r.plan_late, false); // 当天写下的
   assert.equal(r.episode!.open_shares, 600);
   assert.equal(r.episode!.settlement_warning, T0_WARNING);
+  // 风险、在险资金、复查清单一起给:还剩 600 股,成本 10(不含费用),止损 9.5 → 在险 300
+  assert.ok(v.at_risk.available);
+  if (v.at_risk.available) assert.deepEqual([v.at_risk.positions[0]!.shares, v.at_risk.positions[0]!.at_risk, v.at_risk.total_at_risk], [600, 300, 300]);
+  assert.ok(v.risk.equity.available && v.risk.equity.trades === 1);
+  assert.equal(v.risk.violations.available && v.risk.violations.rule_status.max_loss_per_day_pct, "unavailable:没填账户规模,单日亏损占比没有分母");
+  assert.ok(v.inbox.available && v.inbox.count === 0);
 
   // 卖超:一条都不写
   await assert.rejects(act(ctx, { action: "record", symbol: "600519", fills: [{ type: "sell", date: "2026-10-10", shares: 5000, price: 11 }] }), bad(/算不了.*超过当时持有/));

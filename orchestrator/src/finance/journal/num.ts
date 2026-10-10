@@ -47,8 +47,55 @@ export function sum(vals: readonly number[]): number {
   return s + c;
 }
 
+/** double 的精确值 = 整数 × 2^-1074(所有有限 double 都是 2^-1074 的整数倍) */
+function scaled(x: number): bigint {
+  const v = new DataView(new ArrayBuffer(8));
+  v.setFloat64(0, x);
+  const hi = v.getUint32(0), lo = v.getUint32(4);
+  const exp = (hi >>> 20) & 0x7ff;
+  const m = (BigInt(hi & 0xfffff) << 32n) | BigInt(lo);
+  const n = exp === 0 ? m : (m | (1n << 52n)) << BigInt(exp - 1);
+  return hi >>> 31 ? -n : n;
+}
+const bitLen = (v: bigint) => v.toString(2).length;
+/** 分数 p / q(q > 0)按 IEEE 就近取偶转成 double,和 Python int / int、float(Fraction) 一样 */
+function ratio(p: bigint, q: bigint): number {
+  if (p === 0n) return 0;
+  const neg = p < 0n;
+  if (neg) p = -p;
+  // 商留 55~56 位,再舍到 53 位;余数只用来判断「恰好一半」还是「过半」
+  const shift = 55 - (bitLen(p) - bitLen(q));
+  const num = shift >= 0 ? p << BigInt(shift) : p, den = shift >= 0 ? q : q << BigInt(-shift);
+  let qt = num / den;
+  const sticky = num % den !== 0n;
+  const extra = bitLen(qt) - 53;
+  const low = qt & ((1n << BigInt(extra)) - 1n), half = 1n << BigInt(extra - 1);
+  qt >>= BigInt(extra);
+  if (low > half || (low === half && (sticky || (qt & 1n) === 1n))) qt += 1n;
+  const e = extra - shift;
+  let v: number;
+  if (e + 52 >= -1022) v = Number(qt) * 2 ** e;
+  else {
+    // 非规格化(绝对值 < 2^-1022):精度只到 2^-1074,按它的整数倍重新就近取偶
+    const a = p << 1074n;
+    let k = a / q;
+    const r2 = (a % q) * 2n;
+    if (r2 > q || (r2 === q && (k & 1n) === 1n)) k += 1n;
+    v = Number(k) * 2 ** -1074;
+  }
+  return neg ? -v : v;
+}
+
+/**
+ * 和 Python `statistics.mean` 同一结果:先按精确分数求和、除以个数,最后只舍入一次。
+ * ⚠️ 不能写成 sum / n:那是两次舍入,碰上 x.xx5 这种恰好一半的平均数(三笔 1.00 / 1.00 / 1.015)会差一分。
+ */
 export function mean(vals: readonly number[]): number {
-  return sum(vals) / vals.length;
+  if (!vals.length) throw new RangeError("mean of empty list");
+  if (vals.some((x) => !Number.isFinite(x))) return sum(vals) / vals.length;
+  let total = 0n;
+  for (const x of vals) total += scaled(x);
+  return ratio(total, BigInt(vals.length) << 1074n);
 }
 
 export function median(vals: readonly number[]): number {
