@@ -176,6 +176,18 @@ class TestRows:
         assert zb[0]["board"] == "北交所" and zb[0]["limit_price"] == 12.9 and zb[0]["broken_times"] == 2
         assert dt[0]["consec_dt"] == 2 and dt[0]["last_seal"] == "", "封板时间 0 = 没有"
 
+    def test_upstream_fallback_to_an_earlier_session_is_an_empty_pool(self, monkeypatch):
+        """周末 / 开盘前请求今天,上游回最近一个交易日的池子;qdate 早于请求日期 = 这一天还没数据。历史日期照常放行。"""
+        resp = {"data": {"qdate": 20261009, "tc": 1, "pool": [{"c": "600000", "n": "甲"}]}}
+        seen = []
+        monkeypatch.setattr(S.em, "em_json", lambda url, params=None, **k: seen.append(params["date"]) or resp)
+        assert S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261010") == []
+        assert S.em._em_zt_api("getTopicZTPool", "fbt:asc", "2026-10-12") == []
+        assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261009")) == 1
+        assert len(S.em._em_zt_api("getYesterdayZTPool", "zs:desc", "20260930")) == 1, "历史日期的 qdate 也是最新行情日,不能拦"
+        resp["data"].pop("qdate")
+        assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261010")) == 1, "没有 qdate 时不猜"
+
     def test_pools_never_turn_a_failure_into_an_empty_table(self, monkeypatch):
         def boom(kind, day):
             if kind == "zb":

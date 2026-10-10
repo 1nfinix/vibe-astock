@@ -486,7 +486,14 @@ def _fmt_zt_time(t) -> str:
 
 def _em_zt_api(endpoint: str, sort: str, date: str) -> list[dict]:
     d = em_json(f"https://push2ex.eastmoney.com/{endpoint}", params={"ut": ZTB_UT, "dpt": "wz.ztzt", "Pageindex": 0, "pagesize": 10000, "sort": sort, "date": date}, headers=_REF, timeout=10)
-    return (d.get("data") or {}).get("pool") or []
+    data = d.get("data") or {}
+    # 🔴 上游对还没有数据的日子(周末 / 节假日 / 开盘前的今天)不报错,而是回最近一个交易日的池子(10-10 周六实测回 10-09 的 69 只)。
+    #    qdate 是上游当前的行情日:请求日期晚于它 = 这一天上游还没数据,按空池处理。
+    #    ⚠️ 历史日期的 qdate 照样是最新行情日(请求 0930 回的是 0930 的池子、qdate 却是 1009),不能拿它核对历史场次。
+    q, want = str(data.get("qdate") or ""), str(date).replace("-", "")
+    if len(q) == 8 and q.isdigit() and len(want) == 8 and want > q:
+        return []
+    return data.get("pool") or []
 
 
 def _zt_stat(p: dict) -> str:

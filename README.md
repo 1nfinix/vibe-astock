@@ -4,14 +4,14 @@
 
 <p align="center">
   <b>A 股、美股、港股的投研工作台</b><br>
-  自选与持仓 · 每日复盘 · 产业资讯 · 产业研究 · 个股深挖 · 回测 · 研报库 · 174 个数据端点
+  自选与持仓 · 每日复盘 · 产业资讯 · 产业研究 · 个股深挖 · 回测 · 研报库 · 175 个数据端点
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow"></a>
   <a href="CHANGELOG.md"><img alt="源码版本 v2.1.0" src="https://img.shields.io/badge/source-v2.1.0-F35D2B"></a>
   <img alt="市场：A 股、美股、港股" src="https://img.shields.io/badge/markets-CN%20%7C%20US%20%7C%20HK-0b7285">
-  <img alt="174 个数据端点" src="https://img.shields.io/badge/data-174%20endpoints-2f9e44">
+  <img alt="175 个数据端点" src="https://img.shields.io/badge/data-175%20endpoints-2f9e44">
   <img alt="AI：Claude Code、Codex、WorkBuddy 或模型 API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
 </p>
 
@@ -40,7 +40,7 @@ I'm Simon, building AI agents and practical tools. Currently open to opportuniti
 Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看指数、自选和持仓盈亏，再复盘盘面、追资讯、研究产业和公司、验证想法，都在同一个页面里完成；研究记录和资料都保存在自己的电脑上。
 
 - **8 个一级栏目**：首页、每日复盘、产业资讯、产业研究、研究工具、我的股票、资料库、接入 AI。首页最上面是大盘与全球指数，接着是自选和持仓（含持仓盈亏、当日盈亏，开盘时价格自动刷新），再往下才是对话。有几个页面的栏目收成二级，比如「研究工具」下面是个股深挖、多空辩论、回测、候选池；「产业研究」下面直接列出各个板块。
-- **174 个数据端点**（35 层），覆盖 A 股、美股、港股：行情、K 线、逐笔、财务、一致预期、公告、研报、资金、南向资金与 AH 溢价、十大股东、主营构成、港美股公司资料、派息与业绩发布日、期权、指数成分与估值、期货与大宗、业绩预告 / 调研 / 增减持 / 回购 / 质押 / 龙虎榜 / 限售解禁、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘等。
+- **175 个数据端点**（35 层），覆盖 A 股、美股、港股：行情、K 线、逐笔、财务、一致预期、公告、研报、资金、南向资金与 AH 溢价、十大股东、主营构成、港美股公司资料、派息与业绩发布日、期权、指数成分与估值、期货与大宗、业绩预告 / 调研 / 增减持 / 回购 / 质押 / 龙虎榜 / 限售解禁、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘等。
 - **六阶段个股研究（A 股、港股、美股）**：公司画像 → 财务 → 盈利预期 → 估值 → 风险 → 报告。原始数据保留来源，派生数字保留计算过程。
 - **研报库**：导入 PDF、Word 等资料，检索、提问，回答里的引用能回查原文。
 - **回测和持仓体检**：用对话描述想法跑历史回测，结果和指数对照，带累计收益、回撤、月度、年度 4 张图；持仓按一笔笔交易流水记，按币种看收益率、集中度、风险贡献、行业暴露和相关性，还能按现在的持仓比例回看几段历史大跌期。
@@ -244,7 +244,7 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 
 ## 数据与市场
 
-数据注册表共 **174 个端点、35 层**。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
+数据注册表共 **175 个端点、35 层**。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
 
 | | A 股 | 美股 | 港股 |
 |---|---|---|---|
@@ -466,7 +466,7 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
         │
         ▼
 投研层
-174 个数据端点 · 六阶段研究流程 · calc · validator · 报告归档
+175 个数据端点 · 六阶段研究流程 · calc · validator · 报告归档
         │
         ▼
 本地 Agent 运行时（Local Agent Runtime）与模型供应商（Model Provider）

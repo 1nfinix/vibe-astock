@@ -1,5 +1,5 @@
 """映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
-cn_shortline_themes / cn_shortline_firstboard)。约定同 mappers.py。
+cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
 - 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources.mappers import empty, ev, out  # noqa: E402
 from sources.shortline_emotion import render_cycle, render_daily, render_metrics  # noqa: E402
 from sources.shortline_facts import render_facts  # noqa: E402
+from sources.shortline_live import render_live  # noqa: E402
 from sources.shortline_themes import render_firstboard, render_themes  # noqa: E402
 
 _UNSETTLED = "这一天还没收盘：数字收盘前还会变，本次结果不缓存"
@@ -339,3 +340,39 @@ def shortline_firstboard_map(result: dict, ctx: dict) -> dict:
              "computation": _computation("shortline_themes.build_firstboard", {"date": day},
                                          "名单取东财涨停池,原因取问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘")}
     return a.finish(bool(result.get("settled")), extra, "首板名单没算出来")
+
+
+# ---------------------------------------------------------------- 盘中情绪
+def shortline_live_map(result: dict, ctx: dict) -> dict:
+    """盘中快照。🔴 不按「没收盘就 partial」处理:新鲜度靠注册表 cache_max_age_sec = 15 控制(快照 15 秒后作废,隔天更用不上)。"""
+    if not result:
+        return empty("盘中情绪计算为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    v: dict = result.get("live") or {}
+    n = f"盘中快照 {result.get('as_of')}（{result.get('phase')}），随盘变化"
+    a.num("limit_up_count", v.get("limit_up"), "只", note=n)
+    a.num("break_board_count", v.get("broken"), "只", note=n + "；东财炸板池（炸板未回封）")
+    a.num("limit_down_count", v.get("limit_down"), "只", note=n)
+    a.num("ladder_highest", v.get("highest_board"), "板", note=n)
+    a.num("consec_count", v.get("consec_count"), "只", note=n + "；连板数 ≥ 2")
+    a.num("seal_rate", v.get("seal_rate"), "小数", note=n + "；封住 ÷ (封住 + 炸板未回封)")
+    a.num("broken_rate", v.get("broken_rate"), "小数", note=n + "；炸板 ÷ (涨停 + 炸板)")
+    prev = result.get("prev_date")
+    a.num("promotion_base", v.get("promotion_all_base"), "只", key="昨日全部涨停", note=f"{prev} 涨停只数")
+    a.num("promotion_promoted", v.get("promotion_all_promoted"), "只", key="昨日全部涨停", note=n + "；此刻仍封住")
+    a.num("promotion_rate", v.get("promotion_all"), "小数", key="昨日全部涨停", note=n)
+    a.num("promotion_base", v.get("promotion_base"), "只", key="1进2", note=f"{prev} 首板只数")
+    a.num("promotion_promoted", v.get("promotion_promoted"), "只", key="1进2", note=n)
+    a.num("promotion_rate", v.get("promotion_1to2"), "小数", key="1进2", note=n + "；与复盘同口径（以东财涨停池成员为准）")
+    m = f"{prev} 涨停股此刻的涨跌幅；{n}"
+    a.num("money_effect_sample", v.get("sample"), "只", note=m)
+    a.num("money_effect_median_ret", v.get("money_effect"), "%", note=m)
+    a.num("loss_deep5_count", v.get("deep_loss"), "只", note=m + "；跌幅 ≥ 5%")
+    fields = {"promotion": ("promotion_rate",), "settled": ("money_effect_median_ret", "loss_deep5_count"),
+              "zb": ("break_board_count", "seal_rate", "broken_rate"), "dt": ("limit_down_count",)}
+    for k, why in (result.get("reasons") or {}).items():
+        a.missing.extend({"field": f, "period": day, "reason": why} for f in fields.get(k, (k,)))
+    extra = {"date": day, "as_of": result.get("as_of"), "phase": result.get("phase"), "prev_date": prev, "settled": result.get("settled"),
+             "text": render_live(result), "result": result, "computation": _computation("shortline_live.build_live", {})}
+    return a.finish(True, extra, "盘中情绪一项都没算出来")
