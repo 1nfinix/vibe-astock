@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 168 个)
+# 数据源端点目录(registry v1.0.0,共 172 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -100,7 +100,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `wscn_lives` | 华尔街见闻 7×24 快讯 | CN | wallstreetcn | cn-public | none | - | channel 例 global-channel / a-stock-channel / us-stock-channel;cursor 翻页(上一页的 next_cursor);快讯常无标题,证据取正文前 300 字。上游 a-stock-data §5 |
 | `cctv_news` | 新闻联播文字稿(标题 + 正文) | CN | cctv | cn-public | none | - | 每天都播(含节假日);date 缺省 = 北京时间 20 点后取今天、否则昨天;只陈述原文,不做政策解读。上游 a-stock-data §5 |
 
-## 8 打板(9)
+## 8 打板(10)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -113,8 +113,9 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `em_price_anomaly` | 日内严重异常波动明细 | CN | eastmoney | cn-public | none | - |  |
 | `em_price_anomaly_count` | 异常波动统计(按标的聚合) | CN | eastmoney | cn-public | none | - |  |
 | `ths_limit_up_pool` | 同花顺涨停揭秘(原因题材 / 封板率 / 板型) | CN | ths | cn-public | none | - |  |
+| `cn_shortline_facts` | 短线盘面事实(封板质量 / 亏钱效应 / 昨日强势股反馈矩阵 / 题材结构 / 关键事件 / 分涨跌幅制度生态) | CN | eastmoney+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。主板 ST 跌停按 2026-07-06 起的 10% 判(此前 5%) |
 
-## 10 情绪(8)
+## 10 情绪(11)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -125,6 +126,9 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `em_turnover_rank` | 全市场成交额榜(沪深京 A 股) | SH/SZ/BJ | eastmoney | cn-public | none | - | 客观公开榜单(东财行情中心同款),只做客观展示 —— 非推荐、非预测、不评分。 |
 | `sina_turnover_rank` | 全市场成交额榜·新浪(沪深京 A 股,东财成交额榜的备源) | SH/SZ/BJ | sina | cn-public | none | - | 东财列表接口取不到时用。字段名、单位与 em_turnover_rank 相同(市值已由万元换成元);新浪不给行业。客观公开榜单,非推荐、非预测。 |
 | `em_market_breadth` | 全市场涨跌分布 + 沪深京三所涨跌家数与成交额(当日) | SH/SZ/BJ | eastmoney | cn-public | none | - | 只有当日(盘中是实时快照),上游不认日期。分布 23 档:涨停 / 涨超 9% 未涨停 / 每 1% 一档 / 平盘 / … / 跌停;分布合计与三所家数合计口径不同,不互相凑。 |
+| `cn_shortline_emotion` | 短线情绪四项(赚钱效应 / 晋级率 / 连板溢价 / 梯队断层;按所选交易日与前一交易日的东财池子算) | CN | eastmoney+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。约 8 次东财请求,串行限流下约 10–20 秒 |
+| `cn_shortline_cycle` | 短线情绪周期(近 N 个交易日涨停数 / 最高连板 / 炸板率合成的窗口内相对分、距低点天数与走向) | CN | eastmoney+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。每个交易日 2 次东财请求(默认 10 天 ≈ 20 次),最慢,所以和当天四项分开;lookback 3–30 |
+| `cn_shortline_daily` | 短线每日情绪读数(涨停数 / 最高连板 / 炸板率 / 昨日涨停股今日中位涨幅 / 跌超 5% 只数 / 1进2 晋级率,历史分位与近 N 天走势的原料) | CN | eastmoney+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian/stats_context 的六项读数;字段名与口径和 cn_shortline_emotion / cn_shortline_facts 的同名证据一致。约 4 次东财请求。东财这几张池只留最近一个月左右:已收盘的日子结果不变、长期缓存,历史靠缓存越积越长;没收盘的那一天一律 partial(不缓存)。界面视图「情绪历史」按日扇出调用它,再算分位、跟前一天比和走势 |
 | `sse_e_interaction` | 上证e互动问答(沪市公司) | CN | sse | cn-public | cn6 | - | 只服务沪市(60 / 68 / 900 开头),深市互动问答用 cninfo_irm;kind=answered(已答)/ questions(全部提问);投资者提问是不可信文本,只作线索。上游 a-stock-data §10 |
 
 ## 9 期权(1)

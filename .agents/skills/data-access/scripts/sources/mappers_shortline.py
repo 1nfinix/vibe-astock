@@ -1,0 +1,268 @@
+"""映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily)。约定同 mappers.py。
+
+- 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
+- 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
+- 某一块算不出来 → 进 missing 并标 partial,其余照出;一条证据都没有才 failed。
+- 🔴 **没收盘的那一天一律 partial**:取数服务只缓存 exit 0 的结果,
+  盘中算出来的数若被缓存住,晚上打开还是下午两点的样子,而且看不出来。
+"""
+from __future__ import annotations
+
+import os
+import sys
+from typing import Any, Optional
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from sources.mappers import empty, ev, out  # noqa: E402
+from sources.shortline_emotion import render_cycle, render_daily, render_metrics  # noqa: E402
+from sources.shortline_facts import render_facts  # noqa: E402
+
+_UNSETTLED = "这一天还没收盘：数字收盘前还会变，本次结果不缓存"
+
+
+class _Acc:
+    """攒证据 / 缺口 / 降级原因,最后一次性出信封。"""
+
+    def __init__(self, ctx: dict, day: str) -> None:
+        self.ctx, self.day = ctx, day
+        self.evs: list[dict] = []
+        self.missing: list[dict] = []
+        self.degraded: list[str] = []
+
+    def num(self, field: str, value: Any, unit: str, *, period: Optional[str] = None, key: Optional[str] = None, note: Optional[str] = None) -> None:
+        if value is None or isinstance(value, bool):
+            return
+        p = period or self.day
+        # 区间期间(a..b)的 as_of 取区间末日
+        self.evs.append(ev(self.ctx, field, value, unit, p, as_of=p.split("..")[-1], record_key=key, note=note))
+
+    def text(self, field: str, value: Any, *, period: Optional[str] = None, key: Optional[str] = None, note: Optional[str] = None) -> None:
+        if value in (None, ""):
+            return
+        self.num(field, str(value)[:300], "text", period=period, key=key, note=note)
+
+    def block(self, name: str, d: Any) -> bool:
+        """这一块能不能用;不能用就记缺口。"""
+        if isinstance(d, dict) and d.get("available"):
+            if d.get("partial"):
+                self.degraded.append(f"{name}样本不全（{d.get('sample')}/{d.get('expected_sample')}）")
+            return True
+        reason = (d or {}).get("reason") if isinstance(d, dict) else None
+        self.missing.append({"field": name, "period": self.day, "reason": reason or "未算出"})
+        return False
+
+    def finish(self, settled: bool, extra: dict, empty_reason: str) -> dict:
+        if not self.evs:
+            r = empty(empty_reason + ("：" + "；".join(m["reason"] for m in self.missing) if self.missing else ""))
+            r["missing"] = self.missing
+            return r
+        if not settled:
+            self.degraded.insert(0, _UNSETTLED)
+        partial = bool(self.missing or self.degraded)
+        return out(self.evs, extra=extra, missing=self.missing, status="partial" if partial else None,
+                   degraded="；".join(self.degraded) or None)
+
+
+def _src_note(d: dict) -> str:
+    return "定稿记录（东财昨日涨停池当日表现）" if d.get("source") == "settled" else "腾讯实时行情兜底（已核对行情时间属于这一天）"
+
+
+def _computation(fn: str, params: dict) -> dict:
+    return {"kind": "computed_endpoint", "library": f"sources.{fn}", "params": params,
+            "note": "取数层确定性计算(非 calc DAG);移植自 Vibe AStock v2.0.0,池子取东财涨停 / 炸板 / 跌停 / 昨日涨停池"}
+
+
+# ---------------------------------------------------------------- 当天四项
+def shortline_emotion_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("情绪指标计算为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+
+    me: dict = result.get("money_effect") or {}
+    if a.block("money_effect", me):
+        n = f"{prev} 涨停股在 {day} 的表现；{_src_note(me)}"
+        a.num("money_effect_sample", me["sample"], "只", note=n)
+        a.num("money_effect_avg_ret", me["avg"], "%", note=n)
+        a.num("money_effect_median_ret", me["median"], "%", note=n)
+        a.num("money_effect_positive_rate", me["positive_rate"], "小数", note=n)
+        a.num("money_effect_limit_up_again_rate", me["limit_up_again_rate"], "小数", note=n)
+        a.num("money_effect_coverage_rate", me.get("coverage_rate"), "小数", note="取到当日涨跌幅的只数 ÷ 名单只数")
+
+    pr: dict = result.get("promotion") or {}
+    if a.block("promotion", pr):
+        n = f"{prev} 各档涨停股在 {day} 仍涨停的比例（以东财涨停池成员为准）"
+        for tier, v in list(pr["tiers"].items()) + [("整体", pr["overall"])]:
+            a.num("promotion_base", v["base"], "只", key=tier, note=n)
+            a.num("promotion_promoted", v["promoted"], "只", key=tier, note=n)
+            a.num("promotion_rate", v["rate"], "小数", key=tier, note=n)
+        a.num("limit_up_count", pr.get("limit_up_count"), "只", note="东财涨停池只数")
+        if prev:
+            a.num("limit_up_count", pr.get("prev_limit_up_count"), "只", period=prev, note="前一交易日东财涨停池只数")
+
+    cp: dict = result.get("consec_premium") or {}
+    if a.block("consec_premium", cp):
+        n = f"{prev} 的 2 板以上个股在 {day} 的表现；{_src_note(cp)}"
+        a.num("consec_premium_sample", cp["sample"], "只", note=n)
+        a.num("consec_premium_avg_ret", cp["avg"], "%", note=n)
+        a.num("consec_premium_median_ret", cp["median"], "%", note=n)
+        a.num("consec_premium_positive_rate", cp["positive_rate"], "小数", note=n)
+
+    lg: dict = result.get("ladder_gap") or {}
+    if a.block("ladder_gap", lg):
+        a.num("ladder_highest", lg.get("highest"), "板")
+        for b, c in (lg.get("tiers") or {}).items():
+            a.num("ladder_tier_count", c, "只", key=f"{b}板")
+        a.text("ladder_note", lg.get("note"))
+
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_metrics(result), "result": result,
+             "computation": _computation("shortline_emotion.build_metrics", {"date": day})}
+    return a.finish(bool(result.get("settled")), extra, "情绪指标四项都没算出来")
+
+
+# ---------------------------------------------------------------- 每日六项读数
+def shortline_daily_map(result: dict, ctx: dict) -> dict:
+    """字段名和口径与情绪四项、事实表里的同名证据一致:同一天两边取到的是同一个数。"""
+    if not result:
+        return empty("每日情绪读数计算为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+    r: dict = result.get("readings") or {}
+    a.num("limit_up_count", r.get("limit_up"), "只", note="东财涨停池只数")
+    a.num("ladder_highest", r.get("highest_board"), "板")
+    a.num("broken_rate", r.get("broken_rate"), "小数", note="炸板 ÷ (涨停 + 炸板)")
+    n = f"{prev} 涨停股在 {day} 的表现；定稿记录（东财昨日涨停池当日表现）"
+    a.num("money_effect_sample", r.get("sample"), "只", note=n)
+    a.num("money_effect_median_ret", r.get("money_effect"), "%", note=n)
+    a.num("loss_deep5_count", r.get("deep_loss"), "只", note=n + "；跌幅 ≥ 5%")
+    n = f"{prev} 首板在 {day} 仍涨停的比例（以东财涨停池成员为准）"
+    a.num("promotion_base", r.get("promotion_base"), "只", key="1进2", note=n)
+    a.num("promotion_promoted", r.get("promotion_promoted"), "只", key="1进2", note=n)
+    a.num("promotion_rate", r.get("promotion_1to2"), "小数", key="1进2", note=n)
+    fields = {"summary": "limit_up_count", "settled": "money_effect_median_ret", "promotion": "promotion_rate"}
+    for k, why in (r.get("reasons") or {}).items():
+        a.missing.append({"field": fields.get(k, k), "period": day, "reason": why})
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_daily(result), "result": result,
+             "computation": _computation("shortline_emotion.build_daily", {"date": day})}
+    return a.finish(bool(result.get("settled")), extra, "每日情绪读数一项都没算出来")
+
+
+# ---------------------------------------------------------------- 情绪周期
+def shortline_cycle_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("情绪周期计算为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    cy: dict = result.get("cycle") or {}
+    if a.block("cycle", cy):
+        series = cy.get("series") or []
+        cur = cy.get("current_date") or day
+        per = f"{series[0]['date']}..{cur}" if series else cur
+        n = f"{cy.get('window')} 个交易日窗口内的相对读数（0 = 窗口最冷，1 = 最热），没有绝对含义"
+        a.num("cycle_current_score", cy.get("current_score"), "相对分", period=per, note=n)
+        a.num("cycle_trough_score", cy.get("trough_score"), "相对分", period=per, note=n)
+        a.text("cycle_trough_date", cy.get("trough_date"), period=per)
+        a.num("cycle_day_n", cy.get("day_n"), "天", period=per, note="距窗口最低点第几天；不等于正在往上走")
+        a.num("cycle_pctile", cy.get("pctile"), "小数", period=per, note=n)
+        a.text("cycle_trend", cy.get("trend"), period=per)
+        a.num("cycle_window", cy.get("window"), "个交易日", period=per,
+              note=f"请求 {cy.get('requested_window')} 天，实际可用 {cy.get('window')} 天")
+        for s in series:
+            d = s["date"]
+            a.num("cycle_day_score", s.get("score"), "相对分", period=d, note=n)
+            a.num("cycle_day_limit_up", s.get("limit_up"), "只", period=d)
+            a.num("cycle_day_highest_consec", s.get("highest_consec"), "板", period=d)
+            a.num("cycle_day_broken_rate", s.get("broken_rate"), "小数", period=d, note="炸板 ÷ (涨停 + 炸板)")
+        if cur != day:
+            # 目标日的池子没算进来(取数失败,或盘中今天还没收盘):读数是截至前一天的,「今天」不在里面
+            a.degraded.append(f"周期读数截至 {cur}，{day} 没算进来")
+        if cy.get("window") and cy.get("requested_window") and cy["window"] < cy["requested_window"]:
+            a.degraded.append(f"窗口只凑到 {cy['window']}/{cy['requested_window']} 个交易日（部分日子涨停池没取到）")
+    extra = {"date": day, "text": render_cycle(cy or {}),
+             "result": result, "computation": _computation("shortline_emotion.build_cycle", {"date": day, "lookback": ctx["args"].get("lookback", 10)})}
+    return a.finish(bool(result.get("settled")), extra, "情绪周期没算出来")
+
+
+# ---------------------------------------------------------------- 六张事实表
+def shortline_facts_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("盘面事实计算为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+
+    sq: dict = result.get("seal_quality") or {}
+    if a.block("seal_quality", sq):
+        a.num("seal_total", sq["total"], "只")
+        a.num("seal_never_broken", sq["never_broken"], "只", note="涨停后一次没开过板")
+        a.num("seal_never_broken_rate", sq["never_broken_rate"], "小数")
+        a.num("seal_early", sq["opening_seconds"], "只", note="09:35 前首封（含集合竞价一字）")
+        a.num("seal_late", sq["late_seal"], "只", note="14:30 后才最终封住")
+        a.num("seal_reopened", sq["reopened"], "只", note="开过板又回封")
+        a.num("seal_avg_broken_times", sq["avg_broken_times"], "次")
+        a.num("broken_pool_count", sq["broken_pool"], "只", note="东财炸板池")
+        a.num("broken_rate", sq["broken_rate"], "小数", note="炸板 ÷ (涨停 + 炸板)")
+        a.num("seal_ever_opened_rate", sq["ever_opened_rate"], "小数", note="涨停股里盘中开过板的比例，不是炸板率")
+
+    le: dict = result.get("loss_effect") or {}
+    if a.block("loss_effect", le):
+        n = f"{prev} 涨停股在 {day} 的表现；{_src_note(le)}"
+        a.num("loss_sample", le["sample"], "只", note=n)
+        a.num("loss_deep5_count", le["deep_loss_5_count"], "只", note=n + "；跌幅 ≥ 5%")
+        a.num("loss_deep5_rate", le["deep_loss_5_rate"], "小数", note=n)
+        a.num("loss_deep7_count", le["deep_loss_7_count"], "只", note=n + "；跌幅 ≥ 7%")
+        a.num("loss_limit_down_count", le["limit_down_count"], "只", note=n + "；按各自涨跌幅制度判跌停")
+        a.num("loss_worst_ret", le["worst"], "%", note=n)
+        a.num("limit_down_count", le.get("market_limit_down"), "只", note="全市场东财跌停池（不限于昨日涨停股）")
+        rec = le.get("prev_broken_recovery")
+        if isinstance(rec, dict):
+            a.num("prev_broken_recovery_avg_ret", rec.get("avg"), "%", note=f"{prev} 炸板股在 {day} 的平均涨跌")
+            a.num("prev_broken_recovery_positive_rate", rec.get("positive_rate"), "小数", note=f"{prev} 炸板股在 {day} 收红的比例")
+
+    fb: dict = result.get("feedback") or {}
+    if a.block("feedback", fb):
+        n = f"{prev} 涨停股按昨日板位分组，看 {day} 的结果；{_src_note(fb)}"
+        order = fb.get("result_order") or []
+        for tier, cell in (fb.get("matrix") or {}).items():
+            for res in order:
+                a.num("feedback_count", cell.get(res), "只", key=f"{tier}|{res}", note=n)
+            a.num("feedback_tier_total", cell.get("合计"), "只", key=tier, note=n)
+            a.num("feedback_tier_promotion_rate", cell.get("晋级率"), "小数", key=tier, note=n)
+
+    th: dict = result.get("themes") or {}
+    if a.block("themes", th):
+        a.num("theme_count", th.get("theme_count"), "个", note="有涨停的东财所属行业个数")
+        a.num("theme_concentration", th.get("concentration"), "小数", note="第一方向涨停 ÷ 全部涨停")
+        for t in th.get("themes") or []:
+            k = t["sector"]
+            a.num("theme_limit_up", t["limit_up"], "只", key=k)
+            a.num("theme_highest", t["highest"], "板", key=k)
+            a.num("theme_broken", t["broken"], "只", key=k)
+            a.num("theme_broken_rate", t.get("broken_rate"), "小数", key=k)
+            a.text("theme_first_seal", t.get("first_seal"), key=k, note="该方向第一只涨停的首封时间（HHMMSS）")
+        for s in th.get("timeline") or []:
+            a.num("limit_up_by_slot", s["count"], "只", key=s["slot"], note="按首封时间分段")
+
+    evs: dict = result.get("events") or {}
+    if a.block("events", evs):
+        for e in evs.get("events") or []:
+            k = f"{e['tag']}|{e['code']}"
+            a.text("event", f"{e['tag']}｜{e['name']}（{e['code']}）｜{e['note']}", key=k, note=f"{e.get('sector') or '未分类'}；{e.get('board')}")
+            a.num("event_ret", e.get("ret"), "%", key=k)
+
+    bb: dict = result.get("by_board") or {}
+    if a.block("by_board", bb):
+        for b, g in (bb.get("boards") or {}).items():
+            a.num("board_limit_up", g["limit_up"], "只", key=b)
+            a.num("board_highest", g["highest"], "板", key=b)
+            a.num("board_broken", g["broken"], "只", key=b)
+            a.num("board_limit_down", g["limit_down"], "只", key=b)
+            if bb.get("prev_available", True):
+                a.num("board_prev_base", g["prev_base"], "只", key=b, note=f"{prev} 涨停只数")
+                a.num("board_promoted", g["promoted"], "只", key=b)
+                a.num("board_promotion_rate", g.get("promotion_rate"), "小数", key=b)
+        if not bb.get("prev_available", True):
+            a.missing.append({"field": "board_promotion_rate", "period": day, "reason": "前一交易日涨停池未取得"})
+
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_facts(result), "result": result,
+             "computation": _computation("shortline_facts.build_facts", {"date": day})}
+    return a.finish(bool(result.get("settled")), extra, "盘面事实六张表都没算出来")

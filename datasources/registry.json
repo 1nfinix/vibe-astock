@@ -3649,6 +3649,107 @@
       "stages": {}
     },
     {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_emotion",
+      "title": "短线情绪四项(赚钱效应 / 晋级率 / 连板溢价 / 梯队断层;按所选交易日与前一交易日的东财池子算)",
+      "layer": "10 情绪",
+      "module": "shortline_emotion",
+      "function": "build_metrics",
+      "mapper": "shortline_emotion_map",
+      "endpoint_label": "push2ex 涨停 / 炸板 / 跌停 / 昨日涨停池 → emotion_metrics",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。约 8 次东财请求,串行限流下约 10–20 秒"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_cycle",
+      "title": "短线情绪周期(近 N 个交易日涨停数 / 最高连板 / 炸板率合成的窗口内相对分、距低点天数与走向)",
+      "layer": "10 情绪",
+      "module": "shortline_emotion",
+      "function": "build_cycle",
+      "mapper": "shortline_cycle_map",
+      "endpoint_label": "push2ex 涨停 + 炸板池 × N 日 → cycle_position",
+      "args": {
+        "date": null,
+        "lookback": 10
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。每个交易日 2 次东财请求(默认 10 天 ≈ 20 次),最慢,所以和当天四项分开;lookback 3–30"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_daily",
+      "title": "短线每日情绪读数(涨停数 / 最高连板 / 炸板率 / 昨日涨停股今日中位涨幅 / 跌超 5% 只数 / 1进2 晋级率,历史分位与近 N 天走势的原料)",
+      "layer": "10 情绪",
+      "module": "shortline_emotion",
+      "function": "build_daily",
+      "mapper": "shortline_daily_map",
+      "endpoint_label": "push2ex 涨停 / 炸板 / 昨日涨停池 + 前一日涨停池 → daily_readings",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian/stats_context 的六项读数;字段名与口径和 cn_shortline_emotion / cn_shortline_facts 的同名证据一致。约 4 次东财请求。东财这几张池只留最近一个月左右:已收盘的日子结果不变、长期缓存,历史靠缓存越积越长;没收盘的那一天一律 partial(不缓存)。界面视图「情绪历史」按日扇出调用它,再算分位、跟前一天比和走势"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_facts",
+      "title": "短线盘面事实(封板质量 / 亏钱效应 / 昨日强势股反馈矩阵 / 题材结构 / 关键事件 / 分涨跌幅制度生态)",
+      "layer": "8 打板",
+      "module": "shortline_facts",
+      "function": "build_facts",
+      "mapper": "shortline_facts_map",
+      "endpoint_label": "push2ex 涨停 / 炸板 / 跌停 / 昨日涨停池 → market_facts",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。已收盘的日子结果不变可长期缓存;没收盘的那一天一律 partial(取数服务不缓存 partial,免得盘中的数被冻住)。主板 ST 跌停按 2026-07-06 起的 10% 判(此前 5%)"
+    },
+    {
       "id": "em_market_trend",
       "title": "主要指数中长线(5/20/60/250 日涨跌、年初至今、均线、250 日高低点)+ 沪深两市成交额近 60 日",
       "layer": "19 指数",
