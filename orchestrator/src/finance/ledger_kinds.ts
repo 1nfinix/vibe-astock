@@ -12,6 +12,8 @@
 import type { LedgerKindDef } from "../plugin.ts";
 import { CITED_MAX, MAX_CONDITIONS, REVIEW_SECTIONS, REVIEW_SECTION_IDS, REVIEW_SECTION_STATUSES, SECTION_TEXT_MAX } from "./shortline/review_defs.ts";
 import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, VERIFY_METRIC_KEYS } from "./shortline/verify_metrics.ts";
+import { DEFAULT_RULES, PLAYBOOKS, isFractionRule, type RuleKey } from "./journal/defs.ts";
+import { MAX_RATE } from "./journal/fees.ts";
 
 /**
  * 主体代码的台账规范形:
@@ -82,6 +84,11 @@ export const FINANCE_FIELD_LABELS: Record<string, string> = {
   judged_at: "判定日", verdict_note: "判定说明",
   date: "日期", price: "价格", fee: "费用", amount: "金额", ratio: "比例", migrated_from: "迁移自",
   metric: "读数", direction: "预期方向", reason: "理由",
+  trade_id: "所属交易", playbook: "打法", as_planned: "按计划", planned_stop: "计划止损价", planned_target: "计划目标价",
+  pnl_pct: "盈亏 %", planned_at: "标注时间",
+  commission_rate: "佣金费率", commission_min: "单笔佣金最低", stamp_tax_rate: "印花税", transfer_fee_rate: "过户费",
+  max_loss_per_trade_pct: "单笔最大亏损 %", max_loss_per_day_pct: "单日最大亏损 %", max_positions: "最多同时持仓",
+  max_trades_per_day: "单日最多开仓", pause_after_losses: "连亏几笔后停手", max_unplanned_ratio: "计划外占比上限", equity_base: "账户规模",
 };
 
 export const FINANCE_ENUM_LABELS: Record<string, string> = {
@@ -300,6 +307,55 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       conditions_note: TEXT(300),
     },
     required: ["date", "sections"],
+  },
+
+  /**
+   * 交易标注(交易日志用,移植自 VA 的交易记录):给「一笔交易」(同一代码从买进到卖光的一轮,由交易流水推出)
+   * 写打法、是否按计划、下单时的计划止损 / 目标、备注。成交本身只在 `trade` 里,这里不存数量和价格。
+   * `trade_id` 填这一轮里任意一笔流水的 id;留空 = 没有成交明细的补记(只填盈亏 %,`date` 必填,由交易日志检查)。
+   * 🔴 `planned_stop` 必须是**下单时**写下的:在险资金按它算,事后补填会让这个口径失真 ——
+   *    `planned_at` 记第一次写下止损 / 目标的时间,晚于买入日的页面标「事后补填」。
+   * `as_planned` 不写 = 未标注(不是「计划外」)。
+   */
+  journal_tag: {
+    label: "交易标注",
+    properties: {
+      symbol: REQUIRED_SYMBOL,
+      name: TEXT(40),
+      trade_id: TEXT(80),
+      date: DATE,
+      playbook: { type: "string", enum: PLAYBOOKS },
+      as_planned: { type: "boolean" },
+      planned_stop: { type: "number", exclusiveMinimum: 0 },
+      planned_target: { type: "number", exclusiveMinimum: 0 },
+      /** 只用于没有成交明细的补记;有明细的按流水算出的为准 */
+      pnl_pct: { type: "number", minimum: -100, maximum: 1000 },
+      note: TEXT(500),
+      planned_at: TEXT(40),
+      migrated_from: TEXT(80),
+    },
+    required: ["symbol"],
+  },
+
+  /**
+   * 交易日志设置:费率、风险规矩、账户规模。只认一条(多条时取最后修改的那条,页面提示)。
+   * 费率四项要么都不填(用默认、标「默认」),要么都填;只填一部分由交易日志报出来,不拿默认值补。
+   * 规矩不填的那项用默认值(VA 同口径)。账户规模不填就不算任何「占账户的比例」,产品不替用户估。
+   */
+  journal_settings: {
+    label: "交易日志设置",
+    properties: {
+      commission_rate: { type: "number", minimum: 0, maximum: MAX_RATE },
+      commission_min: { type: "number", minimum: 0 },
+      stamp_tax_rate: { type: "number", minimum: 0, maximum: MAX_RATE },
+      transfer_fee_rate: { type: "number", minimum: 0, maximum: MAX_RATE },
+      ...Object.fromEntries((Object.keys(DEFAULT_RULES) as RuleKey[]).map((k) => [k,
+        k === "max_unplanned_ratio" ? { type: "number", minimum: 0, maximum: 1 }
+          : isFractionRule(k) ? { type: "number", exclusiveMinimum: 0 }
+            : { type: "integer", minimum: 1 }])),
+      equity_base: { type: "number", exclusiveMinimum: 0 },
+    },
+    required: [],
   },
 
   /** 行动:待办。可由判据到期生成,也可以自己写 */

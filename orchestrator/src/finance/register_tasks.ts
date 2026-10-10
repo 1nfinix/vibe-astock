@@ -21,6 +21,7 @@ import { earningsBrief } from "./earnings_brief.ts";
 import { shareCard } from "./share_card.ts";
 import { holdingsAct, holdingsPerf, holdingsView } from "./holdings_view.ts";
 import "./shortline/register.ts";
+import "./journal/register.ts";
 
 registerDeepTargetResolver((dataRoot) => new FinanceDeepTargetResolver(dataRoot));
 // 定时提醒同样只在提供 API 的入口注册;真正开始按点运行的是 api.ts 的 main()
