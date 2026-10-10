@@ -293,7 +293,7 @@ export function Layout() {
               <span className="hidden text-muted-foreground sm:inline">工作空间 /</span><strong className="truncate font-semibold">{currentTitle}</strong>
             </div>
             <div className="flex items-center gap-1.5" style={{ marginRight: "var(--ai-trigger-space, 0px)" }}>
-              <span className="hidden text-[10px] text-muted-foreground lg:inline">本地金融研究工作台</span>
+              <span className="hidden text-[10px] text-muted-foreground lg:inline">本地 A 股短线工作台</span>
               <button onClick={privacy.toggle} aria-pressed={privacy.on}
                 aria-label={privacy.on ? "关闭隐私模式" : "打开隐私模式"}
                 title={privacy.on

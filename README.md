@@ -1,16 +1,16 @@
 <p align="center"><b>简体中文</b> | <a href="README_en.md">English</a></p>
 
-<h1 align="center">Vibe Research</h1>
+<h1 align="center">Vibe AStock</h1>
 
 <p align="center">
-  <b>A 股、美股、港股的投研工作台</b><br>
-  自选与持仓 · 每日复盘 · 产业资讯 · 产业研究 · 个股深挖 · 回测 · 研报库 · 180 个数据端点
+  <b>A 股短线复盘与跟踪工作台</b><br>
+  盯盘 · 情绪复盘 · AI 复盘 · 明日验证 · 交易日志 · 个股深挖 · 回测 · 180 个数据端点
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow"></a>
-  <a href="CHANGELOG.md"><img alt="源码版本 v2.1.0" src="https://img.shields.io/badge/source-v2.1.0-F35D2B"></a>
-  <img alt="市场：A 股、美股、港股" src="https://img.shields.io/badge/markets-CN%20%7C%20US%20%7C%20HK-0b7285">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+  <a href="CHANGELOG.md"><img alt="源码版本 v2.0.0" src="https://img.shields.io/badge/source-v2.0.0-F35D2B"></a>
+  <img alt="A 股短线" src="https://img.shields.io/badge/market-A%20%E8%82%A1-c92a2a">
   <img alt="180 个数据端点" src="https://img.shields.io/badge/data-180%20endpoints-2f9e44">
   <img alt="AI：Claude Code、Codex、WorkBuddy 或模型 API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
 </p>
@@ -18,24 +18,27 @@
 ---
 
 <p align="center">
-  <a href="https://viberesearch.wiki">官方网站</a> ·
   <a href="#界面预览">界面预览</a> ·
   <a href="#功能">功能</a> ·
   <a href="#数据与市场">数据</a> ·
   <a href="#支持的-ai">支持的 AI</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#从旧版v1x升级">从旧版升级</a> ·
   <a href="#安全与隐私">隐私</a> ·
   <a href="#开发与测试">开发</a> ·
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 
-Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看指数、自选和持仓盈亏，再复盘盘面、追资讯、研究产业和公司、验证想法，都在同一个页面里完成；研究记录和资料都保存在自己的电脑上。
+Vibe AStock 是一个 A 股短线复盘与跟踪工作台。盘中在「盯盘」看持仓、自选和昨日梯队的异动；收盘后在「情绪复盘」看情绪读数，让 AI 分情绪、资金、题材、龙虎榜、龙头五段写复盘，写下明天要验证的条件，下一个交易日收盘自动对账；自己的每笔交易记进「交易日志」，按入场那天的情绪和板位回头自查。行情和统计由程序算，AI 只负责解读，每个数字都由程序核对出处；数据和记录都存在自己的电脑上。
 
-- **10 个一级栏目**：首页、盯盘、复盘、交易日志、产业资讯、产业研究、研究工具、我的股票、资料库、接入 AI。首页最上面是大盘与全球指数，接着是自选和持仓（含持仓盈亏、当日盈亏，开盘时价格自动刷新），再往下才是对话。有几个页面的栏目收成二级，比如「盯盘」下面是实时动态、竞价与盘中，「复盘」下面是情绪复盘、每日复盘，「研究工具」下面是个股深挖、多空辩论、回测、候选池；「产业研究」下面直接列出各个板块。
-- **180 个数据端点**（35 层），覆盖 A 股、美股、港股：行情、K 线、逐笔、财务、一致预期、公告、研报、资金、南向资金与 AH 溢价、十大股东、主营构成、港美股公司资料、派息与业绩发布日、期权、指数成分与估值、期货与大宗、业绩预告 / 调研 / 增减持 / 回购 / 质押 / 龙虎榜 / 限售解禁、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘等。
-- **六阶段个股研究（A 股、港股、美股）**：公司画像 → 财务 → 盈利预期 → 估值 → 风险 → 报告。原始数据保留来源，派生数字保留计算过程。
-- **研报库**：导入 PDF、Word 等资料，检索、提问，回答里的引用能回查原文。
-- **回测和持仓体检**：用对话描述想法跑历史回测，结果和指数对照，带累计收益、回撤、月度、年度 4 张图；持仓按一笔笔交易流水记，按币种看收益率、集中度、风险贡献、行业暴露和相关性，还能按现在的持仓比例回看几段历史大跌期。
+v2.0.0 起和 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) 用同一套底座：接入 AI、个股深挖（A 股、港股、美股）、回测、产业资讯、产业研究、研报库、远程访问和免安装包都和它一样。用过旧版（v1.x，Python 版）的可以把数据导进来，见[从旧版升级](#从旧版v1x升级)。
+
+- **10 个一级栏目**：首页、盯盘、复盘、交易日志、产业资讯、产业研究、研究工具、我的股票、资料库、接入 AI。短线相关的排在前面：「盯盘」下面是实时动态、竞价与盘中，「复盘」下面是情绪复盘、每日复盘，「交易日志」单独一个栏目；「研究工具」下面是个股深挖、多空辩论、回测、候选池，「产业研究」下面直接列出各个板块。
+- **盯盘**：持仓、自选、昨日梯队、大票和成交额前十的当下读数，3 分钟涨跌超 1.5% 记急拉 / 急跌，碰到或离开涨停价记封板 / 开板；昨日涨停股 09:25 的竞价强弱，和全天六个时点的情绪路径。
+- **情绪复盘**：赚钱效应、晋级率、连板溢价、梯队断层、情绪周期、封板质量、题材事件树、首板名单；AI 复盘与 AI 周报、明日验证（头天晚上写条件，第二天收盘自动对账）、涨停样本统计、结构变化。
+- **交易日志**：每笔交易自动对上入场那天的情绪强中弱和当时板位，按情绪环境、板位、打法、是否按计划分组看胜率；风险与纪律、复查、模式卡。只存在本机，不发给 AI。
+- **180 个数据端点**（35 层），其中 12 个是短线专用：情绪读数、六张事实表、题材事件树、首板名单、涨停结构、盘中情绪、昨日梯队等；另有行情、K 线、逐笔、财务、一致预期、公告、研报、资金、龙虎榜、限售解禁、可转债、期货与大宗、港美股、新闻、宏观等。
+- **六阶段个股研究（A 股、港股、美股）**：公司画像 → 财务 → 盈利预期 → 估值 → 风险 → 报告，原始数据保留来源，派生数字保留计算过程。
 - **AI 用自己的**：Claude Code、Codex、WorkBuddy 订阅，或 DeepSeek、通义千问、Kimi、MiMo 等任意兼容 Chat Completions 的模型 API。
 - **Windows、macOS、Linux 都能运行**；也可以装在 macOS / Linux 云端电脑上，用带访问口令的链接远程打开。
 
@@ -43,18 +46,37 @@ Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看
 
 ## 界面预览
 
-![深色首页：指数、自选、持仓与对话区](assets/screenshots/2026-10-10/home-dark.png)
+![情绪复盘 · 今日情绪](assets/screenshots/2026-10-10/shortline-today.png)
 
-<details>
-<summary>浅色主题</summary>
-
-![浅色首页：指数、自选、持仓与对话区](assets/screenshots/2026-10-10/home-light.png)
-
-</details>
-
-首页先看指数、自选和持仓，往下是和 AI 的对话，最下面按 8 个一级栏目进入各个功能；左侧栏目默认常驻展开，可以收起。
+「情绪复盘 · 今日情绪」：昨天涨停的今天赚不赚钱、晋级顺不顺、梯队哪里断层、钱亏在哪个板位。
 
 <table>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/watch-live.png" alt="盯盘 · 实时动态"><br><b>盯盘 · 实时动态</b>：持仓、自选、昨日梯队的当下读数和盘中异动（拍摄时是周末，显示休市）</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/watch-intraday.png" alt="盯盘 · 竞价与盘中"><br><b>盯盘 · 竞价与盘中</b>：昨日涨停股的竞价强弱，六个时点的情绪路径</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/shortline-review.png" alt="AI 复盘"><br><b>AI 复盘</b>：五段分开写再汇总，每个数字由程序核对，建议的验证条件一键加进明日验证</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/shortline-weekly.png" alt="AI 周报"><br><b>AI 周报</b>：情绪走势、题材轮动、验证回看；「本周我的交易」只在本机算</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/shortline-verify.png" alt="明日验证"><br><b>明日验证</b>：收盘后写下一个交易日的方向条件，附历史发生率，下一场收盘自动对账</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/shortline-samples.png" alt="涨停样本"><br><b>涨停样本</b>：昨日涨停股次日表现，按封板时间、打法、入场日情绪分组</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/journal-records.png" alt="交易日志 · 交易记录（示例数据）"><br><b>交易日志 · 交易记录（示例数据）</b>：按情绪环境、当时板位、打法、是否按计划分组看胜率</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/journal-review.png" alt="交易日志 · 复查（示例数据）"><br><b>交易日志 · 复查（示例数据）</b>：值得回头看的单子、最大浮盈浮亏、看错了还是没做好</td>
+</tr>
+</table>
+
+<details>
+<summary>其他栏目（和 Vibe Research 共用）</summary>
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/home-dark.png" alt="首页"><br><b>首页</b>：指数、自选、持仓与对话区</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/home-light.png" alt="首页（浅色主题）"><br><b>首页（浅色主题）</b></td>
+</tr>
 <tr>
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/daily-review.png" alt="每日复盘"><br><b>每日复盘</b>：涨跌面、量能、连板高度、两融、主要指数的中长期位置</td>
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/stock-overview.png" alt="个股深挖 · 概览"><br><b>个股深挖 · 概览</b>：K 线（可切复权）、财报前瞻与复盘、事件回看</td>
@@ -68,16 +90,22 @@ Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/signals.png" alt="产业信号"><br><b>产业信号</b>：GPU 租金一年走势与现货价</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/holdings.png" alt="我的持仓（示例数据）"><br><b>我的持仓（示例数据）</b>：按交易流水算持仓、成本和盈亏，持仓体检提示集中度</td>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/holdings.png" alt="我的持仓（示例数据）"><br><b>我的持仓（示例数据）</b>：按交易流水算持仓、成本和盈亏</td>
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/calendar.png" alt="事件日历"><br><b>事件日历</b>：自选和持仓的除权、财报预约，加上自己写的裁决点</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/candidates.png" alt="候选池"><br><b>候选池</b>：按条件逐只核对指数成分股，只排除、不排名</td>
 <td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/connect-ai.png" alt="接入 AI"><br><b>接入 AI</b>：第一次打开时选订阅或模型 API</td>
 </tr>
+<tr>
+<td width="50%" valign="top"><img src="assets/screenshots/2026-10-10/settings-import.png" alt="从旧版导入"><br><b>从旧版导入</b>：先预览、再导入，导入前自动备份</td>
+<td width="50%" valign="top"></td>
+</tr>
 </table>
 
-截图拍摄于 2026-10-10（开发版，休市），使用单独的演示工作区，未接入 AI。自选、持仓、论点和判据是为截图录入的示例数据，不是真实持仓；研究报告是 2026-10-08 开发验证时跑完的一份报告，原样展示；其余都是拍摄时页面取到的公开数据。截图只展示界面，不构成投资建议（[截图说明](assets/screenshots/2026-10-10/README.md)）。
+</details>
+
+截图拍摄于 2026-10-10 至 10-11（开发版，周末休市），使用单独的演示工作区，未接入 AI。持仓、自选和交易日志里的交易是为截图录入的示例数据（备注写着「示例数据」，价格取在当天真实的最高价和最低价之间），不是真实交易；AI 复盘和 AI 周报是 2026-10-10 用 Claude Code 订阅给 2026-10-09 实际写的版本，原样展示；「竞价与盘中」是旧版在 2026-09-23 交易时段存下、再从旧版导入的快照；研究报告是 2026-10-08 开发验证时跑完的一份报告；其余都是拍摄时页面取到的公开数据。截图只展示界面，不构成投资建议（[截图说明](assets/screenshots/2026-10-10/README.md)）。
 
 ## 功能
 
@@ -93,7 +121,7 @@ Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看
 <tr><td nowrap>盯盘</td><td nowrap>竞价与盘中</td><td>昨日涨停股 09:25 的竞价强弱（中位、高开占比、分板位、最高标），09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00 六个时点的情绪路径（昨日涨停股中位涨幅 + 当时全市场涨停 / 炸板 / 跌停），昨晚写的明日验证条件拿盘中读数先对一对。快照由程序在时点自动存，过了时点补不回来</td></tr>
 <tr><td nowrap>复盘</td><td nowrap>情绪复盘</td><td>短线情绪在什么温度：赚钱效应、晋级率、连板溢价、梯队断层、昨日强势股反馈、封板质量、题材事件树和首板名单；AI 复盘按情绪、资金、题材、龙虎榜、龙头分五段写再汇总，每个数字和引用由程序核对、可以逐条查看依据，建议的验证条件一键加进明日验证；另有近 5 天、情绪历史、明日验证（头天晚上写条件，下一个交易日收盘后自动对账）、涨停样本统计和结构变化</td></tr>
 <tr><td nowrap>复盘</td><td nowrap>每日复盘</td><td>打开就看市场处在什么状态：涨跌面、量能、短线情绪（涨停 / 跌停 / 炸板、昨日涨停今日表现、晋级、连板股）、指数中长期位置、两融、股债收益率、行业资金和龙虎榜；涨停股按行业分档并和前两个交易日比</td></tr>
-<tr><td nowrap>交易日志</td><td nowrap>—</td><td>记下自己的每笔交易（有成交明细的写进持仓流水，盈亏按流水扣掉佣金、印花税、过户费算；没有明细的只记盈亏 %），自动对上入场那天的情绪强中弱和当时板位（首板、连板、炸板、没碰涨停），按情绪环境、板位、打法、是否按计划、持有天数分组看胜率和平均每笔；<strong>风险与纪律</strong>看按计划止损估算的在险资金、权益曲线、最近 10 / 20 / 50 笔的状态、计划外交易的代价和自己的规矩有没有违反；<strong>复查</strong>列出值得回头看的单子、最大浮盈浮亏、看错了还是没执行好；<strong>模式卡</strong>把自己的打法写下来，按版本分段看业绩。只存在本机，不发给 AI</td></tr>
+<tr><td nowrap>交易日志</td><td nowrap>—</td><td>记下自己的每笔 A 股交易（有成交明细的写进持仓流水，盈亏按流水扣掉佣金、印花税、过户费算；没有明细的只记盈亏 %），自动对上入场那天的情绪强中弱和当时板位（首板、连板、炸板、没碰涨停），按情绪环境、板位、打法、是否按计划、持有天数分组看胜率和平均每笔；<strong>风险与纪律</strong>看按计划止损估算的在险资金、权益曲线、最近 10 / 20 / 50 笔的状态、计划外交易的代价和自己的规矩有没有违反；<strong>复查</strong>列出值得回头看的单子、最大浮盈浮亏、看错了还是没执行好；<strong>模式卡</strong>把自己的打法写下来，按版本分段看业绩。只存在本机，不发给 AI</td></tr>
 <tr><td nowrap>产业资讯</td><td nowrap>资讯雷达</td><td>新闻、公司公告与事件线索，找出需要进一步核对的信息</td></tr>
 <tr><td nowrap>产业资讯</td><td nowrap>产业信号</td><td>GPU 租金、月度产业数据、原材料与招聘等上下游信号</td></tr>
 <tr><td nowrap>产业研究</td><td nowrap>20 个板块</td><td>侧栏里直接列出 20 个产业板块（点「产业研究」本身是全部板块一览），每个板块一页，配一组分步研究提示词：先让 AI 读研报，再按栏目一页页梳理技术路线、产业链和格局；可以复制到自己常用的 AI，也可以填进「问 Agent」。板块内容由你的 AI 查资料产出，产品不预先填写</td></tr>
@@ -110,7 +138,50 @@ Vibe Research 是一个 A 股、美股、港股的投研工作台。打开先看
 </tbody>
 </table>
 
-旧地址（/watchlist、/portfolio、/stock-data）照样能打开，会跳到新位置；原来个股页里的多空辩论分页（?tab=debate）会跳到「多空辩论」页，并带上原来选的股票。
+### 盯盘
+
+「盯盘」分两页。页面开着就自动刷新，切到后台就停并写明「已暂停」；开几个窗口都只取一份行情。
+
+**实时动态**
+
+- **持仓与自选**：持仓列现价、今日涨跌、浮动盈亏 %（股数和成本在「自选与持仓」页），自选列现价、今日涨跌和成交额。
+- **昨日梯队**：上一个交易日收盘仍封在涨停价的票今天走得怎么样，按全部 / 2 板以上 / 3 板以上筛；「封住」= 现价在涨停价，只在连续竞价和收盘后判断。今天还没取到行情时，先显示上一个交易日的读数并标「非今日」。
+- **大票与成交额**：500 亿以上大票的涨幅前十、跌幅前五，昨日成交额前十。
+- **盘中异动**：3 分钟内涨跌 ≥ 1.5% 记急拉 / 急跌，碰到 / 离开涨停价记封板 / 开板，同一只同一类 5 分钟内不重复；只在连续竞价时段判断，集合竞价和午休时清零窗口与封板状态。可以按幅度（≥1.5% / ≥3% / ≥5%）和范围（全部盯的票 / 只看持仓与自选）筛；当天的异动存在本机，重启后接着显示。异动是已经发生的行情事件，不是推荐，也不是预测。
+- 连续竞价时每 3 秒取一次（大票 30 秒），其余时段 15–60 秒。行情是腾讯快照，不是逐笔，两次快照之间的变化看不到。
+
+**竞价与盘中**
+
+- **竞价强弱**：昨日涨停股 09:25 的竞价中位数、均值、高开占比、低开超 5% 的只数，按昨日板位分开看（首板和高位板的竞价含义不同），以及最高标。
+- **今日情绪路径**：09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00 六个时点，昨日涨停股的中位涨幅（承接强弱）和当时全市场的涨停 / 炸板 / 跌停家数、封板率、最高板，以及与复盘同口径的 1进2。同样是收盘 −2%，「早上 +3% 一路杀下来」和「早上 −5% 修复上来」是两回事，只看收盘值读不出来。
+- **明日验证的盘中读数**：昨晚写的条件拿盘中读数先对一对，标「暂」，以收盘为准。
+- 快照由定时任务到点自动存（同一时点失败最多重试 6 次），时点窗口里也能手动存一张；过了时点补不回来，没存的写「没存」。周末、节假日各时点标「休市」。可以选日期回看以前存下的。
+
+### 情绪复盘
+
+「复盘」组里排第一，共 8 个分页。复盘日默认是最近一个已收盘的交易日；未来日期和非交易日直接拒绝，不会算出「涨停 0 家」。
+
+- **今日情绪**：赚钱效应（昨日涨停股今天的中位数、均值、翻红率、再度涨停）、晋级率（1进2、2进3、3 板以上）、连板溢价、梯队结构（哪个板位断档）、昨日强势股反馈（按昨日身份分档）、亏钱效应、封板质量（一直没炸、炸后回封）、情绪周期、题材事件树（同花顺涨停原因归到题材，问财补充）和首板名单。每块都有「口径」，点开看是怎么算的。
+- **AI 复盘**：情绪、资金、题材、龙虎榜、龙头五段，每段开一个新对话、只看自己那几块数据，最后写汇总并建议明日验证条件，一键加进「明日验证」。每个数字由程序分三档核对：对得上资料包、写了算式且重算通过、没交代出处（算式对不上标红）；证据编号逐个核对，「查看依据」悬停看原始那一行。复盘日之后的数据不进资料包；每写一次存一版，不覆盖旧版。
+- **AI 周报**：选中那天所在的一周，情绪走势、题材轮动、验证回看三段加汇总，核对方式同 AI 复盘，开头写明本周休市的工作日。「本周我的交易」从交易日志在本机算，只在页面上显示，不进 AI 资料包，也不进页面上下文。
+- **近 5 天**：题材热度和龙头谱系，龙头走势用前复权日 K；同样高度的最高标按首封时间排。
+- **情绪历史**：每日读数在近 10 / 20 / 30 / 60 个交易日里的分位，和前一天比。
+- **明日验证**：收盘后写下一个交易日的方向条件（比如「涨停家数明天持平」「1进2 晋级率明天上升」），每条附这个方向历史上出现过几成；下一场收盘自动对账，给近 60 个交易日的累计战绩。下一个交易日 09:15 开盘竞价以后不能再写或改，那之后写进来的标「事后」、不进战绩。
+- **涨停样本**：昨日涨停股的次日表现，按打法（首板打板、首板早封等）、最后封板时间、入场日情绪分组，可选近 20 / 30 / 60 / 90 天。样本是事后名单，没扣掉排队买不到的情况，按收盘价等权算，是市场现象统计，不是策略回测。
+- **结构变化**：最近 10 个交易日对比之前 20 个，各项读数按日中位数比有没有明显移位；东财几张池返回的字段清单有没有变（数据源改字段会造出假断点）；可以登记制度事件，比如涨跌幅制度调整。
+
+情绪分档和周期是分析框架，不是客观事实，也不能由某一个读数直接推出交易结论。东财的涨停、炸板、跌停池只保留约一个月；「短线收盘取数」每个交易日 15:35 把定稿的读数存到本机，存下来以后一直能看。没取到的读数写明原因，不当成 0。复盘里的 AI 只解读程序取到的数据，不推荐个股、不预测涨跌、不给买卖时机。
+
+### 交易日志
+
+「交易日志」排在复盘后面，共 4 个分页。数据只存在本机，**不发给 AI**：这几页不登记页面上下文，右下角的 AI 会显示「这一页还没有可聊的内容」。
+
+- **交易记录**：成交只记在「我的股票」的交易流水里，一份账；同一只从空仓买进到卖光算一笔。每笔自动对上入场那天的情绪强中弱和当时板位（首板、连板、炸板、没碰涨停，带炸板次数和行业）。情绪分 = 涨停家数 ×（1 + 最高连板）×（1 − 炸板率），在你自己交易过的日子里三等分，所以强中弱是相对的。每笔可以标打法（打板、低吸、接力、半路、套利、其它）、是否按计划、计划止损和目标价、备注；按情绪环境、当时板位、打法、是否按计划、持有天数分组看笔数、胜率、平均每笔、最好最差和净盈亏，胜率不算持平，样本少的标「样本少」。没有成交明细的也可以只记盈亏 %。
+- **风险与纪律**：按计划止损估算的在险资金、权益曲线、最近 10 / 20 / 50 笔的状态、计划外交易的代价；自己写的规矩（单笔亏损上限、单日亏损上限、同时持仓只数、每天开仓笔数、计划外占比）逐条检查，违反的列出日期。
+- **复查**：值得回头看的单子，判定基准全部来自你自己（仓位大不大、拿得久不久都和你自己的中位数比，亏损上限用你写的规矩）；最大浮盈浮亏（腾讯不复权日 K，只算卖光了的一轮）；看错了还是没做好（入场那天对照前一晚写的明日验证）。
+- **模式卡**：把自己的打法写下来（适用情形、入场、出场、仓位），改了从次日起算新版本，按版本分段看业绩。
+
+只管 A 股（费率、印花税、T+1 都按 A 股规则），港股、美股的成交照样在持仓里算，不进交易日志。算法照旧版：移动加权平均成本，费用没填的按费率估并标「估」。隐私模式遮金额、股数和自己写的价位。这些都是对自己历史行为的统计，不预测市场，也不给下一笔建议。
 
 ### 首页
 
@@ -247,14 +318,17 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 
 ## 数据与市场
 
-数据注册表共 **180 个端点、35 层**。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
+数据注册表共 **180 个端点、35 层**，其中 12 个是短线专用（`cn_shortline_*`）：情绪四项、情绪周期、每日读数、六张事实表、题材事件树、首板名单、昨日涨停股当日表现、涨停结构、盘中情绪、昨日梯队、成交额前十、大市值股；已收盘的日子长期缓存，没收盘的一天标「部分」、不缓存。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。其余类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
 
 | | A 股 | 美股 | 港股 |
 |---|---|---|---|
+| 盯盘、情绪复盘、交易日志里的板位与情绪 | ✓ | — | — |
 | 数据端点（各市场种类不同，见端点目录） | ✓ | ✓ | ✓ |
 | 自选股、持仓、研报库、AI 对话 | ✓ | ✓ | ✓ |
 | 六阶段个股研究 | ✓ | ✓ | ✓ |
 
+- 短线功能只看 A 股：涨停、炸板、连板、梯队这些读数来自东财涨停池、同花顺和问财等 A 股来源。交易日志也只管 A 股（费率、印花税、T+1 都按 A 股规则）；港股、美股的成交在「自选与持仓」照样记账、算盈亏，不进交易日志，页面上只报个数。
+- 东财的涨停、炸板、跌停池只保留约一个月；「短线收盘取数」每个交易日 15:35 把定稿的读数存到本机，存下来以后一直能看。程序没开、没存上的日子，超过一个月就补不回来；没取到的读数写明原因，不当成 0。
 - 港股、美股研究的口径差异见上文「个股深挖」。
 - 端点登记在册不保证第三方服务随时可用；第三方公开数据可能延迟、缺失或有误。
 
@@ -275,6 +349,7 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 - 选了哪个就用哪个，条件不满足会直接报错，不会悄悄换成别家。
 - 模型 API 要支持 Chat Completions 和工具调用（function calling）。
 - 产品不附赠订阅或额度，需要对应服务可用。
+- 不接 AI 也能用：盯盘、情绪读数、明日验证对账、涨停样本、交易日志都由程序算；AI 复盘、AI 周报、对话、个股研究、多空辩论和回测要先接入。
 
 **各家怎么连接：**
 
@@ -288,14 +363,14 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 <details>
 <summary>接入细节、工具权限与局域网访问</summary>
 
-- 研究的每个阶段是一次独立会话，只能调用 Vibe Research 的 5 个受控工具（列文件、读文件、确定性计算、写阶段产物、写报告），订阅 CLI 的内建工具全部关闭；收工检查由产品执行，四种 AI 来源都一样。
+- 研究的每个阶段是一次独立会话，只能调用 Vibe AStock 的 5 个受控工具（列文件、读文件、确定性计算、写阶段产物、写报告），订阅 CLI 的内建工具全部关闭；收工检查由产品执行，四种 AI 来源都一样。
 - 页面上的对话、研究、辩论和回测都允许 AI 联网和调用产品工具。通过接口调用时仍可传 `executionMode: "direct"` 要一轮不调用工具的回答；这时个股研究、多空辩论和 Agent 回测会直接报错，不会悄悄降级。
 - 订阅只认对应的订阅登录（Codex 只认 ChatGPT 登录，Claude 只认 claude.ai 订阅登录）。终端里的 API key 环境变量不会带进 CLI，避免计费方被悄悄换掉。研究只开放产品受控工具；用户配置与自动记忆保持关闭。
 - 例外：Codex 会读你自己的全局 `$CODEX_HOME/AGENTS.md`（没有参数能关）。产品指令优先级更高，但里面的称呼、语气等设定仍可能生效；产品不加载你的 `config.toml`。
 - WorkBuddy 自带的旧版 CLI 如果没有「禁止会话落盘」参数，整次回答会改在一次性临时目录里运行，结束后删除。
 - 订阅的每次对话都会启动对应的本机 CLI，不承诺固定响应时间。
 - API 模式的 key 保存在当前浏览器的本机 `localStorage`，方便下次直接使用；它不是系统钥匙串，也不承诺加密，只建议在可信的个人电脑上使用，共享电脑用完请主动清除。key 随请求发到本机后端，不写进仓库、后端配置、运行账本或日志。
-- 内置供应商模板：OpenAI、DeepSeek、通义千问、智谱 GLM、Kimi、MiMo 指向各家官方 Chat Completions 地址，另有一个未实测的 `selfhosted` 自托管占位模板。截至 2026-10-08，这些模板都还没用真实 key 跑过兼容矩阵，界面标「有模板·未实测」。未实测照样能用：结构化要求写进提示词，产物仍由产品自己校验；用真实 key 实测过的模板才标「已实测」。
+- 内置供应商模板：OpenAI、DeepSeek、通义千问、智谱 GLM、Kimi、MiMo 指向各家官方 Chat Completions 地址，另有一个未实测的 `selfhosted` 自托管占位模板。截至 2026-10-11，这些模板都还没用真实 key 跑过兼容矩阵，界面标「有模板·未实测」。未实测照样能用：结构化要求写进提示词，产物仍由产品自己校验；用真实 key 实测过的模板才标「已实测」。
 - 出现重新连接提示时，按页面上的具体错误处理（未登录、登录失效或连接测试没通过），不要都当成订阅过期。
 
 详细说明见 [docs/model-access.md](docs/model-access.md) 和 [providers/README.md](providers/README.md)。
@@ -304,7 +379,7 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 先设置 `$env:VRA_LAN="1"`，再运行 `scripts/start.ps1`。只开放前端，后端仍绑定回环地址；
 后端已启动时也可运行 `VRA_LAN=1 npm run dev --prefix desktop`。
 **仅限受信任的局域网**：这是单用户工作台共享，不是账号隔离，网络内能访问端口的人都能操作。
-HTTP 不加密，API key 和研究资料可能明文传输；不要暴露到公网，也不要在不可信网络开启。
+HTTP 不加密，API key、研究资料和交易记录可能明文传输；不要暴露到公网，也不要在不可信网络开启。
 代理先校验浏览器同源，再归一化 Origin；远程模型地址仍须 HTTPS，本机模型可用回环 HTTP。
 详见[模型接入与局域网边界](docs/model-access.md#5-自托管模型局域网与远程访问)。
 
@@ -329,8 +404,8 @@ HTTP 不加密，API key 和研究资料可能明文传输；不要暴露到公�
 Windows（PowerShell / CMD）：
 
 ```bat
-git clone https://github.com/simonlin1212/Vibe-Research.git vibe-research-agent
-cd vibe-research-agent
+git clone https://github.com/simonlin1212/vibe-astock.git vibe-astock
+cd vibe-astock
 scripts\setup-windows.cmd
 scripts\start.cmd
 ```
@@ -338,32 +413,34 @@ scripts\start.cmd
 macOS / Linux：
 
 ```bash
-git clone https://github.com/simonlin1212/Vibe-Research.git vibe-research-agent
-cd vibe-research-agent
+git clone https://github.com/simonlin1212/vibe-astock.git vibe-astock
+cd vibe-astock
 scripts/setup
 scripts/start
 ```
 
 - setup（`scripts/setup` 或 `scripts\setup-windows.cmd`）会创建 `.venv`、安装 Node / Python 依赖、初始化私有数据目录并运行体检。
-- start（`scripts/start` 或 `scripts\start.cmd`）会检查安装状态和端口，同时启动本机 API 与页面，两边都可用后打开 [http://127.0.0.1:5930](http://127.0.0.1:5930)；不需要开两个终端，按 Ctrl+C 同时关闭。
+- start（`scripts/start` 或 `scripts\start.cmd`）会检查安装状态和端口，同时启动本机 API 与页面，两边都可用后打开 [http://127.0.0.1:5940](http://127.0.0.1:5940)；不需要开两个终端，按 Ctrl+C 同时关闭。
+- 端口和 Vibe Research（5930）错开，两个可以同时开，接入 AI 的设置和对话记录也不会两边混用。
 - macOS / Linux 不想自动打开浏览器时，运行 `scripts/start --no-open`。
 - Vite 只在本机代理 `/api/*`，并在服务端补上鉴权信息。若设置了 `VRA_DATA_ROOT`，两个进程必须使用同一个值。
+- 盯盘的自动刷新、收盘取数和盘中快照都要程序开着；电脑关机或程序没开时不会运行，盘中快照过了时点补不回来。
 
-部署、接口与维护说明见 [AGENTS.md](AGENTS.md)；`desktop/` 是浏览器前端目录，不是 Mac 客户端。
+部署、接口与维护说明见 [AGENTS.md](AGENTS.md)；`desktop/` 是浏览器前端目录，不是桌面客户端。
 
 ### 免安装版（Windows / macOS）
 
-不想装 Node、Python 和 Git，可以到 [Releases](https://github.com/simonlin1212/Vibe-Research/releases) 下载对应电脑的压缩包，包里带好了 Node 和 Python：
+不想装 Node、Python 和 Git，可以到 [Releases](https://github.com/simonlin1212/vibe-astock/releases) 下载对应电脑的压缩包，包里带好了 Node 和 Python：
 
 | 电脑 | 系统要求 | 压缩包 |
 |---|---|---|
-| Windows（x64） | 64 位 Windows 10 及以上 | `VibeResearch-<版本>-win-x64.zip` |
-| Apple 芯片 Mac | macOS 14 及以上 | `VibeResearch-<版本>-mac-arm64.zip` |
-| Intel Mac | macOS 14 及以上 | `VibeResearch-<版本>-mac-x64.zip` |
+| Windows（x64） | 64 位 Windows 10 及以上 | `VibeAStock-<版本>-win-x64.zip` |
+| Apple 芯片 Mac | macOS 14 及以上 | `VibeAStock-<版本>-mac-arm64.zip` |
+| Intel Mac | macOS 14 及以上 | `VibeAStock-<版本>-mac-x64.zip` |
 
-1. 解压到任意文件夹，双击里面的 `Start-VibeResearch.cmd`（Windows）或 `Start-VibeResearch.command`（macOS）。会开一个命令行 / 终端窗口，浏览器自动打开 [http://127.0.0.1:5930](http://127.0.0.1:5930)；关掉那个窗口就退出。
+1. 解压到任意文件夹，双击里面的 `Start-VibeAStock.cmd`（Windows）或 `Start-VibeAStock.command`（macOS）。会开一个命令行 / 终端窗口，浏览器自动打开 [http://127.0.0.1:5940](http://127.0.0.1:5940)；关掉那个窗口就退出。
 2. 包没有代码签名，第一次打开会被系统拦：Windows 弹出「Windows 已保护你的电脑」时点「更多信息」→「仍要运行」；macOS 提示无法验证开发者时，在终端运行 `xattr -dr com.apple.quarantine <解压出来的文件夹>`，再双击启动。
-3. 交易流水、研究记录和设置都存在这个文件夹的 `.local` 里（macOS 的访达默认不显示以点开头的文件夹，按 Command+Shift+. 就能看到）。升级时把新版本解压到新文件夹，把旧文件夹里的 `.local` 整个复制过去，再从新文件夹启动；确认没问题再删旧文件夹。
+3. 交易记录、复盘、研究记录和设置都存在这个文件夹的 `.local` 里（macOS 的访达默认不显示以点开头的文件夹，按 Command+Shift+. 就能看到）。升级时把新版本解压到新文件夹，把旧文件夹里的 `.local` 整个复制过去，再从新文件夹启动；确认没问题再删旧文件夹。
 4. 接入 AI 和源码版一样：沿用电脑上已登录的 Claude Code / Codex / WorkBuddy，或在「接入 AI」填模型 API。
 
 每个压缩包旁边有同名的 `.sha256` 文件，可核对下载是否完整。免安装版只在本机打开，不开放局域网；要局域网或云端访问、或用的是 Linux / 更早的 macOS，请用上面的源码安装。
@@ -374,40 +451,44 @@ scripts/start
 
 ```bash
 scripts/setup
-scripts/start --remote --no-open --public-url https://<平台给 5930 端口分配的公网地址>
+scripts/start --remote --no-open --public-url https://<平台给 5940 端口分配的公网地址>
 ```
 
 启动后终端会打印一条带访问口令的链接（`https://…/?access=…`），用浏览器打开就能用；之后 30 天内直接打开公网地址即可。不需要 SSH，也不用连回本地电脑。后台运行、更换口令等完整步骤见 [AGENTS.md](AGENTS.md) §3。
 
 - 页面、静态资源和接口的每个请求都要先过访问口令；本机 API 仍只监听回环地址。
 - **只用 https 公网地址**，否则页面里填的 API key 会明文传输。页面只能挂在根地址，不支持子路径。
-- 拿到链接的人能用这台电脑上的全部功能，链接只给自己用；启动日志里也有访问口令，别外传。
+- 拿到链接的人能用这台电脑上的全部功能，包括你的交易日志和持仓，链接只给自己用；启动日志里也有访问口令，别外传。
 - 云端电脑上通常没有你的订阅登录，在页面里用模型 API 接入即可。
+- 程序一直开着的云端电脑适合跑收盘取数和盘中快照，不会因为本机关机漏存。
 
-### 从 v1 升级
+### 从旧版（v1.x）升级
 
-- 先备份自己的数据，再更新代码（`git pull`），重新运行 setup，然后到「接入 AI」重新选一次并测试。不必重新克隆。
-- v1 的产品专用 Codex 登录（`.local/codex-home`）不再读取，改用你自己 `codex login` 的 Codex CLI。旧文件留在本机即可，别提交、别外传。
-- 来源 id `openai` 停用：ChatGPT 订阅改成 `cli-codex`，OpenAI 按量 API 改成 `openai-api`。写了旧值会直接报错并说明改法。
-- v1 的命令行参数（`--engine`、`--codex-path` 等）会报错并给出改法。
-- 旧 Mac 客户端的数据（`~/.vibe-research-desktop`）不会自动迁入源码工作区；不要删除它，也不要提交到仓库。详见[源码交付说明](docs/source-delivery.md)。
+旧版 v1.x 是 Python 程序（数据在 `~/.duanxian-agents`，页面在 8910 端口），新版是另一套程序，不能原地升级：
 
-### 在 Claude Code / Codex / Cursor 里调用 VR
+- 重新克隆仓库，或下载免安装包，按上面的步骤安装。旧版的文件夹和数据目录不用删，新版不会改动它们。
+- 页面地址从 `http://127.0.0.1:8910` 换成 `http://127.0.0.1:5940`（本机 API 在 8770）。
+- 旧版数据：到「接入 AI」页最下面的「从旧版导入」，先预览、再导入。能导的有交易记录、交易日志设置（费率、规矩、账户规模）、模式卡（带全部版本）、AI 复盘、明日验证条件、盘中快照和个股深挖；导入前把涉及的台账文件备份到数据目录的 `ledger/旧版导入备份-日期/`，旧版的文件只读。不导的（方向命中评估、涨停池存档、各种缓存、回测结果、被拒的复盘）在预览里列出数量和原因。旧版设过 `ASTOCK_DATA_HOME` 的，导入时默认去那里找。
+- 导入前先按新版规则预演：会算不了的、已记的标注会被顶掉的、和已记的成交一模一样（可能记重）的，预览里先列出来；不合新版规则的（读不出的文件、符号链接、超过 30MB、卖出超过持有、代码或价格不对、B 股等）跳过并写原因。可以重复导，导过的按来源跳过。
+- AI 要重新接一次：Claude Code、Codex、WorkBuddy 订阅直接用本机已登录的官方 CLI；旧版产品专用的 Codex 登录不再使用。
+- 旧版的启动方式（`scripts/manage.py`、`启动 Vibe AStock.command / .cmd`）和 `VIBE_ALLOW_HOSTS` 不再使用；局域网和远程访问的开法见上文。
 
-VR 提供 MCP 接口。接上以后，在 Claude Code、Codex、Cursor 等支持 MCP 的工具里可以直接用 VR 取数、发起研究、读报告和证据；研究结果和页面里看到的是同一份。
+### 在 Claude Code / Codex / Cursor 里调用 Vibe AStock
+
+Vibe AStock 提供 MCP 接口。接上以后，在 Claude Code、Codex、Cursor 等支持 MCP 的工具里可以直接用 Vibe AStock 取数（包括短线端点）、发起研究、读报告和证据；研究结果和页面里看到的是同一份。MCP 不读交易日志和持仓。
 
 先跑完上面的 setup，然后在仓库目录里运行（Windows PowerShell 把 `"$(pwd)/orchestrator/src/mcp.ts"` 换成 `"$PWD\orchestrator\src\mcp.ts"`）。
 
 Claude Code（想在所有目录都能用，加 `-s user`）：
 
 ```bash
-claude mcp add vibe-research -- node "$(pwd)/orchestrator/src/mcp.ts"
+claude mcp add vibe-astock -- node "$(pwd)/orchestrator/src/mcp.ts"
 ```
 
 Codex：
 
 ```bash
-codex mcp add vibe-research -- node "$(pwd)/orchestrator/src/mcp.ts"
+codex mcp add vibe-astock -- node "$(pwd)/orchestrator/src/mcp.ts"
 ```
 
 Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cursor/mcp.json`）加入下面这段，路径换成你的仓库位置。Cursor 提示找不到 node 时，把 `"node"` 换成终端里 `which node` 输出的完整路径。
@@ -415,9 +496,9 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
 ```json
 {
   "mcpServers": {
-    "vibe-research": {
+    "vibe-astock": {
       "command": "node",
-      "args": ["/你的路径/vibe-research-agent/orchestrator/src/mcp.ts"]
+      "args": ["/你的路径/vibe-astock/orchestrator/src/mcp.ts"]
     }
   }
 }
@@ -425,37 +506,42 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
 
 接好后可以这样问：
 
-- 「用 vibe-research 查 600519 最近的券商研报和机构一致预期」
-- 「用 vibe-research 取腾讯控股（00700）最近一年的日 K 和关键财务指标」
-- 「用 vibe-research 给 300308 跑一次研究，跑完把估值部分的数字和出处列给我」
+- 「用 vibe-astock 取 2026-10-09 的短线情绪读数和首板名单」
+- 「用 vibe-astock 查 600519 最近的券商研报和机构一致预期」
+- 「用 vibe-astock 给 300308 跑一次研究，跑完把估值部分的数字和出处列给我」
 
 共 8 个工具：7 个只读（端点列表、取数、研究状态、报告、证据、研究列表、知识档案），1 个发起研究（目前只支持 A 股）。连接时会附上使用说明；出错时会写明能不能重试、下一步怎么做。
 
-- 发起研究用这台电脑的**后台默认 AI 来源**，页面「接入 AI」里的选择不算：在 `.local/config.json` 写 `provider.profile`（如 `cli-claude`），或者添加时带上环境变量，例如 `claude mcp add vibe-research -e VRA_PROVIDER=cli-claude -- node …`、`codex mcp add vibe-research --env VRA_PROVIDER=cli-codex -- node …`。研究会消耗所选 AI 的额度。
+- 发起研究用这台电脑的**后台默认 AI 来源**，页面「接入 AI」里的选择不算：在 `.local/config.json` 写 `provider.profile`（如 `cli-claude`），或者添加时带上环境变量，例如 `claude mcp add vibe-astock -e VRA_PROVIDER=cli-claude -- node …`、`codex mcp add vibe-astock --env VRA_PROVIDER=cli-codex -- node …`。研究会消耗所选 AI 的额度。
 - 只取数、读报告和证据不需要 AI。
 
 ## 安全与隐私
 
+- 交易日志、持仓和自选只存在本机。交易日志的几页和 AI 周报里的「本周我的交易」不登记页面上下文、不进 AI 资料包，右下角的 AI 读不到；只有你在对话里自己写出来的内容才会发给所选模型。
+- 从旧版导入只读旧版的文件，导入前先把新版里涉及的台账文件备份到 `ledger/旧版导入备份-日期/`，附恢复说明。
 - AI 读取公开网页时可能经第三方 Jina Reader 转发；目标网址（包括查询参数）会发送给该服务。不要提交含私密令牌、内部资料或签名下载凭据的网址。搜索请求同样会发送到对应搜索服务。
 - 原始研报文件只保存在本机；模型只接收服务端检索命中的正文片段。
 - 后端默认 provider 的 key 只走环境变量，不写入产品配置或仓库。
 - 浏览器里填写的 API key 只保存在当前浏览器 `localStorage`，仅在调用时经本机后端转给所选模型服务商。
 - 对话可使用产品提供的联网和研究工具。资料抽取等有界任务仍按任务限制执行权限。
 - 资料引用格式为 `[资料:<id> p.<页码>]`，漏引、错引和未知引用会被机器校验拒绝。
-- 研究阶段没有网络；取数由编排器用受控脚本完成，原始响应落盘并记录哈希。
+- 研究阶段没有网络，只能用 5 个受控工具；取数由编排器用受控脚本完成，原始响应落盘并记录哈希。
 - 本机 API 默认只绑定 `127.0.0.1`，写请求必须鉴权并使用 JSON。
-- 隐私模式（右上角眼睛图标）：录屏、截图前打开，金额、股数和成本价显示成 ••••，百分比照常。只遮屏幕显示，不影响计算和发给 AI 的内容；对话按措辞识别，个别说法可能遮不到。
+- 隐私模式（右上角眼睛图标）：录屏、截图前打开，金额、股数、成本价和交易日志里自己写的价位显示成 ••••，百分比照常。只遮屏幕显示，不影响计算和发给 AI 的内容；对话按措辞识别，个别说法可能遮不到。
 - 新版提示：每天访问一次 GitHub 接口（没查成隔一小时再试），查有没有新的正式版本，请求里只带当前版本号；可在「接入 AI」页最下面关掉，或设环境变量 `VRA_UPDATE_CHECK=0`（完全不联网）。
 - SEC 联系方式（选填）：在「接入 AI」页填了才有，存在数据目录的 `sec-contact.json`（只在本机、只有自己可读），只交给要访问 SEC 的取数，放进发往 SEC 的请求头；页面上只显示打码后的样子。也可以用环境变量 `VRA_SEC_CONTACT` 设置，设了以环境变量为准。
 - 防篡改核对：研究结果和台账记录的指纹登记在数据目录的 `audit/chain.jsonl`，只在本机，不上传。它能发现绕开软件的改动，但防不住能同时改写登记簿的人——要防这一点，把页面给的链头另存到别处。
-- 输出只包含数据、分析框架、情景概率和裁决点，不提供建仓、加减仓、目标价或止损位。
+- 输出只包含数据、分析框架、情景概率、待验证条件和裁决点，不提供建仓、加减仓、目标价或止损位；交易日志里的止损和目标价是你自己写的计划，程序只拿来对账。
 
 ## 当前边界
 
-- 提供源码和 Windows / macOS 免安装包，界面都是本地浏览器页面。免安装包没有代码签名；Apple 芯片 Mac 包在本机构建并冒烟过，Windows 与 Intel Mac 包在 GitHub Actions 上构建，冒烟通过才上传，都没在实机上验收。Mac 客户端自 v1.2.0 起撤下，v1.1.0 的 DMG 已于 2026-09-10 从 GitHub 撤下，旧版本记录与源码归档保留。
-- 内置模型 API 模板都还没用真实 key 实测（v1 时期 MiMo 的端到端验证走的是旧引擎，不沿用）；没跑过兼容矩阵的模板不会标成「已实测」。三家订阅的实测范围见 [CHANGELOG](CHANGELOG.md)。
+- 盯盘：v2.0.0 开发和截图都在 2026-10-10、10-11（周末），实时刷新、盘中异动、昨日梯队「封没封」和到点自动存快照还没在交易时段实测过；README 里「竞价与盘中」的截图用的是旧版 2026-09-23 交易时段存下、再导进来的快照。
+- AI 复盘和 AI 周报：2026-10-10 只用 Claude Code 订阅实测过（复盘 4 版、周报 3 版）；Codex、WorkBuddy 和模型 API 还没在这两个功能上跑过。
+- 从旧版导入：用一份真实旧数据的副本实测过预览和导入；旧版其他写法的文件会在预览里列为跳过并写原因。
+- 提供源码和 Windows / macOS 免安装包，界面都是本地浏览器页面。免安装包没有代码签名，发版时在 GitHub Actions 上构建、冒烟通过才上传，没在实机上验收。
+- 内置模型 API 模板都还没用真实 key 实测；没跑过兼容矩阵的模板不会标成「已实测」。三家订阅的实测范围见 [CHANGELOG](CHANGELOG.md)。
 - Windows 11 原生支持已接入：PowerShell 初始化 / 启动脚本、Windows 路径与进程处理、受控研究工具链。CI 配置包含 `windows-latest` / `macos-latest` / `ubuntu-latest`，Windows 跑的是选定的跨平台契约测试，并非全部后端测试。仍未在 Windows 实机验收，也尚未验证正常退出后的 Job Object 子进程回收保证。Windows 10 未验证。
-- 港股、美股六阶段研究：2026-10-09 用 Claude Code 订阅各真跑了一只完整研究（苹果、腾讯控股）。美股按现在的判分硬测试全部通过（报告数字 142/142 对上出处）；港股只差一项：报告里还有 3 处数字真没标出处。其他 AI 来源还没在港股、美股上跑过硬测试。研究过去某天的港股时，东财会把旧报告期的公告日改成之后再次披露的日期，按公告日筛选会保守地丢掉这些期，近四季合计可能算不出（只会少用数据，不会用到研究日之后才公布的数）。ADR 与本地股的换股比例本版不处理。
+- 港股、美股六阶段研究和 Vibe Research 是同一套代码：Vibe Research v2.1.0 发布前用 Claude Code 订阅各真跑了一只完整研究（苹果、腾讯控股），美股按现在的判分硬测试全部通过（报告数字 142/142 对上出处），港股只差一项：报告里还有 3 处数字真没标出处。其他 AI 来源还没在港股、美股上跑过硬测试。研究过去某天的港股时，东财会把旧报告期的公告日改成之后再次披露的日期，按公告日筛选会保守地丢掉这些期，近四季合计可能算不出（只会少用数据，不会用到研究日之后才公布的数）。ADR 与本地股的换股比例本版不处理。
 - 远程访问只支持 macOS / Linux。
 - 源码运行需要本机依赖环境。
 
@@ -465,11 +551,11 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
 
 ```text
 本地浏览器工作台
-首页（指数 · 自选 · 持仓 · 对话） · 复盘 · 产业资讯 · 产业研究 · 个股深挖 · 回测 · 研报库
+首页 · 盯盘 · 情绪复盘 · 交易日志 · 每日复盘 · 产业资讯 · 产业研究 · 个股深挖 · 回测 · 研报库
         │
         ▼
 投研层
-180 个数据端点 · 六阶段研究流程 · calc · validator · 报告归档
+180 个数据端点 · 短线读数与对账 · 六阶段研究流程 · calc · validator · 报告归档
         │
         ▼
 本地 Agent 运行时（Local Agent Runtime）与模型供应商（Model Provider）
@@ -489,11 +575,11 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
 <tbody>
 <tr><td nowrap>提示层</td><td><code>methodology/constitution.md</code>（研究宪法）+ <code>.agents/skills/</code> + <code>calc/SPEC.md</code></td><td>定义金融研究纪律、研究流程与计算函数契约，所有 AI 来源一视同仁</td></tr>
 <tr><td nowrap>执行层</td><td>受控工具白名单 + 收工检查</td><td>研究阶段只开放 5 个受控工具，订阅 CLI 关闭全部内建工具；产物缺失或校验不过就退回去接着修</td></tr>
-<tr><td nowrap>编排层</td><td>orchestrator + validator + calc + gate</td><td>强制阶段、证据引用、确定性计算和合规边界</td></tr>
+<tr><td nowrap>编排层</td><td>orchestrator + validator + calc + gate</td><td>强制阶段、证据引用、确定性计算和合规边界；AI 复盘和周报里的每个数字、证据编号由程序逐个核对</td></tr>
 </tbody>
 </table>
 
-v2.0 起不再内置 Codex Harness：三家订阅直接调用使用者本机的官方 CLI，模型 API 直接走 Chat Completions，执行层与编排层由产品自己实现。
+v2.0.0 起不再内置 Codex Harness：三家订阅直接调用使用者本机的官方 CLI，模型 API 直接走 Chat Completions，执行层与编排层由产品自己实现。
 
 ### 项目结构
 
@@ -501,6 +587,8 @@ v2.0 起不再内置 Codex Harness：三家订阅直接调用使用者本机的�
 |---|---|
 | `desktop/` | React + Vite 本地浏览器 UI |
 | `orchestrator/` | Agent 编排、validator、API、MCP、对话、资料库与报告归档 |
+| `orchestrator/src/finance/shortline/` | 短线读数、盯盘、AI 复盘与周报、明日验证、涨停样本、结构变化、从旧版导入 |
+| `orchestrator/src/finance/journal/` | 交易日志：按轮次切分、情绪环境与板位、风险与纪律、复查、模式卡 |
 | `backtest/` | 确定性回测引擎与工具入口 |
 | `calc/` | 确定性计算库 |
 | `datasources/` | 数据端点注册表、目录和健康巡检 |
@@ -509,7 +597,9 @@ v2.0 起不再内置 Codex Harness：三家订阅直接调用使用者本机的�
 | `methodology/` | 研究宪法（`constitution.md`），研究线程的最高纪律 |
 | `AGENTS.md` | 部署、接口与维护说明 |
 | `scripts/` | 安装、启动、初始化与体检 |
-| `.local/` | 用户私有数据、配置、报告、访问口令和运行产物；已 gitignore |
+| `.local/` | 用户私有数据、配置、报告、交易记录、访问口令和运行产物；已 gitignore |
+
+和 Vibe Research 共用的部分照它的结构放，方便以后合并它的修复；产品名、仓库地址和端口集中写在 `orchestrator/src/brand.ts` 和 `desktop/src/verticals/finance/lib/brand.ts`。
 
 ### 命令行运行一次研究
 
@@ -569,48 +659,52 @@ npm run build --prefix desktop
 .venv/bin/python -m pytest .agents/skills/data-access/scripts/tests -q
 ```
 
-最近本机验收记录（2026-10-10，v2.1.0 发布前）：
+最近本机验收记录（2026-10-11，v2.0.0 发布前）：
 
-- orchestrator：Node 26 运行 `npm test`，**1225 项：1224 通过、1 项 Windows ACL 专项跳过**；类型检查通过。
-- desktop：**346/346**，类型检查与生产构建通过（构建只有 Vite 的打包体积提示）；Python（计算库 311、回测 571、数据脚本 566）：**1448/1448**；mypy 检查 106 个文件通过。
-- 回测页用 Claude Code 订阅真跑过一次（茅台 + 宁德时代等权组合，2019–2025 均线交叉，对沪深300），4 张图亮暗主题都核对过，图里的数与报告一致。
-- 三家订阅的研究运行范围见 [CHANGELOG](CHANGELOG.md) v2.0.0 条目；本轮未重跑全部外部取数端点或 Windows 实机。
-- 历史业务验证保留在 [M40 验收](docs/发布候选与隐私验收_M40_2026-09-07.md)，不当作本版全业务验收。
+- orchestrator：Node 26 运行全部后端测试，**1369 项：1368 通过、1 项 Windows ACL 专项跳过**；类型检查通过。
+- desktop：**387/387**，类型检查与生产构建通过（构建只有 Vite 的打包体积提示）；Python（计算库 311、回测 571、数据脚本 724）：**1606/1606**；mypy 检查 114 个文件通过。
+- AI 复盘和 AI 周报用 Claude Code 订阅真跑过（2026-10-10 给 2026-10-09 写，复盘 4 版、周报 3 版），程序的数字核对和证据编号核对都生效；从旧版导入用一份真实旧数据的副本实测过（没动原件）。
+- 本轮未重跑全部外部取数端点或 Windows 实机；盯盘还没在交易时段实测（见「当前边界」）。
 
-项目约定：每个环节完成后先测试；重要改动做一次独立审查（Opus 5），逐条核实、修复后复验受影响范围；审查完成前不把
+项目约定：每个环节完成后先测试；重要改动做一次独立审查，逐条核实、修复后复验受影响范围；审查完成前不把
 该环节称为“建成”，也不提交或推送。
 
 ## 更新日志
 
-见 [CHANGELOG.md](CHANGELOG.md)。
+见 [CHANGELOG.md](CHANGELOG.md)。v2.0.0 换到 Vibe Research 的底座上，底座本身的历史见 [Vibe Research 的 CHANGELOG](https://github.com/simonlin1212/Vibe-Research/blob/main/CHANGELOG.md)。
 
 <details>
-<summary>查看与上一版 v1.2.0 的对比</summary>
+<summary>查看与上一版 v1.1.3 的对比</summary>
 
-对照基线为 [v1.2.0 发布说明](https://github.com/simonlin1212/Vibe-Research/releases/tag/v1.2.0)。完整变化见 [CHANGELOG](CHANGELOG.md)。
+对照基线为 [v1.1.3 发布说明](https://github.com/simonlin1212/vibe-astock/releases/tag/v1.1.3)。完整变化见 [CHANGELOG](CHANGELOG.md)。
 
-| 方面 | v1.2.0 | v2.1.0 |
-|---|---|---|
-| AI 底座 | 内置 Codex Harness（Codex SDK 0.153.4） | 不再内置；三家订阅直接调用使用者本机的官方 CLI，模型 API 直接走 Chat Completions |
-| Codex 订阅 | 产品专用登录（`.local/codex-home`） | 使用者自己 `codex login`（ChatGPT 账号）的 Codex CLI，与 Claude Code、WorkBuddy 同级 |
-| 模型 API | Agent 要求 Responses API 端点或网关；直连只对验证过的模板开放 | 一律 Chat Completions，工具循环由产品执行；模板指向各家官方地址，如实标「未实测」 |
-| 研究执行 | macOS / Linux 用 hooks，Windows 用受控 MCP | 所有平台、所有 AI 来源只走 5 个受控工具，收工检查由产品执行 |
-| 运行方式 | 本机运行 | 另支持装在云端电脑上，用带访问口令的链接远程打开（远程模式） |
-| `AGENTS.md` | 研究宪法 | 研究宪法移到 `methodology/constitution.md`；`AGENTS.md` 改为部署、接口与维护说明 |
-| 数据端点 | 117 个、30 层 | 168 个、35 层（同步 a-stock-data v3.10.1） |
-| 安装方式 | 源码安装（Mac 客户端已撤下） | 源码安装，另有 Windows / macOS 免安装包 |
-| 新版提示 | 无 | 每天查一次 GitHub 最新正式版本，有新版时页面顶部提示 |
+<table>
+<thead>
+<tr><th nowrap>方面</th><th>v1.1.3</th><th>v2.0.0</th></tr>
+</thead>
+<tbody>
+<tr><td nowrap>程序</td><td>Python 后端 + React 网页，内置 OpenAI Codex Harness 当 Agent 底座</td><td>换到 Vibe Research v2.1.0 的底座（Node + React，Python 只做计算和取数），不再内置 Codex Harness</td></tr>
+<tr><td nowrap>页面地址</td><td><code>http://127.0.0.1:8910</code></td><td><code>http://127.0.0.1:5940</code>（本机 API 在 8770），和 Vibe Research 错开</td></tr>
+<tr><td nowrap>数据目录</td><td><code>~/.duanxian-agents</code>、<code>~/.vibe-astock-agent</code> 和浏览器本地存储</td><td>仓库里的 <code>.local/</code>（免安装包在解压出来的文件夹里）；旧数据用「从旧版导入」</td></tr>
+<tr><td nowrap>盯盘</td><td>盘面数据、实时动态、昨日梯队、盘中核验</td><td>实时动态（持仓、自选、昨日梯队、大票、成交额、盘中异动）+ 竞价与盘中（竞价强弱、全天六个时点的情绪路径），快照到点自动存</td></tr>
+<tr><td nowrap>复盘</td><td>复盘报告、首板分析、近 5 天热度、历史统计</td><td>情绪复盘 8 个分页（今日情绪、AI 复盘、AI 周报、近 5 天、情绪历史、明日验证、涨停样本、结构变化）+ 每日复盘；AI 复盘分五段写，每个数字由程序核对</td></tr>
+<tr><td nowrap>交易日志</td><td>在「我的股票」下</td><td>单独一个栏目：自动对上入场日的情绪和板位，另有风险与纪律、复查、模式卡；不发给 AI</td></tr>
+<tr><td nowrap>其他栏目</td><td>资讯雷达、个股研究与多空辩论、回测、持仓自选、研究记录</td><td>另有产业信号、产业研究（20 个板块）、六阶段个股研究（A 股、港股、美股）、候选池、事件日历、定时提醒、我的研报</td></tr>
+<tr><td nowrap>接入 AI</td><td>Codex 用产品专用登录；模型 API 要支持 Responses API</td><td>Claude Code、Codex、WorkBuddy 订阅直接用本机已登录的官方 CLI；模型 API 走 Chat Completions</td></tr>
+<tr><td nowrap>安装方式</td><td>源码 + <code>scripts/manage.py</code>，或双击启动脚本</td><td>源码 <code>scripts/setup</code> + <code>scripts/start</code>，另有 Windows / macOS 免安装包；可以装在云端电脑上远程打开</td></tr>
+</tbody>
+</table>
 
 </details>
 
 ## 免责声明
 
-本项目只产出研究数据、分析框架、情景概率与裁决点，不提供任何投资动作建议。所有输出均不构成
-投资建议；第三方公开数据可能延迟、缺失或有误，使用者应自行核实并承担决策责任，同时遵守各数据源
-的使用条款。
+本工具用于数据整理、研究和历史复核，只产出研究数据、分析框架、待验证条件与裁决点，不提供投资决策、买卖建议或仓位指令。
+情绪分档和周期是分析框架，不是客观事实；涨停样本是市场现象统计，不是策略回测。公开数据、程序计算、个人记录与 AI 解读都可能出错，
+引用存在不代表推论正确，历史结果不代表未来表现。投资有风险，使用者应自行核实并承担决策责任，同时遵守各数据源的使用条款。
 
 ## License
 
-本仓库采用 [MIT License](LICENSE)。
+Apache-2.0，详见 [LICENSE](LICENSE)。v2.0.0 起的底座来自同一作者的 [Vibe Research](https://github.com/simonlin1212/Vibe-Research)（MIT），原许可声明见 [NOTICE](NOTICE)。
 
 **作者：** Simon 林 · X [@linsizhen](https://x.com/linsizhen) · 邮箱：[simonlin0423@gmail.com](mailto:simonlin0423@gmail.com)

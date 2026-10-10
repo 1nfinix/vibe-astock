@@ -1,6 +1,9 @@
 # docs
 
-- v2.1.0(2026-10)起不再内置 Codex Harness（这次改动原定 v2.0.0，没有单独发布）：AI 来源改为本机已登录的订阅 CLI(Claude Code / Codex / WorkBuddy)与模型 API。
+- Vibe AStock 从 v2.0.0 起和 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) 共用一套底座，本目录随底座一起来自 Vibe Research：
+  下面带日期的里程碑文档、v1.x 版本号（如 v1.1.0、v1.2.0）和其中的 Codex 相关内容都是 **Vibe Research 的历史**，不是 Vibe AStock 的。
+  Vibe AStock 旧版（v1.x，Python 程序）的文档在仓库 `v1.1.3` 标签下。
+- 底座从 Vibe Research v2.1.0 起不再内置 Codex Harness：AI 来源改为本机已登录的订阅 CLI(Claude Code / Codex / WorkBuddy)与模型 API。
   带日期的里程碑文档里涉及 Codex 引擎、产品专用 Codex 登录、hooks 与 Responses 通道的内容都是 v1 历史。
 - [source-delivery.md](source-delivery.md) — v1.2.0 源码交付：基于公开 v1.1.0 暂撤 Mac 客户端，保留源码与浏览器工作台。
 - [issue-pr-triage-v1.2.0.md](issue-pr-triage-v1.2.0.md) — 2 个 Issue、6 个 PR 的处理范围、采纳与暂缓理由。

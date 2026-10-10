@@ -158,8 +158,8 @@ node orchestrator/src/run.ts --symbol 300308 --market SZ --provider deepseek --p
 
 ### 局域网工作台
 
-默认只绑定 `127.0.0.1:5930`。从仓库根运行 `VRA_LAN=1 bash scripts/start` 才将页面绑定所有网卡;
-Windows PowerShell 使用 `$env:VRA_LAN="1"` 后运行 `scripts/start.ps1`。后端继续绑定 `127.0.0.1:8765`;
+默认只绑定 `127.0.0.1:5940`。从仓库根运行 `VRA_LAN=1 bash scripts/start` 才将页面绑定所有网卡;
+Windows PowerShell 使用 `$env:VRA_LAN="1"` 后运行 `scripts/start.ps1`。后端继续绑定 `127.0.0.1:8770`;
 代理先拒绝异源 / 不合法来源,再将合法请求归一化为回环来源。端口被占用时明确失败,不会静默漂移到另一个端口。
 
 这不是多用户产品:局域网模式没有登录保护,可达该端口的人可以使用工作台、读取或修改本地资料;

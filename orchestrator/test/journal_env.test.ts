@@ -200,6 +200,39 @@ test("缓存的池子是那天收盘前取的:保留期内重取一次;超过保
   }
 });
 
+test("缓存还在、落盘的池子全表没了:保留期内重取;超出保留期说「全表不见了」,不当成空池", async () => {
+  const ctx = fakeCtx();
+  try {
+    ctx.setCfg({ daily: { "2026-09-30": day(50, 3, 0.2) }, zt: { "20260930": [["600519", 1, 93000]] }, zb: { "20260930": [["000001", 1, 93000]] } });
+    ledgerInsertMany(ctx, { kind: "trade", records: round("600519", "2026-09-30", "2026-10-09", 10, 11) });
+    const NOW = new Date("2026-10-12T08:00:00Z");
+    const count = (ep: string) => ctx.calls().filter((c) => c.ep === ep).length;
+    const lose = () => {
+      const files = fs.readdirSync(ctx.dataRoot, { recursive: true }).map(String).filter((f) => /em_z[tb]_pool_20260930_\d+\.json$/.test(f));
+      assert.ok(files.length >= 2, `落盘的池子文件: ${files.join(",")}`);
+      for (const f of files) fs.rmSync(path.join(ctx.dataRoot, f));
+    };
+    const r1 = await journalEnvironment(ctx, {}, sig, NOW);
+    assert.ok(r1.available && r1.rows[0]!.board === "首板");
+    assert.deepEqual([count("em_zt_pool"), count("em_zb_pool")], [1, 1]);
+    lose();
+    const r2 = await journalEnvironment(ctx, {}, sig, NOW);
+    assert.ok(r2.available);
+    assert.equal(r2.rows[0]!.board, "首板", "重取回来照常分");
+    assert.deepEqual([count("em_zt_pool"), count("em_zb_pool")], [2, 2]);
+    assert.ok(!r2.gaps.some((g) => g.includes("池")), JSON.stringify(r2.gaps));
+    lose();
+    const r3 = await journalEnvironment(ctx, {}, sig, new Date("2026-12-14T08:00:00Z"));
+    assert.ok(r3.available);
+    assert.equal(r3.rows[0]!.board, "没取到");
+    assert.deepEqual([count("em_zt_pool"), count("em_zb_pool")], [2, 2], "超出保留期不重取");
+    assert.ok(r3.gaps.includes("1 天的涨停池没取到(本机缓存的池子全表不见了):2026-09-30"), JSON.stringify(r3.gaps));
+    assert.ok(!r3.gaps.some((g) => g.includes("池是空的")), JSON.stringify(r3.gaps));
+  } finally {
+    cleanup(ctx);
+  }
+});
+
 test("没有交易记录 / 设置坏了:不可用并说明", async () => {
   const ctx = fakeCtx();
   try {

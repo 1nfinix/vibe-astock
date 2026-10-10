@@ -22,6 +22,7 @@ import { loadSavedAgentPaths } from "../src/local_agent_runtime.ts";
 import { errorGuide, serverInstructions } from "../src/mcp.ts";
 import { currentPlugin, registerPlugin, resetPlugin } from "../src/plugin.ts";
 import { FINANCE_PLUGIN } from "../src/finance/plugin.ts";
+import { PRODUCT_NAME, PRODUCT_SLUG, REPO_SLUG } from "../src/brand.ts";
 
 
 import "../src/finance/register.ts";   // 测试文件也是入口:插件要先注册
@@ -904,7 +905,7 @@ test("MCP 错误指引:临时故障可重试,配置问题要用户处理,其余�
   assert.match(errorGuide("internal").next, /stderr/);
 });
 
-test("README 的「在 Claude Code / Codex / Cursor 里调用 VR」:命令指向真实入口,工具数与只读数跟 mcp.ts 注册的一致", () => {
+test("README 的「在 Claude Code / Codex / Cursor 里调用」:命令指向真实入口,服务名用产品短名,工具数与只读数跟 mcp.ts 注册的一致", () => {
   const src = fs.readFileSync(path.join(REPO, "orchestrator", "src", "mcp.ts"), "utf8");
   // 按注册调用切段:每段一个工具,只读看它的 annotations(READ_LOCAL 或显式 readOnlyHint: true)
   const regs = src.split("server.registerTool(").slice(1);
@@ -913,12 +914,12 @@ test("README 的「在 Claude Code / Codex / Cursor 里调用 VR」:命令指向
   const entry = "orchestrator/src/mcp.ts";
   assert.ok(fs.existsSync(path.join(REPO, entry)), "README 里的入口文件要存在");
   const docs = [
-    { file: "README.md", intro: "VR 提供 MCP 接口", count: `共 ${regs.length} 个工具：${readOnly} 个只读`, pageChoice: /页面「接入 AI」里的选择不算/ },
-    { file: "README_en.md", intro: "VR provides an MCP interface", count: `There are ${regs.length} tools: ${readOnly} read-only`, pageChoice: /"Connect AI" page does not count/ },
+    { file: "README.md", intro: `${PRODUCT_NAME} 提供 MCP 接口`, count: `共 ${regs.length} 个工具：${readOnly} 个只读`, pageChoice: /页面「接入 AI」里的选择不算/ },
+    { file: "README_en.md", intro: `${PRODUCT_NAME} provides an MCP interface`, count: `There are ${regs.length} tools: ${readOnly} read-only`, pageChoice: /"Connect AI" page does not count/ },
   ];
   for (const d of docs) {
     const md = fs.readFileSync(path.join(REPO, d.file), "utf8");
-    for (const must of [`claude mcp add vibe-research -- node "$(pwd)/${entry}"`, `codex mcp add vibe-research -- node "$(pwd)/${entry}"`, ".cursor/mcp.json", d.intro, "VRA_PROVIDER", "provider.profile", d.count]) {
+    for (const must of [`claude mcp add ${PRODUCT_SLUG} -- node "$(pwd)/${entry}"`, `codex mcp add ${PRODUCT_SLUG} -- node "$(pwd)/${entry}"`, ".cursor/mcp.json", d.intro, "VRA_PROVIDER", "provider.profile", d.count]) {
       assert.ok(md.includes(must), `${d.file} 缺「${must}」`);
     }
     assert.match(md, d.pageChoice, `${d.file} 要写明页面里选的来源不算后台默认`);
@@ -926,8 +927,10 @@ test("README 的「在 Claude Code / Codex / Cursor 里调用 VR」:命令指向
     const block = md.match(/```json\n(\{\n  "mcpServers"[\s\S]*?)```/);
     assert.ok(block, `${d.file} 缺 Cursor 配置块`);
     const cfg = JSON.parse(block![1]!) as { mcpServers: Record<string, { command: string; args: string[] }> };
-    assert.equal(cfg.mcpServers["vibe-research"]!.command, "node");
-    assert.ok(cfg.mcpServers["vibe-research"]!.args[0]!.endsWith(`/vibe-research-agent/${entry}`), "路径示例跟克隆命令的目录名一致");
+    assert.equal(cfg.mcpServers[PRODUCT_SLUG]!.command, "node");
+    // 克隆命令把仓库放进同名目录(git clone … vibe-astock),路径示例要跟它一致
+    assert.ok(md.includes(`git clone https://github.com/${REPO_SLUG}.git ${PRODUCT_SLUG}\ncd ${PRODUCT_SLUG}\n`), `${d.file} 的克隆命令要克隆到 ${PRODUCT_SLUG} 目录`);
+    assert.ok(cfg.mcpServers[PRODUCT_SLUG]!.args[0]!.endsWith(`/${PRODUCT_SLUG}/${entry}`), "路径示例跟克隆命令的目录名一致");
   }
 });
 

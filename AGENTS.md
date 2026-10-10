@@ -1,4 +1,4 @@
-# Vibe-Research — 给 Agent 的部署与开发指南
+# Vibe AStock — 给 Agent 的部署与开发指南
 
 你是来帮使用者部署、使用或改造本仓库的 Agent(Claude Code、Codex、WorkBuddy / CodeBuddy、Muse 一类个人云端 Agent……)。动手前先读完这一页。
 
@@ -8,7 +8,11 @@
 
 ## 1. 这是什么
 
-本地运行的 A 股个股研究工作台:浏览器页面 + 本机服务 + 六阶段研究编排器 + Python 取数层 + 确定性计算库(`calc/`)。
+本地运行的 A 股短线复盘与跟踪工作台:浏览器页面 + 本机服务 + 六阶段研究编排器 + Python 取数层 + 确定性计算库(`calc/`)。
+短线功能在三个一级栏目:盯盘(实时动态、竞价与盘中)、复盘(情绪复盘、每日复盘)、交易日志;其余栏目(个股深挖、回测、产业资讯、
+产业研究、资料库、接入 AI、远程访问、免安装包)与 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) 是同一套底座。
+v1.x 是另一套 Python 程序,v2.0.0 起换成现在的代码;老用户在「接入 AI」页「从旧版导入」迁数据。
+
 研究的「大脑」可以换,换了以后受控工具、方法论、校验与合规 gate 都是同一套:
 
 | 大脑 | 接法 | 登录与凭据 |
@@ -26,8 +30,8 @@
 环境:Node.js ≥ 22.18、Python ≥ 3.11(推荐 3.12)、git。
 
 ```bash
-git clone https://github.com/simonlin1212/Vibe-Research.git
-cd Vibe-Research
+git clone https://github.com/simonlin1212/vibe-astock.git
+cd vibe-astock
 scripts/setup     # Windows:scripts\setup-windows.cmd
 scripts/start     # Windows:scripts\start.cmd
 ```
@@ -39,7 +43,7 @@ scripts/start     # Windows:scripts\start.cmd
 - CLI 装在非默认位置(常见于 WorkBuddy)时页面会显示「未安装」:在「接入 AI」的 WorkBuddy 卡片里填它的位置,
   或在启动前设环境变量 `CODEBUDDY_BIN` / `CLAUDE_BIN` / `CODEX_BIN`(设了就只认它)。
 - 所有私有数据(配置、运行产物、对话、台账、上传资料)都在 `.local/`,已被 git 忽略。不要把它提交、打包或发给任何第三方。
-- 使用者不想装 Node / Python / git 时,让他到 Releases 下载免安装包(Windows x64 / Apple 芯片 / Intel Mac),解压后双击 `Start-VibeResearch`;
+- 使用者不想装 Node / Python / git 时,让他到 Releases 下载免安装包(Windows x64 / Apple 芯片 / Intel Mac),解压后双击 `Start-VibeAStock`;
   数据在包文件夹的 `.local/`,升级 = 新版本解压到新文件夹再把 `.local/` 整个复制过去。包由 `.github/workflows/portable.yml` 构建
   (本机构建:`node scripts/portable/build.mts`;冒烟:`node scripts/portable/smoke.mts <解压出来的目录>`),
   包里 Node / Python 的版本、下载地址和 SHA256 只写在 `scripts/portable/runtimes.json`,升级运行时只改这一个文件。
@@ -50,8 +54,8 @@ scripts/start     # Windows:scripts\start.cmd
 最简单的做法:在你自己的云端电脑上装好,用**远程模式**启动,把打印出来的链接发给使用者。不需要连回使用者的电脑,也不需要 SSH。
 
 ```bash
-git clone https://github.com/simonlin1212/Vibe-Research.git
-cd Vibe-Research
+git clone https://github.com/simonlin1212/vibe-astock.git
+cd vibe-astock
 scripts/setup
 scripts/start --remote --no-open --public-url https://<平台给 5940 端口分配的公网地址>
 ```
@@ -64,8 +68,8 @@ scripts/start --remote --no-open --public-url https://<平台给 5940 端口分�
    之后 30 天内直接打开公网地址即可,过期或换了浏览器再用一次完整链接。
 
 - 启动器在前台常驻,Ctrl+C 关闭。要放后台跑,必须让它脱离当前终端会话:Linux 用
-  `setsid scripts/start --remote --no-open … > vr.log 2>&1 < /dev/null &`;macOS 没有 `setsid`,可用
-  `tmux new -d -s vr 'scripts/start --remote --no-open …'`(要先装 tmux,`tmux capture-pane -p -t vr` 看打印的链接),
+  `setsid scripts/start --remote --no-open … > va.log 2>&1 < /dev/null &`;macOS 没有 `setsid`,可用
+  `tmux new -d -s va 'scripts/start --remote --no-open …'`(要先装 tmux,`tmux capture-pane -p -t va` 看打印的链接),
   或用平台自带的服务管理。**不要用 `nohup`**:启动器自己处理挂断信号(收到就连同页面和 API 一起退出),
   `nohup` 拦不住,终端会话一结束服务就停。**日志里有访问口令**,别外传。
 - **只用 https 公网地址。** 使用者会在页面里填自己的模型 API key,明文 http 会让 key 在网上裸奔;`--public-url` 是公网 http 时启动器会警告。
@@ -85,6 +89,8 @@ scripts/start --remote --no-open --public-url https://<平台给 5940 端口分�
 
 | 想知道 | 去读 |
 |--------|------|
+| 短线读数怎么算(情绪、晋级率、封板质量、题材树、盘中快照) | `datasources/` 里 `cn_shortline_*` 端点,目录见 [`datasources/CATALOG.md`](datasources/CATALOG.md) |
+| 盯盘、情绪复盘、交易日志的页面与服务 | `desktop/src/verticals/finance/shortline/`、`desktop/src/verticals/finance/journal/`、`orchestrator/src/finance/` |
 | 整体架构、编排器、命令行跑一次研究 | [`orchestrator/README.md`](orchestrator/README.md) |
 | 让你自己的 Agent 直接调取数与研究(MCP 8 个工具、本机 HTTP API) | [`orchestrator/README.md`](orchestrator/README.md)「服务层与接口」 |
 | 模型接入、provider 模板、兼容性测试 | [`docs/model-access.md`](docs/model-access.md)、[`providers/README.md`](providers/README.md) |
@@ -107,6 +113,8 @@ Python 用安装时建的虚拟环境；mypy 的安装与约定见 [`docs/develo
 - `orchestrator/src/` 里除 `src/finance/` 外是垂类无关的 Core:不许出现行业词(注释也算),纯净度测试会拦。
 - 大脑只能通过受控工具做事:不要给研究线程加 Shell、网络或任意文件访问,也不要为某一种大脑单独开后门。
 - 研究宪法和 SOP 改了,要连带检查 `calc/`、validator 与测试是否还对得上。
+- 产品名、仓库地址、端口只写在 `orchestrator/src/brand.ts` 和 `desktop/src/verticals/finance/lib/brand.ts`(两份同值)。
+  合并上游 Vibe Research(远程名 `upstream`)时保留这两份的值;不是短线专属的底座修复,同时告诉仓库主人要不要回补到 Vibe Research。
 
 ## 6. 维护约定(仓库主人定的规则)
 
@@ -124,7 +132,19 @@ Python 用安装时建的虚拟环境；mypy 的安装与约定见 [`docs/develo
   必须保存每阶段数字复核摘要及全部算式错误明细;中止后重开不得让旧会话回调污染新会话。
 - 用户报告正文上限按长报告设计,当前为 10 万字符;不得为通过存储校验而截断已完成报告。
 
-### 6.2 模型接入与凭据
+### 6.2 短线与交易日志
+
+- 短线读数、统计和对账都由程序计算,AI 只解读;AI 复盘 / 周报里的每个数字由程序分三级核对(和数据包一致 / 给出能复算的算式 / 没给来源),
+  证据编号逐条核对。复盘数据包不得含复盘日之后的数据;每次生成存成新版本,不覆盖旧版本。
+- 交易日志数据只留在本机,**不进 AI**:交易日志页面不登记页面上下文;AI 周报里的「我的本周交易」只在页面上本机计算,不进数据包;
+  MCP 工具不读台账。新增功能不得开口子把成交、持仓、金额交给模型。
+- 交易日志只算 A 股(费用、印花税、T+1 按 A 股规则),港美股流水只计入持仓、不进交易日志。
+- 明日验证从下一个交易日 09:15(开盘集合竞价开始)起不能再写或改;之后写的标「事后」,不进战绩。
+- 取不到的读数写明原因,不显示成 0;未来日期和非交易日直接拒绝,不产出「0 家涨停」。
+- 「从旧版导入」先预览再导入,导入前自动备份到 `ledger/旧版导入备份-<日期>/`;只读旧目录,不改、不删旧版数据。
+- 不荐股:不给买卖建议、目标价或择时信号。异动、涨停样本、情绪档位都写成已经发生的市场现象或分析框架,不写成策略或预测。
+
+### 6.3 模型接入与凭据
 
 - 本机 CLI 大脑一律用使用者自己的登录;产品不读取、复制、软链或转存任何 CLI 的认证文件,也不代填账号密码。
 - 订阅与 API 配置都必须先完成真实对话测试,成功才保存;失败不得覆盖当前已生效配置。
@@ -133,18 +153,17 @@ Python 用安装时建的虚拟环境；mypy 的安装与约定见 [`docs/develo
   未接入时允许浏览栏目,不自动跳转设置。
 - 代码审计与发版前审计一律用 Opus 5,在干净上下文里做只读复审;先审一轮,具体发现修复后复验受影响范围。
 
-### 6.3 官网与公开口径
+### 6.4 公开口径
 
-- 产品官网为 `https://viberesearch.wiki`,源码只从当前活动仓库 `website/` 维护;不要写回旧 checkout。
+- 本仓库没有单独的官网;产品介绍以 README 为准。
 - 本地工作台左下角显示品牌官网 `https://phoenixtree.ai/`(新标签页打开;折叠侧栏保留可访问图标),不扩展为其他推广入口。
-- 对外定位:可接入多种 Agent 大脑的本地金融研究工作台。必须区分「大脑」(本机订阅 Agent 或模型 API)与产品本身,
+- 对外定位:可接入多种 Agent 大脑的本地 A 股短线复盘与跟踪工作台。必须区分「大脑」(本机订阅 Agent 或模型 API)与产品本身,
   不能把产品说成一次 API 问答的包装。
-- v1.2.0 起暂撤 Mac 原生客户端及打包链路,保留源码 + 本地浏览器 UI;M41 动态板块未采用,不得凭旧授权恢复客户端或 M41。
-  旧客户端数据和登录态不删除、不自动迁移。
-- 新建 Release、删除历史安装包或官网部署都需要仓库主人单独授权。官网版本号优先读取 GitHub latest release。
+- 不提供 Mac 原生客户端(`.app` / `.dmg`);桌面使用走源码 + 本地浏览器页面或免安装包。
+- 新建 Release、删除历史安装包、改仓库简介都需要仓库主人单独授权。
 - 用户要求「打开给我看」时打开可见的浏览器页;无头浏览器只用于短时自动化验证,完成后关闭。
 
-### 6.4 公开发布前隐私检查
+### 6.5 公开发布前隐私检查
 
 - 每次公开 push / tag / Release 前同时扫描当前工作树、当前 HEAD 快照和完整 Git 历史,不能只扫未提交 diff。
 - 扫描命中必须人工核实,不把测试假 key、固定公开查询参数或安全用例误报成真实凭据;未经核实不得直接放行。
@@ -152,15 +171,13 @@ Python 用安装时建的虚拟环境；mypy 的安装与约定见 [`docs/develo
   旧版本遗留的 `.local/codex-home/` 只能留在本机。
 - 发布前同时检查 GitHub Issues / PR / Release 正文、Actions artifacts、截图文字与图片元数据,
   避免密钥、持仓、研报名、本机路径、账号或设备信息从非代码入口泄露。
-- README / 官网公开的作者名、GitHub、X、联系邮箱和 Buy Me a Coffee 属有意公开身份;删当前页面不等于删历史。
+- README 公开的作者名、GitHub、X、联系邮箱和 Buy Me a Coffee 属有意公开身份;删当前页面不等于删历史。
   历史作者邮箱如需清除必须单独授权重写历史,不得顺手处理。
 - GitHub Secret Scanning 与 Push Protection 应保持开启;若平台显示未启用,发布检查必须明确列为待办。
 
-### 6.5 对外内容与社交资料
+### 6.6 对外内容
 
-- 抖音正式封面统一 9:16、2160×3840;首屏层级固定为:最大字号产品名 `Vibe-Research` → 副标题 `个人投研 Agent` → Star 背书。
-  旧封面与尝试版保留为版本化旁支,不直接覆盖。
-- 仓库主人当前对外身份:独立开发者,使用 AI 构建开源市场数据工具与本地 Agent;主项目口径为 `a-stock-data`、`TradingAgents-astock`、`Vibe-Research`。
-- Star 数属于实时数据:写 X、YouTube、封面、README 或官网前必须重新查询 GitHub;可以展示稳定的整数档(如 `2,200+ Stars`),
+- 品牌写法:公司 `Phoenix Tree AI`(有空格),产品 `Vibe AStock`、`Vibe Research`、`a-stock-data`。
+- README 不放求职内容;A 股项目的公开材料不提知识星球等付费社群。
+- Star 数属于实时数据:写 README、封面或社交资料前必须重新查询 GitHub;可以展示稳定的整数档(如 `2,200+ Stars`),
   不得把旧快照写成当前精确值。
-- YouTube 频道说明覆盖真实开发过程、AI Agent、金融数据与开源产品;保留「不卖课,不收徒」的边界。

@@ -121,6 +121,15 @@ const afterClose = (fetchedAt: string, day: string) => {
   return at.day > day || (at.day === day && at.hm >= POOL_CLOSE_HM);
 };
 
+/** 信封里的池子全表:取失败给原因;有 raw_ref 但文件读不到算 lost */
+function readPool(ctx: ServiceContext, r: { envelope: unknown; out_dir: string }): { failed: string | null; doc: unknown; lost: boolean } {
+  const env = r.envelope as { status?: string; evidence?: { raw_ref?: unknown }[] };
+  if (env?.status === "failed") return { failed: failedNote(env), doc: null, lost: false };
+  const ref = (Array.isArray(env?.evidence) ? env.evidence : []).map((e) => (typeof e?.raw_ref === "string" ? e.raw_ref : "")).find(Boolean);
+  const doc = ref ? readRawDoc(ctx, r.out_dir, ref) : null;
+  return { failed: null, doc, lost: Boolean(ref) && doc === null };
+}
+
 async function poolOf(ctx: ServiceContext, endpoint: "em_zt_pool" | "em_zb_pool", day: string, oldest: string, signal: AbortSignal): Promise<{ stocks: ZtStock[] | null; note: string }> {
   try {
     const args = { date: day.replaceAll("-", "") };
@@ -130,10 +139,16 @@ async function poolOf(ctx: ServiceContext, endpoint: "em_zt_pool" | "em_zb_pool"
       if (day < oldest) return { stocks: null, note: "本机只存了那天盘中的池子" };
       r = await fetchEndpoint(ctx, { endpoint, args, consistency: { mode: "fresh" }, signal });
     }
-    const env = r.envelope as { status?: string; evidence?: { raw_ref?: unknown }[] };
-    if (env?.status === "failed") return { stocks: null, note: failedNote(env) || "没取到" };
-    const ref = (Array.isArray(env?.evidence) ? env.evidence : []).map((e) => (typeof e?.raw_ref === "string" ? e.raw_ref : "")).find(Boolean);
-    const stocks = ref ? parsePool(readRawDoc(ctx, r.out_dir, ref)) : null;
+    let got = readPool(ctx, r);
+    if (r.cached && got.lost) {
+      // 快照还在、落盘的全表没了(数据目录搬过或清理过):保留期内重取,超出说清楚,不当成空池
+      if (day < oldest) return { stocks: null, note: "本机缓存的池子全表不见了" };
+      r = await fetchEndpoint(ctx, { endpoint, args, consistency: { mode: "fresh" }, signal });
+      got = readPool(ctx, r);
+    }
+    if (got.failed !== null) return { stocks: null, note: got.failed || "没取到" };
+    if (got.lost) return { stocks: null, note: "池子全表的文件读不到" };
+    const stocks = parsePool(got.doc);
     // 东财超过保留期或日期不对时回空池、不报错:空池一律按没取到
     if (!stocks?.length) return { stocks: null, note: "池是空的(超过东财保留期或不是交易日时如此)" };
     return { stocks, note: "" };

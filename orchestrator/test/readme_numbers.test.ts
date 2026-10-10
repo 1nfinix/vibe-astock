@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { NAV_SECTIONS, isGroup } from "../../desktop/src/verticals/finance/lib/nav.ts";
 import { FINANCE_STAGES } from "../src/finance/plugin.ts";
 import { RUN_TOOLS } from "../src/run_tools.ts";
+import { PRODUCT_NAME } from "../src/brand.ts";
 
 /**
  * README 里的数字由这里兜住:端点数、层数、栏目数、受控工具数、研究阶段数、上游版本号。
@@ -114,7 +115,7 @@ test("README 受控工具数和研究阶段数跟实现一致", () => {
   allEqual(ZH, /(\d+) 个受控工具/g, 3, tools, "中文 README「N 个受控工具」");
   const zhList = ZH.match(/\d+ 个受控工具（(.+?)）/)![1]!.split("、");
   assert.equal(zhList.length, tools, `中文 README 列了 ${zhList.length} 个受控工具:${zhList.join(" / ")}`);
-  allEqual(EN, new RegExp(`\\b(${EN_WORD}|\\d+) controlled (?:Vibe Research )?tools`, "gi"), 3, tools, "English README 'N controlled tools'");
+  allEqual(EN, new RegExp(`\\b(${EN_WORD}|\\d+) controlled (?:${PRODUCT_NAME} )?tools`, "gi"), 3, tools, "English README 'N controlled tools'");
 
   const stages = FINANCE_STAGES.length;
   allEqual(ZH, /([一二三四五六七八九十])个?阶段/g, 4, stages, "中文 README「六阶段」");
