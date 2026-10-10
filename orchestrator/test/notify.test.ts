@@ -510,3 +510,70 @@ test("每拍钩子:每拍都调(没到点的任务也一样),门判断共用按�
     assert.throws(() => validateSchedule({ ...h.def, beat: "x" as never }), /每拍钩子/);
   } finally { clean(ctx); }
 });
+
+test("🔴 每拍钩子要的门判断还在路上(钩子超时先返回了),任务再要门判断时接着等这一个,不并发再查(Opus 审计待核实项)", async () => {
+  const ctx = tmpCtx();
+  try {
+    const h = harness("15:40");
+    let release!: (g: GateResult) => void;
+    let calls = 0;
+    const def: ScheduleDef = {
+      ...h.def,
+      gate: () => { calls++; return new Promise<GateResult>((res) => { release = res; }); },
+      // 模拟钩子在门判断回来之前就结束了(真实情况是 60 秒超时,门判断要 90 秒才超时)
+      beat: async (b) => { void b.gate(); return "钩子先走了"; },
+    };
+    const pending = tick(ctx, { now: sh("2026-10-08T15:40"), def });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(calls, 1, "钩子发出的那一个");
+    release({ status: "open" });
+    const r = await pending;
+    assert.equal(calls, 1, "任务没有另发一个门判断");
+    assert.equal(r.gate?.status, "open");
+    assert.deepEqual(r.ran.map((x) => x.status), ["ok"]);
+    // 晚到的请求结束后清掉:第二天照常重新判断
+    def.gate = async () => { calls++; return { status: "closed", reason: "周六" }; };
+    const sat = await tick(ctx, { now: sh("2026-10-10T15:40"), def });
+    assert.equal(calls, 2);
+    assert.equal(sat.gate?.status, "closed");
+  } finally { clean(ctx); }
+});
+
+test("🔴 队列跑过午夜就停:周五的开市判定不带到周六,剩下的任务下一拍按新的一天重新判断", async () => {
+  const ctx = tmpCtx();
+  try {
+    const h = harness("15:40");
+    let t = sh("2026-10-09T23:59");  // 周五
+    const ran: { id: string; day: string }[] = [];
+    const job = (id: string, at: string) => ({ id, label: id, description: "测试", at, defaultEnabled: true,
+      run: async (j: JobContext): Promise<JobResult> => {
+        ran.push({ id, day: j.day });
+        if (id === "first") t = sh("2026-10-10T00:01");  // 第一个任务跑了两分钟,跨进周六
+        return { messages: [] };
+      } });
+    const def: ScheduleDef = { ...h.def, jobs: [job("first", "15:40"), job("second", "15:40")] };
+    const r = await tick(ctx, { clock: () => t, def });
+    assert.deepEqual(ran, [{ id: "first", day: "2026-10-09" }], "第二个任务没在周六按周五的判定跑");
+    assert.equal(r.ran[1]?.status, "deferred");
+    assert.match(r.ran[1]?.note ?? "", /2026-10-10/);
+    const st = notifyOverview(ctx, { def }).jobs.find((x) => x.id === "second")!;
+    assert.notEqual(st.last_day, "2026-10-10", "周六不能被记成已运行");
+    // 周六到点那一拍按周六重新查门:休市 → 两个任务都记为今天不运行,一个都不跑
+    h.setGate({ status: "closed", reason: "周末休市" });
+    const before = h.gateCalls;
+    assert.deepEqual((await tick(ctx, { clock: () => sh("2026-10-10T00:02"), def })).due, [], "周六还没到点");
+    const r2 = await tick(ctx, { clock: () => sh("2026-10-10T15:40"), def });
+    assert.equal(h.gateCalls, before + 1);
+    assert.deepEqual(r2.ran.map((x) => x.status), ["skipped", "skipped"]);
+    assert.equal(ran.length, 1);
+    // 同一天里时钟往回调到点前:不跑,下一拍到点再跑
+    t = sh("2026-10-12T15:40");
+    h.setGate({ status: "open" });
+    const back = { ...def, jobs: [job("third", "15:40"), job("fourth", "15:41")] };
+    let calls = 0;
+    const r3 = await tick(ctx, { now: sh("2026-10-12T15:41"), clock: () => (calls++ ? sh("2026-10-12T15:40") : sh("2026-10-12T15:41")), def: back });
+    assert.deepEqual(r3.ran.map((x) => [x.id, x.status]), [["third", "ok"], ["fourth", "deferred"]]);
+  } finally {
+    clean(ctx);
+  }
+});

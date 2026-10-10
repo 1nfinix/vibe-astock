@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { ensureAccessToken, isPlainRemoteHttp, normalizePublicUrl, type AccessToken } from "./access_token.ts";
 import { readConfiguredDataRoot, resolveDataRoot } from "./data_root.ts";
-import { API_PORT, PRODUCT_NAME, UI_PORT } from "./brand.ts";
+import { ACCESS_COOKIE, API_PORT, PRODUCT_NAME, UI_PORT } from "./brand.ts";
 
 export interface StartupArgs {
   openBrowser: boolean;
@@ -323,7 +323,7 @@ export async function runStartup(
           if (!token) return false;
           const [apiOk, uiOk] = await Promise.all([
             reachable(`http://127.0.0.1:${API_PORT}/health`, { Authorization: `Bearer ${token}` }),
-            reachable(`http://127.0.0.1:${UI_PORT}`, access ? { Cookie: `vra_access=${access.token}` } : undefined),
+            reachable(`http://127.0.0.1:${UI_PORT}`, access ? { Cookie: `${ACCESS_COOKIE}=${access.token}` } : undefined),
           ]);
           return apiOk && uiOk;
         },

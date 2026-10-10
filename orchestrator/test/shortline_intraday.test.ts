@@ -334,6 +334,48 @@ test("手动存:窗口外直接说明;存过的不重抓", async () => {
   } finally { clean(ctx); }
 });
 
+test("🔴 同一个时点同时存:只取一次数;先存的那张不被换掉;取数期间别处先存上了就报已存(审计 2026-10-11 Codex 范围 2 第 5 条)", async () => {
+  const ctx = tmpCtx();
+  try {
+    let release!: () => void;
+    let hold = new Promise<void>((r) => { release = r; });
+    const f = fakeFetch({ tx_quotes_batch: quoteEnv({ "600825": { change_pct: 2, quote_time: "20261012140003" } }) });
+    const slow: typeof f.fetch = async (c, req) => { if (req.endpoint === "cn_shortline_ladder") await hold; return f.fetch(c, req); };
+    const ladders = () => f.calls.filter((c) => c.endpoint === "cn_shortline_ladder").length;
+
+    // 两个手动请求 + 一拍定时任务同时进来
+    const p1 = shortlineIntradayAct(ctx, { action: "capture" }, signal, { fetch: slow, clock: clockSeq("14:03") });
+    const p2 = shortlineIntradayAct(ctx, { action: "capture" }, signal, { fetch: slow, clock: clockSeq("14:03") });
+    const beat = intradayBeat({ ctx, signal, gate: async () => ({ status: "open" }) }, { fetch: slow, clock: clockSeq("14:03") });
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    const [r1, r2] = await Promise.all([p1, p2, beat]);
+    assert.deepEqual([r1, r2], [{ slot: "14:00", ok: true, already: false, reason: null }, { slot: "14:00", ok: true, already: true, reason: null }]);
+    assert.equal(ladders(), 1, "只取了一次数");
+    assert.equal(readStatus(ctx.dataRoot, DAY)["14:00"]?.tries, 1);
+
+    // 取数期间,另一个进程先把 10:00 那张存上了:不覆盖,报已存,状态不由这边记
+    hold = new Promise<void>((r) => { release = r; });
+    const file = path.join(dayDir(ctx.dataRoot, DAY), "1000.json");
+    const p3 = shortlineIntradayAct(ctx, { action: "capture" }, signal, { fetch: slow, clock: clockSeq("10:01") });
+    await new Promise((r) => setTimeout(r, 20));
+    fs.writeFileSync(file, "先存的那张");
+    release();
+    assert.deepEqual(await p3, { slot: "10:00", ok: true, already: true, reason: null });
+    assert.equal(fs.readFileSync(file, "utf8"), "先存的那张");
+    assert.equal(readStatus(ctx.dataRoot, DAY)["10:00"], undefined);
+    // 定时任务同样:别处先存上了就不记「失败」(不然下一拍还会再试)
+    hold = new Promise<void>((r) => { release = r; });
+    const b2 = intradayBeat({ ctx, signal, gate: async () => ({ status: "open" }) }, { fetch: slow, clock: clockSeq("11:31") });
+    await new Promise((r) => setTimeout(r, 20));
+    fs.writeFileSync(path.join(dayDir(ctx.dataRoot, DAY), "1130.json"), "先存的那张");
+    release();
+    await b2;
+    assert.equal(readStatus(ctx.dataRoot, DAY)["11:30"], undefined);
+    assert.deepEqual(fs.readdirSync(dayDir(ctx.dataRoot, DAY)).filter((n) => n.endsWith(".part")), [], "临时文件都清掉了");
+  } finally { clean(ctx); }
+});
+
 test("收盘取数:四份逐个现取当天的;取到一部分照实写;全没取到算失败让定时任务重试", async () => {
   const ctx = tmpCtx();
   try {

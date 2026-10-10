@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { SegmentedToggle } from "@/components/ui/SegmentedToggle";
 import { backend, ApiError } from "@/lib/backend";
-import { GROUP_LABEL, KIND_META, dayLabel, groupByDate, type CalendarEvent, type CalendarResult, type EventGroup } from "@/lib/calendar";
+import { GROUP_LABEL, KIND_META, aiVisibleEvents, dayLabel, groupByDate, type CalendarEvent, type CalendarResult, type EventGroup } from "@/lib/calendar";
+import { PERSONAL_TRADES_TO_AI } from "@/lib/brand";
 import { storageGet, storageSet } from "@/lib/storage";
 import { shortTime } from "@/lib/chatSources";
 import type { VerdictResult } from "@/lib/verdicts";
@@ -102,8 +103,8 @@ export function Calendar() {
     context: data
       ? `事件日历 ${data.window.from} 到 ${data.window.to}(北京时间):\n`
         + [...(verdicts?.due ?? []).map((v) => `到期判据(${v.due},${v.type === "falsifier" ? "证伪条件" : "裁决点"}) ${v.name || ""}${v.symbol ? `(${v.symbol})` : ""}:${v.statement}\n  ${v.since} 以来公告:${v.facts.length ? `共 ${v.facts_total} 条,最近的:${v.facts.map((f) => `${f.date} ${f.title}`).join(";")}${v.facts_note ? `(${v.facts_note})` : ""}` : v.facts_note || "无"}`),
-          ...overdueOther.map((e) => `已过期未处理 ${e.date} ${e.name || e.symbol || ""} ${e.title} ${e.detail.join(";")}`),
-          ...data.events.filter((e) => e.kind !== "macro").slice(0, 60).map((e) => `${e.date} ${e.name || ""}${e.symbol ? `(${e.symbol})` : ""} ${e.title} ${e.detail.join(";")} [${e.source}]`)].join("\n")
+          ...aiVisibleEvents(data, overdueOther, PERSONAL_TRADES_TO_AI).map((e) => `已过期未处理 ${e.date} ${e.name || e.symbol || ""} ${e.title} ${e.detail.join(";")}`),
+          ...aiVisibleEvents(data, data.events, PERSONAL_TRADES_TO_AI).filter((e) => e.kind !== "macro").slice(0, 60).map((e) => `${e.date} ${e.name || ""}${e.symbol ? `(${e.symbol})` : ""} ${e.title} ${e.detail.join(";")} [${e.source}]`)].join("\n")
         + (data.gaps.length ? `\n没取到:${data.gaps.join(";")}` : "")
       : "事件日历:还没取到。",
     suggestions: ["未来两周我要回来看哪几件事", "对照公告,把到期判据的相关事实列给我"],

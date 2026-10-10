@@ -35,7 +35,7 @@ def day(monkeypatch):
 
 class TestRawFields:
     def test_keys_from_upstream_rows_union_and_subkeys(self, monkeypatch):
-        raw = {"getTopicZTPool": [{"c": "600825", "n": "甲", "zdp": 10.0, "zttj": {"days": 2, "ct": 2}}, {"c": "600826", "n": "乙", "hybk": "出版"}],
+        raw = {"getTopicZTPool": [{"c": "600825", "n": "甲", "zdp": 10.0, "lbc": 2, "zbc": 0, "zttj": {"days": 2, "ct": 2}}, {"c": "600826", "n": "乙", "hybk": "出版", "lbc": 1, "zbc": 1}],
                "getTopicDTPool": [],
                "getYesterdayZTPool": [{"c": "600001", "n": "丙", "zdp": 3.0, "ylbc": 1, "yfbt": 93000}]}
         for c in (S._POOL, S._FIELDS, S._SETTLED):
@@ -43,7 +43,7 @@ class TestRawFields:
         monkeypatch.setattr(S.em, "_em_zt_api", lambda api, sort, d: raw[api])
         try:
             S.pool("zt", "2026-10-09"), S.pool("dt", "20261009"), S.settled_pool("2026-10-09")
-            assert S.raw_fields("zt", "20261009") == ["c", "hybk", "n", "zdp", "zttj", "zttj.ct", "zttj.days"], "所有行取并集,带一层子键"
+            assert S.raw_fields("zt", "20261009") == ["c", "hybk", "lbc", "n", "zbc", "zdp", "zttj", "zttj.ct", "zttj.days"], "所有行取并集,带一层子键"
             assert S.raw_fields("dt", "2026-10-09") is None, "空池看不出字段"
             assert S.raw_fields("yzt", "2026-10-09") == ["c", "n", "yfbt", "ylbc", "zdp"]
             assert S.raw_fields("zb", "2026-10-09") is None, "没取过就是不知道"

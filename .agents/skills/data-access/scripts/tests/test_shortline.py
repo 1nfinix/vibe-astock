@@ -70,6 +70,8 @@ class TestLimitRules:
         # 涨 9.6% 但收在涨停价(四舍五入的票)→ 算涨停;涨 9.9% 但没收在涨停价 → 不算
         assert S.is_limit_up_row({"code": "600000", "ret": 9.6, "close": 10.96, "limit_price": 10.96}) is True
         assert S.is_limit_up_row({"code": "600000", "ret": 9.9, "close": 10.98, "limit_price": 11.0}) is False
+        assert S.is_limit_up_row({"code": "600000", "ret": 9.9, "close": 10.99, "limit_price": 11.0}) is False, "差一分钱就是没封住"
+        assert S.is_limit_up_row({"code": "600000", "ret": 10.0, "close": 0.1 + 0.2 + 10.7, "limit_price": 11.0}) is True, "浮点误差不算差价"
 
     def test_limit_up_by_regime_when_price_missing(self):
         assert S.is_limit_up_row({"code": "300750", "ret": 15.0}) is False, "20cm 涨 15% 不是涨停"
@@ -176,17 +178,78 @@ class TestRows:
         assert zb[0]["board"] == "北交所" and zb[0]["limit_price"] == 12.9 and zb[0]["broken_times"] == 2
         assert dt[0]["consec_dt"] == 2 and dt[0]["last_seal"] == "", "封板时间 0 = 没有"
 
-    def test_upstream_fallback_to_an_earlier_session_is_an_empty_pool(self, monkeypatch):
-        """周末 / 开盘前请求今天,上游回最近一个交易日的池子;qdate 早于请求日期 = 这一天还没数据。历史日期照常放行。"""
-        resp = {"data": {"qdate": 20261009, "tc": 1, "pool": [{"c": "600000", "n": "甲"}]}}
+    def test_upstream_fallback_to_an_earlier_session_is_not_a_pool(self, monkeypatch):
+        """周末 / 开盘前请求今天,上游回最近一个交易日的池子;qdate 早于请求日期 = 这一天还没数据 ⇒ 抛错(空池会被读成 0 家)。历史日期照常放行。"""
+        resp = {"rc": 0, "data": {"qdate": 20261009, "tc": 1, "pool": [{"c": "600000", "n": "甲"}]}}
         seen = []
         monkeypatch.setattr(S.em, "em_json", lambda url, params=None, **k: seen.append(params["date"]) or resp)
-        assert S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261010") == []
-        assert S.em._em_zt_api("getTopicZTPool", "fbt:asc", "2026-10-12") == []
+        for day in ("20261010", "2026-10-12"):
+            with pytest.raises(RuntimeError, match="还没有"):
+                S.em._em_zt_api("getTopicZTPool", "fbt:asc", day)
         assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261009")) == 1
         assert len(S.em._em_zt_api("getYesterdayZTPool", "zs:desc", "20260930")) == 1, "历史日期的 qdate 也是最新行情日,不能拦"
         resp["data"].pop("qdate")
         assert len(S.em._em_zt_api("getTopicZTPool", "fbt:asc", "20261010")) == 1, "没有 qdate 时不猜"
+
+    def test_business_error_is_a_failure_not_an_empty_pool(self, monkeypatch):
+        """HTTP 200 + rc 非 0 + data null(10-11 实测 rc=102 / 205)= 失败;只有 rc=0 的空列表才是空池。"""
+        resp: dict = {"rc": 205, "data": None}
+        monkeypatch.setattr(S.em, "em_json", lambda url, params=None, **k: resp)
+        with pytest.raises(RuntimeError, match="rc=205"):
+            S.em._em_zt_api("getTopicZBPool", "fbt:asc", "20261009")
+        resp.update(rc=0, data="坏")
+        with pytest.raises(RuntimeError, match="格式不对"):
+            S.em._em_zt_api("getTopicZBPool", "fbt:asc", "20261009")
+        resp.update(rc=0, data={"qdate": 20261009, "pool": []})
+        assert S.em._em_zt_api("getTopicDTPool", "fund:asc", "20261009") == []
+
+    def test_missing_board_or_break_columns_drop_the_whole_pool(self, monkeypatch):
+        """缺 zbc 会被算成「一次没炸过」、缺 lbc 会被算成首板 ⇒ 整池当取数失败,不按默认值补。"""
+        row = {"c": "600825", "n": "新华传媒", "p": 8800, "zdp": 10.0, "fbt": 92500, "lbt": 92500, "zbc": 0, "lbc": 2}
+        for drop, val in (("zbc", None), ("lbc", "-")):
+            bad = {**row, drop: val}
+            S._POOL.clear()
+            monkeypatch.setattr(S.em, "_em_zt_api", lambda api, sort, d, bad=bad: [row, bad])
+            try:
+                with pytest.raises(RuntimeError, match=drop):
+                    S.pool("zt", "20261009")
+                assert S.pools("20261009") is None and S.zt_pool("20261009") is None
+            finally:
+                S._POOL.clear()
+
+    def test_settled_rows_without_ret_lower_coverage_and_mark_partial(self, monkeypatch):
+        """昨日涨停池里缺当天涨跌幅的行:不进样本,但算进名单 ⇒ 覆盖率 < 1、partial(不进长期缓存)。"""
+        raw = [{"c": "600001", "n": "甲", "p": 1100, "zdp": 10.0, "ylbc": 1, "ztp": 1100},
+               {"c": "600002", "n": "乙", "p": 900, "zdp": None, "ylbc": 3, "ztp": 1000},
+               {"c": "600003", "n": "丙", "p": 950, "zdp": -5.0, "ylbc": 2, "ztp": 1045},
+               {"c": "600004", "n": "丁", "p": 900, "zdp": None, "ylbc": 1, "ztp": 990}]
+        monkeypatch.setattr(S.em, "_em_zt_api", lambda api, sort, d: raw)
+        monkeypatch.setattr(S, "zt_pool", lambda d: None)
+        S._SETTLED.clear(); S._SETTLED_NORET.clear()
+        try:
+            rows = S.settled_pool("2026-10-09")
+            assert [r["code"] for r in rows] == ["600001", "600003"]
+            me = E.money_effect("2026-10-09", "2026-10-08")
+            assert (me["sample"], me["expected_sample"], me["coverage_rate"], me["partial"]) == (2, 4, 0.5, True)
+            cp = E.consec_premium("2026-10-09", "2026-10-08")
+            assert (cp["sample"], cp["expected_sample"], cp["partial"]) == (1, 2, True), "连板溢价只算昨日 2 板以上那一档"
+            assert F.feedback_matrix("2026-10-09", "2026-10-08")["partial"] is True
+            out = M.shortline_emotion_map({"date": "2026-10-09", "prev_date": "2026-10-08", "settled": True, "money_effect": me,
+                                           "promotion": {}, "consec_premium": cp, "ladder_gap": {}}, _mctx("cn_shortline_emotion"))
+            assert out["status"] == "partial" and "样本不全（2/4）" in (out.get("degraded") or "")
+        finally:
+            S._SETTLED.clear(); S._SETTLED_NORET.clear()
+
+    def test_legacy_pool_endpoints_never_write_zero_limit_ups(self):
+        """旧端点 em_zt_pool / em_limit_up_sentiment:涨停池空(超出保留期 / 非交易日)不出「0 只」证据;跌停池空照旧记 0 并标 partial。"""
+        from sources import mappers as MP
+        for ep in ("em_zt_pool", "em_yzt_pool"):
+            r = MP.em_zt_pools([], _ctx(symbol="MARKET", market="CN", source="eastmoney", ep={"id": ep}, args={"date": "20260801"}))
+            assert r["status"] == "failed" and not r["evidence"], ep
+        r = MP.em_zt_pools([], _ctx(symbol="MARKET", market="CN", source="eastmoney", ep={"id": "em_dt_pool"}, args={"date": "20261009"}))
+        assert r["status"] == "partial" and r["evidence"][0]["value"] == 0
+        r = MP.em_limit_up_sentiment({"date": "20260801", "zt_count": 0, "zb_count": 3, "dt_count": 0}, _ctx(symbol="MARKET", market="CN", source="eastmoney", ep={"id": "em_limit_up_sentiment"}))
+        assert r["status"] == "failed" and not r["evidence"]
 
     def test_pools_never_turn_a_failure_into_an_empty_table(self, monkeypatch):
         def boom(kind, day):
@@ -369,6 +432,36 @@ class TestFacts:
         assert top["sector"] == "电池" and top["limit_up"] == 2 and top["broken"] == 1 and top["broken_rate"] == round(1 / 3, 3)
         assert th["theme_count"] == 2 and th["concentration"] == round(2 / 3, 3)
         assert [s["count"] for s in th["timeline"]] == [1, 0, 1, 0, 1]
+
+    def test_events_when_prev_pool_is_missing_never_say_not_limit_up(self, monkeypatch):
+        """前一交易日涨停池没取到:不写「昨日未涨停」,不出靠昨日板数分档的标签(审计 2026-10-11 Opus 范围 1 第 1 条)。"""
+        today = {"zt": [_zt("600001", 5)], "zb": [_zb("600010"), _zb("600011")], "dt": [_dt("600020")]}
+        monkeypatch.setattr(S, "pools", lambda d: today)
+        monkeypatch.setattr(S, "zt_pool", lambda d: None)
+        ev = F.event_ledger("2026-10-09", "2026-10-08")
+        assert ev["prev_available"] is False
+        assert not {e["tag"] for e in ev["events"]} & {"高位断板", "连板断板", "高标跌停"}
+        notes = [e["note"] for e in ev["events"] if e["tag"] in ("炸板", "跌停")]
+        assert notes and all("昨日板数未取得" in n for n in notes)
+        assert not any("昨日未涨停" in e["note"] for e in ev["events"])
+
+    def test_build_facts_fetches_prev_pool_once_for_events_and_by_board(self, monkeypatch):
+        """前一交易日涨停池第一次没取到、第二次取到:两张表要说同一件事,不能一张写「昨日未涨停」、一张算出晋级。"""
+        calls = []
+
+        def flaky(d):
+            calls.append(d)
+            return None if len(calls) == 1 else [_zt("600010", 3)]
+        monkeypatch.setattr(S, "pools", lambda d: {"zt": [_zt("600001", 2)], "zb": [_zb("600010")], "dt": []})
+        monkeypatch.setattr(S, "zt_pool", flaky)
+        monkeypatch.setattr(S, "review_day", lambda d: "2026-10-09")
+        monkeypatch.setattr(S, "prev_trade_date", lambda d: "2026-10-08")
+        monkeypatch.setattr(S, "is_settled", lambda d: True)
+        for name in ("seal_quality", "loss_effect", "feedback_matrix", "theme_structure"):
+            monkeypatch.setattr(F, name, lambda *a, **k: {"available": False, "reason": "测试桩"})
+        f = F.build_facts("2026-10-09")
+        assert f["events"]["prev_available"] == f["by_board"]["prev_available"]
+        assert calls == ["2026-10-08"], "build_facts 里前一交易日涨停池只取一次"
 
     def test_render_facts_names_every_block(self, settled):
         facts = {"date": "2026-07-29", "prev_date": "2026-07-28", "seal_quality": {"available": False, "reason": "池子没取到"},
@@ -584,6 +677,10 @@ class TestMappers:
         assert {"loss_effect", "feedback", "board_promotion_rate"} <= fields
         leaked = [e for e in evs if e["field"] in ("board_promotion_rate", "board_prev_base", "board_promoted")]
         assert not leaked, "前一天的池子没取到,不能写成「前一天 0 只涨停、晋级 0 只」"
+        assert "event_prev_boards" in fields, "断板事件没法分档也要标缺口"
+        text = json.dumps(r, ensure_ascii=False)
+        assert "昨日未涨停" not in text
+        assert "晋级 0/0" not in text and "晋级 —" in text, "给模型看的文字里不知道就写「—」"
 
 
 def test_registry_entries_resolve():

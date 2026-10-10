@@ -249,13 +249,26 @@ export function unsavedNote(x: ReviewRun): string | null {
   return `${clock(x.started_at)} 开始的那次一段都没写成,没存${why ? `:${cleanReason(why)}` : ""}。`;
 }
 
-export function ReviewView({ r, onChanged }: { r: ReviewResult; onChanged: () => void }) {
+/**
+ * 页面显示哪一份:正在写就是正在写的那次,否则是选中的版本(没选 = 最新)。
+ * Agent 面板的上下文用同一个函数取,页面和发给 AI 的始终是同一份(2026-10-11 审计)。
+ */
+export function shownReview(r: ReviewResult, pick: string | null): { running: ReviewRun | null; saved: SavedReview | null; index: number } {
+  const running = safeArray<ReviewRun>(r.runs).find((x) => !x.done) ?? null;
+  const versions = safeArray<SavedReview>(r.versions);
+  const i = Math.max(0, versions.findIndex((x) => x.id === pick));
+  return { running, saved: versions[i] ?? null, index: i };
+}
+
+export function ReviewView({ r, onChanged, pick: pickProp, onPick }: { r: ReviewResult; onChanged: () => void; pick?: string | null; onPick?: (id: string | null) => void }) {
   const runs = safeArray<ReviewRun>(r.runs);
   const versions = safeArray<SavedReview>(r.versions);
-  const running = runs.find((x) => !x.done) ?? null;
   const lastUnsaved = runs.filter((x) => x.done).map(unsavedNote).find((x) => x !== null) ?? null;
-  const [pick, setPick] = useState<string | null>(null);
-  const shown = versions.find((x) => x.id === pick) ?? versions[0] ?? null;
+  // 选中的版本由外层(ReviewTab)管,好让 Agent 面板拿到同一份;单独渲染时自己管
+  const [ownPick, setOwnPick] = useState<string | null>(null);
+  const pick = pickProp !== undefined ? pickProp : ownPick;
+  const setPick = onPick ?? setOwnPick;
+  const { running, saved: shown } = shownReview(r, pick);
   const [needConfig, setNeedConfig] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -331,17 +344,24 @@ export function ReviewView({ r, onChanged }: { r: ReviewResult; onChanged: () =>
   );
 }
 
-/** 给右下角 Agent 面板的页面上下文:汇总和五段正文(证据编号原样保留) */
-export function reviewSummary(r: ReviewResult): string {
-  const v = safeArray<SavedReview>(r.versions)[0];
+const stageLines = (stages: ReviewStage[]) => stages.map((s) => `【${s.label}】${s.status === "done" ? s.text : STATUS_TEXT[s.status] || "没写成"}`);
+
+/** 给右下角 Agent 面板的页面上下文:页面上正显示的那一份的汇总和五段正文(证据编号原样保留) */
+export function reviewSummary(r: ReviewResult, pick: string | null = null): string {
+  const { running, saved: v, index } = shownReview(r, pick);
+  if (running) return [`${r.date} 的 AI 复盘正在写(${clock(running.started_at)} 开始),页面上是写到一半的这一版:`, ...stageLines(safeArray<ReviewStage>(running.stages))].join("\n");
   if (!v) return `${r.date} 还没写过 AI 复盘。`;
-  return [`${r.date} 的 AI 复盘(${clock(v.finished_at || v.created_at)} 写完${v.imported ? ";从旧版导入,原文照搬,数字没按新版规则核对" : ""}):`,
-    ...safeArray<ReviewStage>(v.sections).map((s) => `【${s.label}】${s.status === "done" ? s.text : STATUS_TEXT[s.status] || "没写成"}`)].join("\n");
+  const n = safeArray<SavedReview>(r.versions).length;
+  const which = n > 1 ? `;这一天写过 ${n} 版,这是${index === 0 ? "最新一版" : "用户选的较早一版,不是最新"}` : "";
+  return [`${r.date} 的 AI 复盘(${clock(v.finished_at || v.created_at)} 写完${which}${v.imported ? ";从旧版导入,原文照搬,数字没按新版规则核对" : ""}):`,
+    ...stageLines(safeArray<ReviewStage>(v.sections))].join("\n");
 }
 
 export function ReviewTab({ day, refreshNonce, onBusy }: ViewTabProps) {
   const [st, reload] = useShortlineView<ReviewResult>("shortline_review", day, undefined, refreshNonce, onBusy);
   const r = st.state === "done" ? st.data : null;
+  const [pick, setPick] = useState<string | null>(null);
+  useEffect(() => { setPick(null); }, [day]);
   const running = !!r && safeArray<ReviewRun>(r.runs).some((x) => !x.done);
   // 写的时候隔几秒查一次进度(不带 refresh,只读内存里的状态和台账)
   useEffect(() => {
@@ -354,8 +374,8 @@ export function ReviewTab({ day, refreshNonce, onBusy }: ViewTabProps) {
   useAiPage(r ? {
     key: `shortline:review:${day}`,
     title: `AI 复盘 ${day}`,
-    context: reviewSummary(r),
+    context: reviewSummary(r, pick),
     suggestions: ["这份复盘里哪几句证据最弱", "五段之间有没有互相矛盾的地方", "汇总给的明日验证建议合不合理"],
   } : null);
-  return <ViewSlot st={st} label="AI 复盘">{(d) => <ReviewView r={d} onChanged={reload} />}</ViewSlot>;
+  return <ViewSlot st={st} label="AI 复盘">{(d) => <ReviewView r={d} onChanged={reload} pick={pick} onPick={setPick} />}</ViewSlot>;
 }

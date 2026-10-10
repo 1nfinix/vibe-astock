@@ -109,3 +109,18 @@ test("页面块 → 面板：结果取 extra.result；failed 的结果作废只�
     assert.equal(cleanReason("2026-10-04 不是交易日"), "2026-10-04 不是交易日", "没有类名的原样保留");
   });
 });
+
+test("亏钱效应口径:跌停制度写出两次改制的日期,和取数层算跌停用的是同一组日期(审计 3.12)", async () => {
+  const py = readFileSync(new URL("../../.agents/skills/data-access/scripts/sources/shortline.py", import.meta.url), "utf8");
+  const st = py.match(/^ST_10PCT_FROM = "(\d{4}-\d{2}-\d{2})"/m)?.[1];
+  const gem = py.match(/^CHINEXT_20PCT_FROM = "(\d{4}-\d{2}-\d{2})"/m)?.[1];
+  assert.ok(st && gem, "取数层的两个生效日期还在");
+  await withRenderer(async (r) => {
+    const { LIMIT_RULES_TEXT } = await r.load("/src/verticals/finance/shortline/FactsPanels.tsx");
+    assert.ok(LIMIT_RULES_TEXT.includes(`主板 ST ${st} 起 10%、之前 5%`), "主板 ST 改 10% 之后再看,不能还说 5%");
+    assert.ok(LIMIT_RULES_TEXT.includes(`创业板 ${gem} 起 20%、之前 10%`), "看改制前的创业板日期,不能一律说 20%");
+    assert.doesNotMatch(LIMIT_RULES_TEXT, /创业科创 20%|ST 主板 5%/, "旧的不分日期说法不留");
+  });
+  const panels = readFileSync(new URL("../src/verticals/finance/shortline/FactsPanels.tsx", import.meta.url), "utf8");
+  assert.match(panels, /caliber=\{"样本 = 昨日涨停池全部个股,收盘对收盘。\\n" \+[\s\S]{0,200}LIMIT_RULES_TEXT \+ "\\n" \+/, "亏钱效应的口径说明用的就是这段");
+});

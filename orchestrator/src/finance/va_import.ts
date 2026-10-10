@@ -20,6 +20,7 @@
  * ⚠️ 导入的复盘没按新版规则重新核对数字和证据,页面标「旧版导入」。旧版的复盘不分「盘中 / 收盘后」,
  *    这里按写完时刻是否晚于那天 15:00 判定。
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,9 +37,9 @@ import { FEE_KEYS, feeProblem } from "./journal/fees.ts";
 import { MODE_CHANGES_MAX, MODE_KIND, MODE_NAME_MAX, MODE_TEXT_FIELDS, MODE_TEXT_MAX, MODE_VERSIONS_MAX } from "./journal/modes.ts";
 import { pyRound, realDay } from "./journal/num.ts";
 import { buildRows, tagOf } from "./journal/rows.ts";
-import { buildEpisodes } from "./journal/episodes.ts";
+import { JOURNAL_ONLY_STOCKS, buildEpisodes, isJournalSymbol } from "./journal/episodes.ts";
 import { settingsOf } from "./journal/view.ts";
-import { INTRADAY_DIR_REL, SLOTS, SCHEMA as SNAPSHOT_SCHEMA, driftMinutes, validWindow, type Cohort, type LiveCounts, type Slot, type Snapshot, type TierStat, type TopBoard } from "./shortline/intraday.ts";
+import { INTRADAY_DIR_REL, SLOTS, SCHEMA as SNAPSHOT_SCHEMA, driftMinutes, validWindow, writeNewJson, type Cohort, type LiveCounts, type Slot, type Snapshot, type TierStat, type TopBoard } from "./shortline/intraday.ts";
 import { CITED_MAX, REVIEW_SECTIONS, SECTION_TEXT_MAX } from "./shortline/review_defs.ts";
 import { VERIFY_METRIC_KEYS, type Direction } from "./shortline/verify_metrics.ts";
 
@@ -90,27 +91,57 @@ function isDir(p: string): boolean {
 
 type Read = { value: unknown } | { why: string } | null;
 
-/** 读一个旧 JSON 文件:没有 = null;读不出 = 原因。符号链接、超大文件不读 */
+/** planImport 期间的导入根目录(planImport 全程同步,不会和另一次导入交错) */
+let scanRoot = "";
+
+/**
+ * `p` 本身或它在导入根目录以下的哪一层是符号链接(快捷方式)。
+ * 🔴 只查最后那个文件不够:`journal/` 整个指向目录外时,`journal/trades.json` 自己是普通文件,照样会读到目录外的东西。
+ */
+function underLink(p: string): boolean {
+  if (!scanRoot) return false;
+  for (let cur = path.resolve(p); cur.startsWith(scanRoot + path.sep); cur = path.dirname(cur)) {
+    try { if (fs.lstatSync(cur).isSymbolicLink()) return true; } catch { return false; }
+  }
+  return false;
+}
+
+const LINKED = "是符号链接(快捷方式),没读";
+
+/** 读一个旧 JSON 文件:没有 = null;读不出 = 原因。符号链接(包括所在文件夹是符号链接)、超大文件不读 */
 function readJson(file: string): Read {
   let st: fs.Stats;
   try { st = fs.lstatSync(file); } catch { return null; }
-  if (st.isSymbolicLink()) return { why: "是符号链接(快捷方式),没读" };
+  if (st.isSymbolicLink()) return { why: LINKED };
+  if (underLink(path.dirname(file))) return { why: `所在文件夹${LINKED}` };
   if (!st.isFile()) return { why: "不是普通文件,没读" };
   if (st.size > MAX_FILE_BYTES) return { why: `文件超过 ${MAX_FILE_BYTES / 1024 / 1024}MB,没读` };
   try { return { value: JSON.parse(fs.readFileSync(file, "utf8")) }; } catch { return { why: "文件读不出来(不是有效的 JSON)" }; }
 }
 
-/** 目录下的文件名 / 子目录名。文件这边符号链接也列出来(读的时候说明没读),子目录只认真文件夹 */
-function entries(dir: string, want: "file" | "dir"): string[] {
+/**
+ * 目录下的文件名 / 子目录名。文件这边符号链接也列出来(读的时候说明没读),子目录只认真文件夹。
+ * 目录本身(或上级)是符号链接、或者读不了(权限 / 读写错误)时交给 `onErr` 说明;只有「不存在」才当空目录
+ * —— 原来一律当空,整组旧数据会悄悄漏掉、预览里也看不出来。
+ */
+function entries(dir: string, want: "file" | "dir", onErr?: (why: string) => void): string[] {
+  if (underLink(dir)) { onErr?.(LINKED); return []; }
   try {
     return fs.readdirSync(dir, { withFileTypes: true })
       .filter((e) => (want === "file" ? e.isFile() || e.isSymbolicLink() : e.isDirectory()))
       .map((e) => e.name).sort();
-  } catch { return []; }
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") onErr?.(`文件夹读不了(${code ?? "未知错误"}),这一组可能没导全`);
+    return [];
+  }
 }
 
+/** entries 的出错说明记进这一组的「没导」 */
+const skipDir = (g: Group, what: string) => (why: string) => g.skipped.push({ what, why });
+
 function countFiles(dir: string, depth = 3): number {
-  if (depth < 0) return 0;
+  if (depth < 0 || underLink(dir)) return 0;
   let n = 0;
   for (const e of (() => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } })()) {
     if (e.isFile()) n++;
@@ -236,6 +267,7 @@ function planJournal(ctx: ServiceContext, dir: string, snap: ReturnType<typeof l
     if (!/^[0-9A-Za-z_-]{1,40}$/.test(vaId)) { g.skipped.push({ what, why: "没有记录编号,没法防重复导入" }); continue; }
     if (!/^\d{6}$/.test(code)) { g.skipped.push({ what, why: "代码不是 6 位数字" }); continue; }
     if (B_SHARE.test(code)) { g.skipped.push({ what, why: B_SHARE_UNSUPPORTED }); continue; }
+    if (!isJournalSymbol(code)) { g.skipped.push({ what, why: JOURNAL_ONLY_STOCKS }); continue; } // 和新版手记同一条规则
     const fills = vaFills(x.fills);
     if (typeof fills === "string") { g.skipped.push({ what, why: fills }); continue; }
     const name = str(x.name, 40);
@@ -302,7 +334,7 @@ function planJournal(ctx: ServiceContext, dir: string, snap: ReturnType<typeof l
 
 /**
  * 预演:把要导的流水和标注加进现有的,按新版规则重放一遍,列出会对不上的(卖超、同一轮几条标注……)。
- * 只列代码、日期和原因,不列金额。
+ * 只列代码、日期、方向和原因,不列成交价和股数(重放的原因里会有「卖出 N 股」,页面隐私模式按措辞遮)。
  */
 function journalWarnings(snap: ReturnType<typeof ledgerSnapshot>, items: readonly JournalItem[], now: Date): string[] {
   if (!items.length) return [];
@@ -331,7 +363,7 @@ function journalWarnings(snap: ReturnType<typeof ledgerSnapshot>, items: readonl
   const same = (t: Trade) => [t.symbol.toUpperCase(), t.type, t.date, t.shares, t.price].join("|");
   const had = new Set(base.filter((t) => t.type === "buy" || t.type === "sell").map(same));
   for (const t of planned) {
-    if (had.has(same(t))) out.push(`导入的 ${t.symbol} ${t.date} ${t.type === "buy" ? "买" : "卖"} ${t.shares} 股(成交价 ${t.price})和已记的一笔一模一样;如果是同一笔就记重了,导入后到「我的股票」的交易流水删掉多的那笔`);
+    if (had.has(same(t))) out.push(`导入的 ${t.symbol} ${t.date} 那笔${t.type === "buy" ? "买入" : "卖出"}和已记的一笔同价同量,一模一样;如果是同一笔就记重了,导入后到「我的股票」的交易流水删掉多的那笔`);
   }
   for (const i of ep.issues) {
     if (plannedIds.has(i.id)) out.push(`导入的 ${i.symbol} ${i.date} 那笔算不了:${i.why}`);
@@ -449,8 +481,8 @@ function readReviews(dir: string, g: Group): VaReview[] {
     out.push({ file, rel, date, d, finished: vaTime(d.generated_at), latest });
   };
   const base = path.join(dir, "reviews");
-  for (const f of entries(base, "file")) if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) add(path.join(base, f), f, true);
-  for (const f of entries(path.join(base, "_versions"), "file")) if (/^\d{4}-\d{2}-\d{2}\.[0-9a-f]{6,64}\.json$/.test(f)) add(path.join(base, "_versions", f), `_versions/${f}`, false);
+  for (const f of entries(base, "file", skipDir(g, "reviews/"))) if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) add(path.join(base, f), f, true);
+  for (const f of entries(path.join(base, "_versions"), "file", skipDir(g, "reviews/_versions/"))) if (/^\d{4}-\d{2}-\d{2}\.[0-9a-f]{6,64}\.json$/.test(f)) add(path.join(base, "_versions", f), `_versions/${f}`, false);
   return out;
 }
 
@@ -600,7 +632,7 @@ function planReviews(ctx: ServiceContext, dir: string, snap: ReturnType<typeof l
     byDate.set(date, new Map(items.map((it) => [it.metric, { ...it, written_at: v.finished }])));
   }
   const udir = path.join(dir, "verification");
-  for (const f of entries(udir, "file")) {
+  for (const f of entries(udir, "file", skipDir(vg, "verification/"))) {
     const m = /^(\d{4}-\d{2}-\d{2})\.json$/.exec(f);
     if (!m || !realDay(m[1]!)) continue;
     const r = readJson(path.join(udir, f));
@@ -698,9 +730,9 @@ export function snapshotOf(raw: unknown, day: string, slot: Slot): Snapshot | st
 function planSnapshots(ctx: ServiceContext, dir: string, g: Group): ImportPlan["snapshots"] {
   const out: ImportPlan["snapshots"] = [];
   const base = path.join(dir, "intraday");
-  for (const day of entries(base, "dir")) {
+  for (const day of entries(base, "dir", skipDir(g, "intraday/"))) {
     if (!realDay(day)) continue;
-    for (const f of entries(path.join(base, day), "file")) {
+    for (const f of entries(path.join(base, day), "file", skipDir(g, `intraday/${day}/`))) {
       const m = /^(\d{2})(\d{2})\.json$/.exec(f);
       if (!m) continue;
       g.found++;
@@ -749,8 +781,8 @@ function deepdiveNote(d: Record<string, unknown>, key: string): Record<string, u
 function planDeepdive(ctx: ServiceContext, dir: string, snap: ReturnType<typeof ledgerSnapshot>, g: Group): Record<string, unknown>[] {
   const base = path.join(dir, "deepdive");
   const files = [
-    ...entries(base, "file").filter((f) => /^\d{6}\.json$/.test(f)).map((f) => ({ file: path.join(base, f), rel: f })),
-    ...entries(path.join(base, "versions"), "file").filter((f) => /^[0-9a-f]{6,64}\.json$/.test(f)).map((f) => ({ file: path.join(base, "versions", f), rel: `versions/${f}` })),
+    ...entries(base, "file", skipDir(g, "deepdive/")).filter((f) => /^\d{6}\.json$/.test(f)).map((f) => ({ file: path.join(base, f), rel: f })),
+    ...entries(path.join(base, "versions"), "file", skipDir(g, "deepdive/versions/")).filter((f) => /^[0-9a-f]{6,64}\.json$/.test(f)).map((f) => ({ file: path.join(base, "versions", f), rel: `versions/${f}` })),
   ];
   const done = migratedSet(snap.records.note);
   const out: Record<string, unknown>[] = [];
@@ -761,8 +793,11 @@ function planDeepdive(ctx: ServiceContext, dir: string, snap: ReturnType<typeof 
     g.found++;
     if ("why" in r) { g.skipped.push({ what: `deepdive/${rel}`, why: r.why }); continue; }
     if (!isObj(r.value)) { g.skipped.push({ what: `deepdive/${rel}`, why: "格式不对" }); continue; }
+    // 🔴 版本身份 = 代码 + 生成时间 + 正文摘要:当前那份和 versions/ 里同一版内容相同,算一份;
+    //    原来只按「代码 + 生成时间(到分钟)」,同一分钟的两个不同版本会被当成一份,另一份永远导不进来
     const at = vaTime(r.value.generated_at);
-    const key = `va:deepdive:${str(r.value.code)}@${at ? at.slice(0, 16) : rel.replace(/\.json$/, "")}`.slice(0, 80);
+    const digest = crypto.createHash("sha256").update(JSON.stringify([r.value.verdict_md ?? null, r.value.reports ?? null, r.value.debate ?? null])).digest("hex").slice(0, 12);
+    const key = `va:deepdive:${str(r.value.code)}@${at ? at.slice(0, 16) : rel.replace(/\.json$/, "")}#${digest}`.slice(0, 80);
     if (seen.has(key)) { g.already++; continue; }
     seen.add(key);
     if (done.has(key)) { g.already++; continue; }
@@ -797,6 +832,11 @@ function notImported(dir: string): ImportPlan["not_imported"] {
 /* ---------------- 预览 / 导入 ---------------- */
 
 export function planImport(ctx: ServiceContext, dir: string, now = new Date()): ImportPlan {
+  scanRoot = path.resolve(dir);
+  try { return planImportIn(ctx, dir, now); } finally { scanRoot = ""; }
+}
+
+function planImportIn(ctx: ServiceContext, dir: string, now: Date): ImportPlan {
   const snap = ledgerSnapshot(ctx);
   const gj = group("journal", "交易记录"), gs = group("settings", "交易日志设置"), gm = group("modes", "模式卡");
   const gr = group("reviews", "AI 复盘"), gv = group("verification", "明日验证条件"), gi = group("intraday", "盘中快照"), gd = group("deepdive", "个股深挖");
@@ -871,14 +911,6 @@ function backup(ctx: ServiceContext, now: Date, kinds: readonly string[], snapsh
   return path.relative(path.resolve(ctx.dataRoot), dir).split(path.sep).join("/");
 }
 
-/** 新建一个快照文件:先写临时文件再硬链接过去,目标已存在就失败(绝不覆盖) */
-function createOnly(file: string, data: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, data, { flag: "wx" });
-  try { fs.linkSync(tmp, file); } finally { fs.rmSync(tmp, { force: true }); }
-}
-
 /**
  * 真导入。先备份涉及的台账文件,再按种类整批写:流水 → 标注(要流水的新 id)→ 其余;最后新建快照文件。
  * 某一种写失败(磁盘、并发改动)记进 failed、其余照写;再导一次会把没写进去的补上(已写的按来源跳过)。
@@ -919,8 +951,12 @@ export function runImport(ctx: ServiceContext, dir: string, now = new Date()): I
   for (const [kind, rs] of Object.entries(plan.records)) write(kind, rs);
   let made = 0;
   for (const s of plan.snapshots) {
-    try { createOnly(s.file, `${JSON.stringify(s.snapshot, null, 2)}\n`); made++; } catch (e) {
-      result.failed.push({ what: `${s.date} ${s.slot} 的盘中快照`, why: (e as NodeJS.ErrnoException).code === "EEXIST" ? "新版这个时点刚好已经有快照了,没覆盖" : e instanceof Error ? e.message : String(e) });
+    // 只新建、绝不覆盖(和定时存档同一个写法)
+    try {
+      if (writeNewJson(s.file, s.snapshot)) made++;
+      else result.failed.push({ what: `${s.date} ${s.slot} 的盘中快照`, why: "新版这个时点刚好已经有快照了,没覆盖" });
+    } catch (e) {
+      result.failed.push({ what: `${s.date} ${s.slot} 的盘中快照`, why: e instanceof Error ? e.message : String(e) });
     }
   }
   if (made) result.written.intraday = made;

@@ -76,7 +76,7 @@ function Problems({ v, act }: { v: Ready; act: Act }) {
             <button type="button" onClick={() => drop(p.id, p.what)} className={BTN_GHOST}>删掉</button>
           </p>
         ))}
-        {v.skipped_non_a.length > 0 && <p className="text-muted-foreground">不是 A 股、没算进来的代码:{v.skipped_non_a.join("、")}</p>}
+        {v.skipped_non_a.length > 0 && <p className="text-muted-foreground">不是 A 股股票(港美股、ETF、基金、债券等)、没算进来的代码:{v.skipped_non_a.join("、")}</p>}
         {v.orphan_dividends > 0 && <p className="text-muted-foreground">{v.orphan_dividends} 笔分红找不到对应的持有期,没算进盈亏。</p>}
         {v.invalid_cards > 0 && <p className="text-warning">⚠️ {v.invalid_cards} 张模式卡不合台账规则,没参与统计(可能在台账里被改过)。</p>}
         {msg && <p role="status" className="text-destructive">{msg}</p>}
@@ -209,7 +209,7 @@ function TradeTable({ v, env, hide, act }: { v: Ready; env: Load<EnvView>; hide:
                   {open && (
                     <tr className="border-b border-border/40 bg-muted/20">
                       <td colSpan={9} className="px-2 py-3">
-                        {open === "tag" ? <TagEditor row={r} playbooks={v.playbooks} act={act} onDone={() => setEditing(null)} />
+                        {open === "tag" ? <TagEditor row={r} playbooks={v.playbooks} hide={hide} act={act} onDone={() => setEditing(null)} />
                           : open === "manual" ? <ManualEditor row={r} playbooks={v.playbooks} act={act} onDone={() => setEditing(null)} />
                           : <AppendFill row={r} today={v.today} hide={hide} act={act} onDone={() => setEditing(null)} />}
                       </td>

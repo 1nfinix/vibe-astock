@@ -101,6 +101,12 @@ test("方向词承载正负号:证据 -1.92,报告写「下降 1.92」是对的"
   assert.deepEqual(checkNumberFidelity(rep(`中位较上次观测下降 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations, []);
   // 没有方向词时不放宽
   assert.equal(checkNumberFidelity(rep(`中位为 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations.length, 1);
+  // 🔴 正向词配负值证据 = 方向写反,不放宽(审计 2026-10-11 Codex 范围 4 第 4 条)
+  assert.equal(checkNumberFidelity(rep(`中位较上次观测上升 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations.length, 1);
+  assert.equal(checkNumberFidelity(rep(`中位较上次观测增加 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations.length, 1);
+  // 名词把方向反过来的照旧放宽:亏损增加、跌幅扩大
+  assert.deepEqual(checkNumberFidelity(rep(`单季亏损增加 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations, []);
+  assert.deepEqual(checkNumberFidelity(rep(`跌幅扩大 1.92 美元/卡时 [ev-aaaaaaaaaaaa] [${CID}]`), ev, calcs).violations, []);
 });
 
 test("纯 evidence 行也查:引了真实 id 却写了别的数要被抓出来", () => {
@@ -225,6 +231,8 @@ test("无符号 token 不许绑到带负号的文本:方向不能反", () => {
   assert.equal(checkNumberFidelity(rep(`同比为 1.92% [ev-dddddddddddd] [${CID}]`), ev, calcs).violations.length, 1);
   // 有方向词时走 `-token` 这条路,允许
   assert.deepEqual(checkNumberFidelity(rep(`同比下降 1.92% [ev-dddddddddddd] [${CID}]`), ev, calcs).violations, []);
+  // 正向词不走:文本证据是 -1.92%,写「上升 1.92%」是方向写反
+  assert.equal(checkNumberFidelity(rep(`同比上升 1.92% [ev-dddddddddddd] [${CID}]`), ev, calcs).violations.length, 1);
 });
 
 test("只有失败结果残留 display 时不算适用", () => {

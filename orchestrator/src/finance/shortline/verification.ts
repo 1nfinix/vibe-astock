@@ -16,8 +16,9 @@
  */
 import type { LedgerRecord } from "../../ledger.ts";
 import { localClock } from "../../notify.ts";
-import { ServiceError, fetchEndpoint, ledgerCheck, ledgerInsertMany, ledgerList, ledgerRemove, ledgerUpsert, type ServiceContext } from "../../service.ts";
+import { ServiceError, fetchEndpoint, ledgerCheck, ledgerList, ledgerReplace, type ServiceContext } from "../../service.ts";
 import { klineBars } from "../abnormal.ts";
+import { calendarFromEnvelope } from "../session.ts";
 import { SCHEDULE_TZ, failedNote, pool } from "../schedule.ts";
 import { DAYS_MAX, consistencyFor, dailySeries, noteOf, retentionFloor, roundTo, validDate, type DayRow } from "./history.ts";
 import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, type Direction, type VerifyMetric } from "./verify_metrics.ts";
@@ -41,6 +42,25 @@ export const VERIFY_SOURCE = "东财涨停 / 炸板 / 昨日涨停池(每天一�
 
 const BY_KEY = new Map(VERIFY_METRICS.map((m) => [m.key, m]));
 const isWeekday = (d: string) => { const w = new Date(`${d}T00:00:00Z`).getUTCDay(); return w !== 0 && w !== 6; };
+/** date 之后的第一个工作日(交易日历取不到时,按它保守地当成下一场) */
+const firstWeekdayAfter = (d: string) => {
+  const t = new Date(`${d}T00:00:00Z`);
+  do t.setUTCDate(t.getUTCDate() + 1); while (t.getUTCDay() === 0 || t.getUTCDay() === 6);
+  return t.toISOString().slice(0, 10);
+};
+
+/** 今天开不开市(交易所日历);取不到 → null。只认日期对得上今天的结果 */
+async function todayIsTradingDay(ctx: ServiceContext, today: string, signal: AbortSignal): Promise<boolean | null> {
+  try {
+    const r = await fetchEndpoint(ctx, { endpoint: "fetch_trade_calendar", symbol: "300308", consistency: { mode: "prefer_cache", max_age_ms: KLINE_MAX_AGE_MS }, signal });
+    const env = r.envelope as { status?: unknown; evidence?: { field?: string; value?: unknown; period?: string }[] };
+    if (env.status === "failed" || (env.evidence ?? []).find((e) => e.field === "is_today_trading_day")?.period !== today) return null;
+    return calendarFromEnvelope(env)?.is_today_trading_day ?? null;
+  } catch (e) {
+    if (signal.aborted) throw e;
+    return null;
+  }
+}
 const isDirection = (v: unknown): v is Direction => typeof v === "string" && (DIRECTIONS as string[]).includes(v);
 
 export type MetricValues = Record<string, number | null>;
@@ -343,7 +363,10 @@ export async function shortlineVerify(ctx: ServiceContext, query: Record<string,
 
 /**
  * 写条件:`{ action: "save", date, items: [{ metric, direction, reason? }] }`,整晚一起替换(给空数组 = 清掉这晚的)。
- * 下一场开盘竞价后就不收了 —— 看过盘再写的「判断」不算数。交易日历取不到时放行,对账时照样标「事后」。
+ * 下一场开盘竞价后就不收了 —— 看过盘再写的「判断」不算数。
+ * 下一场:日 K 里 date 之后的第一根;日 K 里还没有(今天这根要开盘后才有,读的又是 5 分钟缓存)而今天开市,就是今天。
+ * 日 K 和日历都取不到时,新写和改写放行(对账时按写下时间照样标「事后」),但**删除**不放行 ——
+ * 删掉的条件不留痕迹,会直接从战绩里消失(审计 2026-10-11 Opus 范围 2 第 2 条)。
  */
 export async function shortlineVerifyAct(ctx: ServiceContext, body: Record<string, unknown>, signal: AbortSignal, now = new Date()): Promise<{ date: string; items: Item[] }> {
   if (body.action !== "save") throw new ServiceError("bad_request", "只支持 action=save");
@@ -373,32 +396,41 @@ export async function shortlineVerifyAct(ctx: ServiceContext, body: Record<strin
   }
 
   // 下一场已经开盘竞价:不收
+  let bars: string[] = [];
   try {
     const k = await fetchEndpoint(ctx, { endpoint: "tx_kline", symbol: "sh000002", args: { count: 100 }, consistency: { mode: "prefer_cache", max_age_ms: KLINE_MAX_AGE_MS }, signal });
-    const bars = klineBars(ctx, k.envelope, k.out_dir).map((b) => b.date);
-    // 今天的日 K 开盘后才有:今天是工作日就先放行
-    if (bars.length && !bars.includes(date) && !(date === today && isWeekday(date))) throw new ServiceError("bad_request", `${date} 不是交易日;条件写在复盘的那个交易日上`);
-    const next = bars.find((d) => d > date);
-    if (next && isLate({ updated_at: now.toISOString() }, next)) throw new ServiceError("bad_request", `${next} 已经开盘,${date} 那晚的条件不能再写或改了(看过盘再写的判断不算数)`);
+    bars = klineBars(ctx, k.envelope, k.out_dir).map((b) => b.date);
   } catch (e) {
-    if (e instanceof ServiceError && e.code === "bad_request") throw e;
     if (signal.aborted) throw e;
   }
+  let next = bars.find((d) => d > date);
+  // 今天的日 K 开盘后才有:今天要不要算问日历(工作日也可能休市,比如国庆)
+  const askToday = isWeekday(today) && (date === today || (!next && date < today));
+  const todayOpen = askToday ? await todayIsTradingDay(ctx, today, signal) : null;
+  if (date === today && todayOpen === false) throw new ServiceError("bad_request", `${date} 休市;条件写在复盘的那个交易日上`);
+  if (bars.length && !bars.includes(date) && !(date === today && isWeekday(date))) throw new ServiceError("bad_request", `${date} 不是交易日;条件写在复盘的那个交易日上`);
+  if (!next && date < today && todayOpen === true) next = today;
+  const late = (d: string) => isLate({ updated_at: now.toISOString() }, d);
+  if (next && late(next)) throw new ServiceError("bad_request", `${next} 已经开盘,${date} 那晚的条件不能再写或改了(看过盘再写的判断不算数)`);
+  // 下一场开没开始说不准:日 K 没取到,或日 K 里还没有下一场、日历也没取到
+  const unsure = !next && date < today && (bars.length === 0 || (isWeekday(today) && todayOpen === null));
 
   const existing = (ledgerList(ctx, LEDGER_KIND)[LEDGER_KIND] ?? []).filter((r) => r.date === date);
-  const byMetric = new Map<string, LedgerRecord[]>();
-  for (const r of existing) byMetric.set(String(r.metric), [...(byMetric.get(String(r.metric)) ?? []), r]);
-  const inserts: Record<string, unknown>[] = [];
-  for (const w of want) {
-    const [keep, ...dupes] = byMetric.get(w.metric) ?? [];
-    byMetric.delete(w.metric);
-    for (const d of dupes) ledgerRemove(ctx, { kind: LEDGER_KIND, id: d.id });
-    if (!keep) { inserts.push(w); continue; }
-    // 没变就不重写:updated_at 不动,下一场开盘后才重存一遍的条目不会被当成「事后改」
-    if (keep.direction === w.direction && (keep.reason ?? "") === w.reason) continue;
-    ledgerUpsert(ctx, { kind: LEDGER_KIND, record: { id: keep.id, ...w } });
+  const keepMetrics = new Set(want.map((w) => w.metric));
+  const removes = existing.some((r) => !keepMetrics.has(String(r.metric)));
+  if (unsure && removes && late(firstWeekdayAfter(date))) {
+    throw new ServiceError("bad_request", `交易日历和日 K 暂时都没取到,确认下一场还没开盘之前不能删 ${date} 那晚的条件(删掉的不留记录);稍后再试`);
   }
-  for (const rest of byMetric.values()) for (const r of rest) ledgerRemove(ctx, { kind: LEDGER_KIND, id: r.id });
-  if (inserts.length) ledgerInsertMany(ctx, { kind: LEDGER_KIND, records: inserts });
+  // 🔴 整晚一次落盘(审计 2026-10-11 Codex 范围 2 第 4 条):原来逐条删、逐条加,删完、加之前出错或进程退出,这晚就永久残缺
+  const byMetric = new Map<string, LedgerRecord>();
+  for (const r of existing) if (!byMetric.has(String(r.metric))) byMetric.set(String(r.metric), r);
+  const records = want.map((w): Record<string, unknown> => {
+    const keep = byMetric.get(w.metric);
+    if (!keep) return w;
+    // 没变就原样交回:updated_at 不动,下一场开盘后才重存一遍的条目不会被当成「事后改」
+    const same = keep.direction === w.direction && (keep.reason ?? "") === w.reason && !ledgerCheck(ctx, LEDGER_KIND, keep);
+    return same ? keep : { id: keep.id, ...w };
+  });
+  ledgerReplace(ctx, { kind: LEDGER_KIND, match: (r) => r.date === date, records });
   return { date, items: itemsByDate(ledgerList(ctx, LEDGER_KIND)[LEDGER_KIND] ?? []).byDate.get(date) ?? [] };
 }

@@ -22,7 +22,7 @@ import { loadSavedAgentPaths } from "../src/local_agent_runtime.ts";
 import { errorGuide, serverInstructions } from "../src/mcp.ts";
 import { currentPlugin, registerPlugin, resetPlugin } from "../src/plugin.ts";
 import { FINANCE_PLUGIN } from "../src/finance/plugin.ts";
-import { PRODUCT_NAME, PRODUCT_SLUG, REPO_SLUG } from "../src/brand.ts";
+import { API_COOKIE, PRODUCT_NAME, PRODUCT_SLUG, REPO_SLUG } from "../src/brand.ts";
 
 
 import "../src/finance/register.ts";   // 测试文件也是入口:插件要先注册
@@ -434,7 +434,7 @@ test("报告与查看器只开放已结束且状态一致的运行，未校验�
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(ctx.repoRoot, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
-  const headers = { Authorization: `Bearer ${TOKEN}`, Cookie: `vra_token=${TOKEN}` };
+  const headers = { Authorization: `Bearer ${TOKEN}`, Cookie: `${API_COOKIE}=${TOKEN}` };
   for (const patch of [
     { status: "running", finished_at: null },
     { status: "failed", exit_code: 3 },
@@ -722,8 +722,11 @@ test("HTTP API:token 必需 / 非本机 Origin 403 / 跨站 403 / 非 JSON POST 
       http.get({ host: "127.0.0.1", port, path: `/login?token=${TOKEN}` }, (r) => { resolve({ code: r.statusCode ?? 0, cookie: String(r.headers["set-cookie"]?.[0] ?? ""), loc: String(r.headers.location ?? "") }); r.resume(); }).on("error", reject);
     });
     assert.equal(login.code, 302); assert.equal(login.loc, "/ui"); assert.ok(login.cookie.includes("HttpOnly") && login.cookie.includes("SameSite=Strict"));
+    // cookie 不按端口分:名字要和 VR 的 vra_token 不同,VR 那个名字的 cookie 也不认
+    assert.ok(login.cookie.startsWith(`${API_COOKIE}=`) && (API_COOKIE as string) !== "vra_token", login.cookie.split("=")[0]);
+    assert.equal((await call("GET", "/ui", undefined, { Authorization: "", Cookie: `vra_token=${TOKEN}` })).code, 401);
     assert.equal((await call("GET", "/login?token=wrong", undefined, { Authorization: "" })).code, 401);
-    const cookieHdr = { Authorization: "", Cookie: `vra_token=${TOKEN}` };
+    const cookieHdr = { Authorization: "", Cookie: `${API_COOKIE}=${TOKEN}` };
     const ui = await call("GET", "/ui", undefined, cookieHdr);
     assert.equal(ui.code, 200); assert.ok(ui.text.includes("r1") && ui.text.includes("运行列表") && !ui.text.includes(ctx.dataRoot));
     const uiRunPage = await call("GET", "/ui/runs/r1", undefined, cookieHdr);
@@ -731,7 +734,7 @@ test("HTTP API:token 必需 / 非本机 Origin 403 / 跨站 403 / 非 JSON POST 
     assert.equal((await call("GET", "/ui/runs/nope", undefined, cookieHdr)).code, 404);
     assert.equal((await call("GET", "/runs/r1/report", undefined, cookieHdr)).code, 200, "Cookie 可读只读 GET");
     assert.equal((await call("POST", "/fetch", { endpoint: "em_reports", symbol: "300308" }, cookieHdr)).code, 401, "POST 不认 Cookie");
-    assert.equal((await call("GET", "/ui", undefined, { Authorization: "", Cookie: "vra_token=wrong" })).code, 401);
+    assert.equal((await call("GET", "/ui", undefined, { Authorization: "", Cookie: `${API_COOKIE}=wrong` })).code, 401);
     // Cookie 只对白名单只读 GET 有效:非白名单 GET(/endpoints /health /knowledge /runs/:id/evidence|manifest)即使 cookie 正确也 401
     for (const pth of ["/endpoints", "/health", "/knowledge/SZ/300308", "/runs/r1/evidence", "/runs/r1/manifest", "/nope"])
       assert.equal((await call("GET", pth, undefined, cookieHdr)).code, 401, `cookie 不应放行 ${pth}`);
@@ -765,7 +768,7 @@ test("HTTP API:token 必需 / 非本机 Origin 403 / 跨站 403 / 非 JSON POST 
   const get2 = (p: string, headers: Record<string, string> = {}) => new Promise<number>((resolve, reject) => { http.get({ host: "127.0.0.1", port: port2, path: p, headers }, (r) => { resolve(r.statusCode ?? 0); r.resume(); }).on("error", reject); });
   try {
     assert.equal(await get2(`/login?token=${TOKEN}`), 404);
-    assert.equal(await get2("/ui", { Cookie: `vra_token=${TOKEN}` }), 401);
+    assert.equal(await get2("/ui", { Cookie: `${API_COOKIE}=${TOKEN}` }), 401);
     assert.equal(await get2("/ui", { Authorization: `Bearer ${TOKEN}` }), 200);
   } finally { srv2.close(); }
   const tk = resolveToken(ctx, {});

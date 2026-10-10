@@ -32,7 +32,7 @@ import "./finance/register_tasks.ts";
 import { VIEWER_CSP } from "./viewer.ts";
 import { loadSavedAgentPaths } from "./local_agent_runtime.ts";
 import { updateAction, updateStatus } from "./update_check.ts";
-import { API_PORT, PRODUCT_NAME } from "./brand.ts";
+import { API_COOKIE, API_PORT, PRODUCT_NAME } from "./brand.ts";
 const MAX_BODY = 256 * 1024;
 
 function send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8", htmlCsp = HTML_CSP): void {
@@ -134,7 +134,7 @@ const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g,
 const UI_CSS = "body{font-family:-apple-system,'PingFang SC',sans-serif;margin:0;background:#f6f7f9;color:#1f2328}header{background:#1f2d3d;color:#fff;padding:14px 20px}main{padding:16px 20px}table{border-collapse:collapse;background:#fff;font-size:14px}th,td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}th{background:#eef2f7}a{color:#1d4ed8}pre{background:#fff;border:1px solid #e2e8f0;padding:12px;white-space:pre-wrap;font-size:13px}.tag{padding:1px 6px;border-radius:4px;background:#e2e8f0}.complete{background:#d1fae5}.failed{background:#fee2e2}.incomplete,.stale{background:#fef3c7}";
 
 function cookieToken(req: http.IncomingMessage): string | null {
-  const m = /(?:^|;\s*)vra_token=([A-Za-z0-9_-]+)/.exec(req.headers.cookie ?? "");
+  const m = new RegExp(`(?:^|;\\s*)${API_COOKIE}=([A-Za-z0-9_-]+)`).exec(req.headers.cookie ?? "");
   return m ? m[1] : null;
 }
 
@@ -185,7 +185,7 @@ export function createApiServer(ctx: ServiceContext, opts: { token: string; cook
       if (req.method === "GET" && url.pathname === "/login") {
         if (!cookieLogin) return send(res, 404, { error: "cookie login disabled (non-loopback bind)" });
         if (url.searchParams.get("token") !== opts.token) return send(res, 401, { error: "unauthorized" });
-        res.writeHead(302, { "Set-Cookie": `vra_token=${opts.token}; HttpOnly; SameSite=Strict; Path=/`, Location: "/ui", ...SECURITY_HEADERS });
+        res.writeHead(302, { "Set-Cookie": `${API_COOKIE}=${opts.token}; HttpOnly; SameSite=Strict; Path=/`, Location: "/ui", ...SECURITY_HEADERS });
         return res.end();
       }
       const cookieOk = cookieLogin && req.method === "GET" && COOKIE_GET_ROUTES.some((re) => re.test(url.pathname)) && cookieToken(req) === opts.token;

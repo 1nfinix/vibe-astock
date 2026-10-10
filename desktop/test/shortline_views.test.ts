@@ -197,3 +197,26 @@ test("分页取数状态：加载中写慢的原因，没取到写原因并说�
     assert.equal(done, "数据 1");
   });
 });
+
+test("🔴 AI 复盘写作中某一次静默刷新没取到:进度留着、标一句没取到,轮询看的 run 仍是没写完(Opus 审计 3.3)", async () => {
+  await withRenderer(async (r) => {
+    const { failedView } = await r.load(`${DIR}/useView.ts`);
+    const { ViewSlot } = await r.load(`${DIR}/ViewBits.tsx`);
+    const writing = { state: "done", data: { runs: [{ id: "r1", done: false }] } };
+    const after = failedView(writing, "本机 API 连不上", true);
+    assert.deepEqual(after, { state: "done", data: writing.data, stale: "本机 API 连不上" }, "上一次取到的写作进度留着");
+    assert.equal(after.data.runs[0].done, false, "轮询看的是这个 run:没写完就接着排下一次");
+    assert.deepEqual(failedView(writing, "超时", false), { state: "failed", why: "超时" }, "换日期 / 点刷新那种非静默重取,失败照旧换成没取到");
+    assert.deepEqual(failedView({ state: "loading" }, "超时", true), { state: "failed", why: "超时" }, "还没有内容可留时照旧报没取到");
+    const text = textOf(r.html(ViewSlot, { st: after, label: "AI 复盘", children: () => "写到一半的复盘" }));
+    assert.equal(text, "AI 复盘最近一次刷新没取到:本机 API 连不上。下面是上一次取到的内容。 写到一半的复盘");
+    const back = textOf(r.html(ViewSlot, { st: { state: "done", data: 1 }, label: "AI 复盘", children: () => "新内容" }));
+    assert.equal(back, "新内容", "下一次取到就不再提");
+  });
+  const hook = readFileSync(new URL("../src/verticals/finance/shortline/useView.ts", import.meta.url), "utf8");
+  assert.match(hook, /setSt\(\(prev\) => failedView\(prev, why, quiet\)\);/);
+  for (const f of ["ReviewTab.tsx", "WeeklyReviewTab.tsx"]) {
+    const src = readFileSync(new URL(`../src/verticals/finance/shortline/${f}`, import.meta.url), "utf8");
+    assert.match(src, /const r = st\.state === "done" \? st\.data : null;/, `${f}:轮询按留着的内容判断写完没有`);
+  }
+});

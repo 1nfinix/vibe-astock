@@ -19,7 +19,8 @@ Remove-Item Env:PYTHONHOME, Env:PYTHONPATH, Env:PYTHONUSERBASE -ErrorAction Sile
 Remove-Item Env:VRA_DATA_ROOT -ErrorAction SilentlyContinue
 if (-not (Test-Path (Join-Path $root ".local\config.json"))) {
   Write-Host "[Vibe AStock] 第一次在这个文件夹启动，新建空白数据目录 .local。"
-  Write-Host "  用过旧版本、想带上原来的数据：先关掉这个窗口，把旧文件夹里的 .local 整个复制到这个文件夹，再双击启动。"
+  Write-Host "  用过 Python 版 Vibe AStock（v1.x）：启动后到「接入 AI」页最下面点「从旧版导入」，把原来的交易日志和复盘搬过来。"
+  Write-Host "  用过旧版免安装包：先关掉这个窗口，把旧文件夹里的 .local 整个复制到这个文件夹，再双击启动。"
   # 初始化的「下一步」是写给源码版的（scripts\start.cmd、填 python），这里不显示；出错信息照常显示
   & node (Join-Path $root "orchestrator\src\init.ts") | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "初始化数据目录失败（退出码 $LASTEXITCODE）" }

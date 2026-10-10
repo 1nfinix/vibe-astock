@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources import shortline as S  # noqa: E402
@@ -53,8 +53,7 @@ def loss_effect(date: str, prev: Optional[str] = None) -> dict:
             deep5 = [r for r in got if r["ret"] <= -5]
             today = S.pools(date)
             return {
-                "available": True, "prev_date": prev, "source": "settled",
-                "sample": n, "coverage": n, "coverage_rate": 1.0, "partial": False,
+                "available": True, "prev_date": prev, "source": "settled", **S.settled_cov(date, n),
                 "deep_loss_5_count": len(deep5), "deep_loss_5_rate": round(len(deep5) / n, 3),
                 "deep_loss_7_count": sum(1 for r in got if r["ret"] <= -7),
                 # 定稿记录没有跌停价,按各自制度的跌幅上限判
@@ -144,8 +143,7 @@ def feedback_matrix(date: str, prev: Optional[str] = None) -> dict:
             _finish_matrix(matrix)
             details.sort(key=lambda d: d["ret"])
             return {
-                "available": True, "prev_date": prev, "source": "settled", "sample": len(details), "coverage": len(details),
-                "coverage_rate": 1.0, "partial": False, "result_order": RESULT_ORDER, "matrix": matrix, "details": details,
+                "available": True, "prev_date": prev, "source": "settled", **S.settled_cov(date, len(details)), "result_order": RESULT_ORDER, "matrix": matrix, "details": details,
                 "note": ("涨跌幅取昨日强势股当日记录；晋级以本次东财涨停池成员为准。记录不含昨日炸板股，故缺「昨日炸板」这一档。" if today_codes is not None
                          else "本次涨停池未取得，晋级仅按收盘价推定，不能与池成员晋级率直接比较；昨日炸板股未覆盖。"),
             }
@@ -235,24 +233,33 @@ def theme_structure(date: str, top: int = 8) -> dict:
     }
 
 
-def _prev_boards_map(prev: Optional[str]) -> dict[str, int]:
-    """前一交易日 代码 → 连板数,给今天的炸板 / 跌停票补上「昨天几板」。"""
-    rows = S.zt_pool(prev) if prev else None
-    return {r["code"]: int(r.get("boards") or 1) for r in rows or []}
+# 「调用方没传前一交易日涨停池」和「传了、但没取到(None)」要分开
+_UNSET: Any = object()
+
+
+def _prev_pool(prev: Optional[str], prev_zt: Any) -> Optional[list[dict]]:
+    """前一交易日涨停池:调用方传了就用传的(build_facts 只取一次、几张表共用),没传自己取。None = 没取到。"""
+    if prev_zt is not _UNSET:
+        return prev_zt
+    return S.zt_pool(prev) if prev else None
 
 
 _LOSS = {"高位断板", "连板断板", "炸板", "高标跌停", "跌停"}
 _GAIN = {"最高标", "题材首封"}
 
 
-def event_ledger(date: str, prev: Optional[str] = None) -> dict:
+def event_ledger(date: str, prev: Optional[str] = None, prev_zt: Any = _UNSET) -> dict:
     """关键事件账本:今天真正值得看的那十几只票,自动挑出来。"""
     p = S.pools(date)
     if p is None:
         return {"available": False, "reason": f"{date} 涨停池取数失败"}
     zt, zb, dt = p["zt"], p["zb"], p["dt"]
     prev = prev or S.prev_trade_date(date)
-    prev_boards = _prev_boards_map(prev)
+    prev_rows = _prev_pool(prev, prev_zt)
+    # 🔴 前一交易日涨停池没取到 ≠ 昨天都没涨停:不写「昨日未涨停」,也不出要靠昨日板数的标签(高位断板 / 连板断板 / 高标跌停)
+    prev_ok = prev_rows is not None
+    prev_boards = {r["code"]: int(r.get("boards") or 1) for r in prev_rows or []}
+    unknown = "（昨日板数未取得）"
     events: list[dict] = []
 
     def add(tag: str, r: dict, note: str = "") -> None:
@@ -286,13 +293,13 @@ def event_ledger(date: str, prev: Optional[str] = None) -> dict:
         elif pb and pb >= 2:
             add("连板断板", r, f"昨日 {pb} 板，今日炸板未回封")
         else:
-            add("炸板", r, f"炸板 {r.get('broken_times') or 0} 次未回封" + (f"，昨日 {pb} 板" if pb else "（昨日未涨停）"))
+            add("炸板", r, f"炸板 {r.get('broken_times') or 0} 次未回封" + (f"，昨日 {pb} 板" if pb else "（昨日未涨停）" if prev_ok else unknown))
     # 大面:昨日是高标的今天跌停,比普通跌停更值得记
     for r in sorted(dt, key=lambda x: (-(prev_boards.get(x["code"]) or 0), -(x.get("consec_dt") or 0)))[:5]:
         pb = prev_boards.get(r["code"])
-        add("高标跌停" if (pb and pb >= 2) else "跌停", r, f"连续跌停 {int(r.get('consec_dt') or 1)} 天" + (f"｜昨日 {pb} 板" if pb else ""))
+        add("高标跌停" if (pb and pb >= 2) else "跌停", r, f"连续跌停 {int(r.get('consec_dt') or 1)} 天" + (f"｜昨日 {pb} 板" if pb else "" if prev_ok else unknown))
     return {
-        "available": True, "events": events, "count": len(events),
+        "available": True, "events": events, "count": len(events), "prev_date": prev, "prev_available": prev_ok,
         "loss_events": [e for e in events if e["tag"] in _LOSS],
         "gain_events": [e for e in events if e["tag"] in _GAIN],
         # 「反复开板」既不是纯赚也不是纯亏 —— 它是分歧,单独一堆
@@ -300,13 +307,13 @@ def event_ledger(date: str, prev: Optional[str] = None) -> dict:
     }
 
 
-def by_board(date: str, prev: Optional[str] = None) -> dict:
+def by_board(date: str, prev: Optional[str] = None, prev_zt: Any = _UNSET) -> dict:
     """按涨跌幅制度拆开看:10cm / 20cm / 北交所 / 主板 ST 各自的涨停与晋级生态。"""
     prev = prev or S.prev_trade_date(date)
     tp = S.pools(date)
     if tp is None:
         return {"available": False, "reason": f"{date} 涨停池取数失败"}
-    prev_zt = S.zt_pool(prev) if prev else None
+    prev_zt = _prev_pool(prev, prev_zt)
     today_codes = {r["code"] for r in tp["zt"]}
     out: dict[str, dict] = {}
 
@@ -341,14 +348,16 @@ def build_facts(date: Optional[str] = None) -> dict:
     """六张事实表一起算(共用同一个前一交易日和池子)。"""
     d = S.review_day(date)
     prev = S.prev_trade_date(d)
+    # 关键事件和分制度都要前一交易日涨停池:只取一次、两张表共用,免得一次没取到、一次取到,两张表说法不一
+    prev_zt = S.zt_pool(prev) if prev else None
     return {
         "date": d, "prev_date": prev, "settled": S.is_settled(d),
         "seal_quality": seal_quality(d),
         "loss_effect": loss_effect(d, prev),
         "feedback": feedback_matrix(d, prev),
         "themes": theme_structure(d),
-        "events": event_ledger(d, prev),
-        "by_board": by_board(d, prev),
+        "events": event_ledger(d, prev, prev_zt),
+        "by_board": by_board(d, prev, prev_zt),
     }
 
 
@@ -412,7 +421,9 @@ def render_facts(f: dict) -> str:
 
     bb = f.get("by_board") or {}
     if bb.get("available"):
-        segs = "；".join(f"{b} 涨停 {g['limit_up']}、炸板 {g['broken']}、跌停 {g['limit_down']}、晋级 {g['promoted']}/{g['prev_base']}"
+        # 前一交易日涨停池没取到时晋级写「—」,不写 0/0
+        promo = (lambda g: f"晋级 {g['promoted']}/{g['prev_base']}") if bb.get("prev_available", True) else (lambda g: "晋级 —")
+        segs = "；".join(f"{b} 涨停 {g['limit_up']}、炸板 {g['broken']}、跌停 {g['limit_down']}、{promo(g)}"
                         for b, g in (bb.get("boards") or {}).items())
         lines.append(f"· 分制度：{segs}。{bb.get('note', '')}")
     else:

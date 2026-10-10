@@ -405,9 +405,19 @@ export const PROSE_BEFORE = /(近|过去|未来|连续|第|每|共|约|前|后|�
 /**
  * 中文用**方向词**承载正负号:证据值是 -1.92,报告写"下降 1.92 美元/卡时"是正确写法,
  * 不是丢了符号(实测这类占误报的一大半)。命中这些词时,允许按绝对值绑定。
- * ⚠️ 仅放宽**符号**,不放宽数值本身;方向词写反(该"降"写成"升")这里抓不到 —— 那是语义层的事。
+ * ⚠️ 仅放宽**符号**,不放宽数值本身。正向词(上升 / 增加…)不放宽,见 `signedBefore`;
+ *    负向词写反(该"升"写成"降",配正值证据)这里仍抓不到 —— 正值本来就能直接绑上。
  */
 export const SIGNED_BEFORE = /(下降|上升|下跌|上涨|回落|回升|减少|增加|降低|提高|收窄|扩大|低|高|多|少|降|升|增|减|差)\s*$/;
+/**
+ * 正向方向词:后面的数本该是正值。「同比上升 1.92%」配证据 -1.92% 是方向写反,不能借上面的放宽绑上去(审计 2026-10-11 Codex 范围 4 第 4 条)。
+ * 例外:前面有把方向反过来的名词 ——「亏损增加 2 亿」「跌幅扩大」配负值证据是对的,照旧放宽。
+ * 「收窄 / 扩大 / 差」本身方向不定,不在这里。
+ */
+const UP_BEFORE = /(上升|上涨|回升|增加|提高|高|多|升|增)\s*$/;
+const INVERTED_BEFORE = /(亏|跌|降幅|负|缺口|逆差|赤字)/;
+/** 方向词允许按绝对值绑负值证据吗 */
+export const signedBefore = (before: string): boolean => SIGNED_BEFORE.test(before) && !(UP_BEFORE.test(before) && !INVERTED_BEFORE.test(before));
 
 export function reportSections(report: string): Record<string, string[]> {
   const out: Record<string, string[]> = {}; let cur = "_head";
@@ -564,7 +574,7 @@ export function checkNumberFidelity(report: string, evById: Map<string, Evidence
         const before = idx >= 0 ? line.slice(Math.max(0, idx - 6), idx) : "";
         if (!decimal && PROSE_BEFORE.test(before)) continue;               // "近 5 年" / "连续 3 期":叙述,豁免
         total++;
-        const signed = SIGNED_BEFORE.test(before);        // "下降 1.92" ← 证据 / display 为 -1.92
+        const signed = signedBefore(before);              // "下降 1.92" ← 证据 / display 为 -1.92
         // 行内**显式写了负号**时,要拿负值去绑:否则 "−1.92%" 会被当成 1.92 绑上一个正值证据
         const neg = negatedAt(line, idx);
         const val = neg ? -t.n : t.n;

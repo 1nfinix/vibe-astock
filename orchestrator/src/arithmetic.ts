@@ -57,6 +57,25 @@ function term(raw: string | undefined, mag: string | undefined, suffix: string |
 const sameDim = (x: string, y: string) => x === y || (x !== "%" && y !== "%" && (!x || !y));
 
 /**
+ * 没写数量级、也没写单位名的数(裸数或百分比):结果写了数量级时才可能是「省略写法」。
+ * 🔴 明确写了「元 / 股 / 倍」的就是那个单位本身:「2 元 + 3 元 = 5 亿元」按 5 元算,不按 5 亿读(审计 2026-10-11 Codex 范围 4 第 3 条)
+ */
+const unitless = (t: Term) => !t.mag && (!t.dim || t.dim === "%");
+/** 自己写清了单位的数:写了数量级,或写了单位名(百分比不算单位名) */
+const ownUnit = (t: Term) => t.mag || (!!t.dim && t.dim !== "%");
+
+/**
+ * 只有结果写了数量级时有两种读法:运算数按结果的数量级读(省略写法「19005.40 − 16821.09 = 2184.31 亿元」),
+ * 或运算数按字面读、结果换了个单位写(「5 × 2000 = 1 万」「3000 + 7000 = 1 万」)。取数量级离写出来的结果更近的那种:
+ * 两种读法差一个数量级系数(至少 1 万倍),对得上的那种一定更近;都对不上时「重算应为」也按更说得通的那种报。
+ * 🔴 原来只认第一种:一条对的单位换算被标成算错(审计 2026-10-11 Opus 范围 4 待核实,实跑确认)。
+ */
+function eitherReading(stated: number, omitted: number, literal: number): number {
+  const off = (x: number) => (x === 0 || stated === 0 ? Number.POSITIVE_INFINITY : Math.abs(Math.log10(Math.abs(x / stated))));
+  return off(literal) < off(omitted) ? literal : omitted;
+}
+
+/**
  * 两数运算后的结果,换算回**结果写出来的单位**;单位对不上又判断不了时返回 null(不认这条算式,既不算对也不算错)。
  * - 结果没写单位:加减要求两边同一数量级(「2 亿 + 3 亿 = 5」是省略写法);乘法要求两边都没数量级;
  *   除法要求两边都写或都没写数量级(都写 = 两个金额之比)。否则说不清结果是哪个数量级 → null。
@@ -68,9 +87,9 @@ function binaryResult(op: string, a: Term, b: Term, r: Term & { explicit: boolea
   // ⚠️ 乘除不查量纲:「金额 × 百分比」「金额 ÷ 金额 = %」「金额 ÷ 股数 = 元」都是正常写法
   // 🔴 数量级只写在结果上(「19005.40 − 16821.09 = 2184.31 亿元」「100 ÷ 8 = 12.5 亿」)是省略写法:运算数按结果的数量级读。
   //    不认这种写法时,结果被换算成亿、运算数还是裸数,一条对的算式被判成「重算应为 0.00」(VA 复盘实跑 2026-10-10)。
-  if (r.mag && !a.mag && !b.mag) {
-    if (new RegExp(DIV).test(op)) return b.v === 0 ? null : (a.v * a.k) / (b.v * b.k) / pctK(r);
-    return (a.v * a.k * b.v * b.k) / pctK(r);
+  if (r.mag && unitless(a) && unitless(b)) {
+    const raw = new RegExp(DIV).test(op) ? (b.v === 0 ? null : (a.v * a.k) / (b.v * b.k)) : a.v * a.k * b.v * b.k;
+    return raw === null ? null : eitherReading(r.v, raw / pctK(r), raw / r.k);
   }
   if (new RegExp(DIV).test(op)) {
     if (b.v === 0) return null;
@@ -86,16 +105,20 @@ function binaryResult(op: string, a: Term, b: Term, r: Term & { explicit: boolea
 /**
  * 加减(两项或多项)的结果,换算回结果写出来的单位;说不清时返回 null。
  * - 量纲不同不认(既不算对也不算错);结果写的量纲和运算数不同也不认。
- * - 运算数都没写数量级、只有结果写了:省略写法,按结果的数量级读(见 binaryResult 的 🔴)。
- * - 有的写了数量级、有的没写,结果也写了(「2 亿 + 3 = 5 亿」):说不清没写的那项是 3 还是 3 亿,不认。
+ * - 运算数都没写数量级和单位名、只有结果写了:省略写法按结果的数量级读,或按字面读、结果换了单位(见 eitherReading)。
+ * - 运算数都写清了单位(「2 元 + 3 元 = 5 亿元」):各按自己的单位算,再换成结果的单位。
+ * - 有的写清了、有的没写,结果写了数量级(「2 亿 + 3 = 5 亿」「2 元 + 3 = 5 亿元」):说不清没写的那项是多少,不认。
  */
 function sumResult(terms: { t: Term; sign: 1 | -1 }[], r: Term & { explicit: boolean; pct: boolean }): number | null {
   const opDim = terms.find((x) => x.t.dim)?.t.dim ?? "";
   if (!terms.every((x) => sameDim(x.t.dim, opDim))) return null;
   const total = (f: (t: Term) => number) => terms.reduce((acc, x) => acc + x.sign * f(x.t), 0);
-  const mags = terms.filter((x) => x.t.mag).length;
-  if (r.mag && mags === 0) return opDim && !sameDim(opDim, r.dim) ? null : total((t) => t.v * t.k) / pctK(r);
-  if (r.mag && mags !== terms.length) return null;
+  if (r.mag && terms.every((x) => unitless(x.t))) {
+    if (opDim && !sameDim(opDim, r.dim)) return null;
+    const raw = total((t) => t.v * t.k);
+    return eitherReading(r.v, raw / pctK(r), raw / r.k);
+  }
+  if (r.mag && !terms.every((x) => ownUnit(x.t))) return null;
   if (!r.explicit) return terms.every((x) => x.t.k === terms[0]!.t.k) ? total((t) => t.v) : null;
   if (r.pct && !r.mag && terms.every((x) => x.t.k === 1 && !x.t.dim)) return total((t) => t.v);
   if (r.dim && opDim && !sameDim(opDim, r.dim)) return null;

@@ -231,12 +231,24 @@ export function LiveView({ v, threshold, scope, ladderMin, onThreshold, onScope,
   );
 }
 
+/** 异动的名单标签里表示「在持仓里」的那个(后端 watch.ts sourcesOf) */
+const HOLDING_TAG = "持仓";
+
+/**
+ * 给 AI 的页面上下文。🔴 持仓不发给 AI(沿用旧版「个人交易记录不接入任何 AI」):
+ * 不列持仓和浮动盈亏;只因为在持仓里才进名单的异动整条不给,其余异动去掉「持仓」标签。
+ */
 export function liveSummary(v: WatchView): string {
   const row = (r: WatchRow) => `${r.name}(${r.code}) ${finite(r.price) === null ? "没取到" : `${r.price} ${signed(r.pct)}${r.today ? "" : "(非今日行情)"}`}`;
+  const alerts = v.alerts.flatMap((a) => {
+    if (!a.sources.includes(HOLDING_TAG)) return [a];
+    const sources = a.sources.filter((s) => s !== HOLDING_TAG);
+    return sources.length ? [{ ...a, sources }] : [];
+  });
   const out = [`盯盘 · 实时动态,北京时间 ${v.date} ${v.clock},${v.phase_label}${v.detecting ? ",正在判断异动" : ",不判断异动"}。`];
   out.push(`异动规则:${v.rules.window_min} 分钟内涨跌 ≥${v.rules.surge_pct}% 记急拉 / 急跌,碰到 / 离开涨停价记封板 / 开板,同一只同一类 ${v.rules.cooldown_min} 分钟不重复。`);
-  out.push(v.alerts.length ? `今天记下的异动(新的在前,最多列 30 条):${v.alerts.slice(0, 30).map((a) => `${a.ts} ${a.kind} ${a.name}(${a.code}) ${a.msg}${a.sources.length ? ` [${a.sources.join("、")}]` : ""}`).join(";")}` : "今天还没记下异动。");
-  if (v.holdings.length) out.push(`持仓:${v.holdings.map((h) => `${row(h)}${finite(h.pnl_pct) === null ? "" : ` 浮动盈亏 ${signed(h.pnl_pct)}`}`).join(";")}`);
+  out.push(alerts.length ? `今天记下的异动(新的在前,最多列 30 条):${alerts.slice(0, 30).map((a) => `${a.ts} ${a.kind} ${a.name}(${a.code}) ${a.msg}${a.sources.length ? ` [${a.sources.join("、")}]` : ""}`).join(";")}` : "今天还没记下异动。");
+  out.push("用户的持仓按产品规则不发给 AI,这里不列;只因为在持仓里才盯的异动也不列。");
   if (v.watchlist.length) out.push(`自选:${v.watchlist.map(row).join(";")}`);
   if (v.ladder) {
     const s = ladderStats(v.ladder.rows);
@@ -257,7 +269,7 @@ export function LiveTab() {
     key: "watch:live",
     title: `盯盘 · 实时动态 ${data.date}`,
     context: liveSummary(data),
-    suggestions: ["昨日涨停的票今天整体强不强", "这些异动集中在哪些题材", "持仓里有没有跟着梯队走弱的"],
+    suggestions: ["昨日涨停的票今天整体强不强", "这些异动集中在哪些题材", "自选里有没有跟着梯队走弱的"],
   } : null);
   if (!data) {
     if (!live) return <div className="glass p-6"><p role="status" className="text-sm text-muted-foreground">页面在后台,先不取行情;切回来就开始取。</p></div>;

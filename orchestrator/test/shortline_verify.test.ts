@@ -131,7 +131,7 @@ test("一天的八项:六项取每日读数,两项取事实表;那天没取到�
 
 // ── 整条链路:假取数器(cfg.json 给数,calls.log 记每次调用) ──
 const FAKE = String.raw`import json,sys,os
-a=sys.argv; ep=a[a.index('--endpoint')+1]; out=a[a.index('--out-dir')+1]
+a=sys.argv; ep=a[a.index('--endpoint')+1] if '--endpoint' in a else 'fetch_trade_calendar'; out=a[a.index('--out-dir')+1]
 sym=a[a.index('--symbol')+1] if '--symbol' in a else ''
 args=json.loads(a[a.index('--args')+1]) if '--args' in a else {}
 cfg=json.load(open('cfg.json'))
@@ -152,10 +152,15 @@ if ep in ('cn_shortline_daily','cn_shortline_facts'):
   evs=[{'field':k,'value':x,'raw_ref':'raw/x.json',**({'record_key':'1进2'} if k=='promotion_rate' else {})} for k,x in v.items()]
   if d in cfg.get('unsettled',[]): done({'status':'partial','extra':{'degraded':'这一天还没收盘：本次结果不缓存','settled':False},'evidence':evs},2)
   done({'status':'ok','extra':{'settled':True},'evidence':evs})
+if ep=='fetch_trade_calendar':
+  c=cfg.get('calendar')
+  if not c: done({'status':'failed','reason':'日历没取到','evidence':[]},3)
+  ev=lambda f,v,**k: {'field':f,'value':v,'raw_ref':'raw/x.json','symbol':'MARKET','market':'CN',**k}
+  done({'status':'ok','evidence':[ev('is_today_trading_day',c['trading'],period=c['day']),ev('last_trading_day',c.get('last','2026-10-09')),ev('previous_trading_day',c.get('prev','2026-10-08')),ev('session_phase','pre_open')]})
 done({'status':'failed','reason':'unknown','evidence':[]},3)
 `;
 
-interface Cfg { klines?: string[]; daily?: Record<string, Record<string, number>>; facts?: Record<string, Record<string, number>>; unsettled?: string[] }
+interface Cfg { klines?: string[]; daily?: Record<string, Record<string, number>>; facts?: Record<string, Record<string, number>>; unsettled?: string[]; calendar?: { day: string; trading: boolean } }
 type Call = { ep: string; sym: string; args: { date?: string } };
 
 function fakeCtx(): ServiceContext & { setCfg(c: Cfg): void; calls(): Call[]; writeItems(rs: Record<string, unknown>[]): void } {
@@ -165,6 +170,7 @@ function fakeCtx(): ServiceContext & { setCfg(c: Cfg): void; calls(): Call[]; wr
   const scripts = path.join(repo, ".agents", "skills", "data-access", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   fs.writeFileSync(path.join(scripts, "fetch_endpoint.py"), FAKE);
+  fs.writeFileSync(path.join(scripts, "fetch_trade_calendar.py"), FAKE);   // 交易日历是 legacy 脚本,单独一个文件
   const dataRoot = path.join(repo, ".local");
   fs.mkdirSync(path.join(dataRoot, "ledger"), { recursive: true });
   return {
@@ -335,6 +341,34 @@ test("写条件:整晚替换;没变的不重写;下一场开盘后不收;不是�
   } finally { cleanup(ctx); }
 });
 
+test("🔴 写条件整晚只落一次盘:写盘失败时原来那晚一条不少(审计 2026-10-11 Codex 范围 2 第 4 条)", async () => {
+  const ctx = fakeCtx();
+  const list = () => ledgerList(ctx, "verification").verification!;
+  const ledgerDir = path.resolve(ctx.dataRoot, "ledger");
+  const realRename = fs.renameSync;
+  let writes = 0;
+  let failFirst = false;
+  try {
+    ctx.setCfg({ klines: K });
+    await act(ctx, { action: "save", date: "2026-10-09", items: [{ metric: "limit_up_count", direction: "up", reason: "A" }, { metric: "broken_rate", direction: "down" }] }, "2026-10-09T12:00:00Z");
+    fs.renameSync = ((from: fs.PathLike, to: fs.PathLike) => {
+      if (String(to).startsWith(ledgerDir + path.sep)) {
+        writes++;
+        if (failFirst) throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+      }
+      return realRename(from, to);
+    }) as typeof fs.renameSync;
+    // 换成完全不同的两条(要删两条、加两条):只许写一次
+    await act(ctx, { action: "save", date: "2026-10-09", items: [{ metric: "highest_board", direction: "flat" }, { metric: "market_limit_down", direction: "up" }] }, "2026-10-09T12:10:00Z");
+    assert.equal(writes, 1, "删和加在同一次写盘里");
+    assert.deepEqual(list().map((x) => x.metric).sort(), ["highest_board", "market_limit_down"]);
+    // 磁盘写失败:这晚原样不动,不会只剩一半
+    failFirst = true;
+    await assert.rejects(act(ctx, { action: "save", date: "2026-10-09", items: [{ metric: "limit_up_count", direction: "down" }] }, "2026-10-09T12:20:00Z"));
+    assert.deepEqual(list().map((x) => x.metric).sort(), ["highest_board", "market_limit_down"]);
+  } finally { fs.renameSync = realRename; cleanup(ctx); }
+});
+
 test("写条件:今天是工作日、日 K 还没有今天也放行;日 K 取不到放行(对账时照样查事后)", async () => {
   const ctx = fakeCtx();
   try {
@@ -349,4 +383,49 @@ test("写条件:今天是工作日、日 K 还没有今天也放行;日 K 取不
     const r2 = await act(blind, { action: "save", date: "2026-10-10", items: [{ metric: "broken_rate", direction: "up" }] }, "2026-10-10T08:00:00Z");
     assert.equal(r2.items.length, 1);
   } finally { cleanup(blind); }
+});
+
+test("写条件:日 K 里还没有下一场、日历说今天开市 → 今天 09:15 起锁;工作日休市的今天不收(审计 2026-10-11 Opus 范围 2 第 2、4 条)", async () => {
+  const ctx = fakeCtx();
+  try {
+    // 10-12(周一)09:20:日 K 只到 10-09,今天这根还没出来;日历说今天开市 → 10-09 那晚的条件锁了
+    ctx.setCfg({ klines: K, calendar: { day: "2026-10-12", trading: true } });
+    await act(ctx, { action: "save", date: "2026-10-09", items: [{ metric: "limit_up_count", direction: "up" }] }, "2026-10-12T01:10:00Z");
+    await assert.rejects(act(ctx, { action: "save", date: "2026-10-09", items: [] }, "2026-10-12T01:20:00Z"),
+      (e: unknown) => e instanceof ServiceError && /2026-10-12 已经开盘/.test(e.message), "开盘后删条件也不行");
+    assert.equal(ledgerList(ctx, "verification").verification!.length, 1);
+    // 日历说今天休市(工作日):下一场还没到,照常能改
+    ctx.setCfg({ klines: K, calendar: { day: "2026-10-12", trading: false } });
+    await act(ctx, { action: "save", date: "2026-10-09", items: [] }, "2026-10-12T02:00:00Z");
+    assert.equal(ledgerList(ctx, "verification").verification!.length, 0);
+    // 国庆:今天(10-01,周四)是工作日但休市 → 不收今天的条件
+    ctx.setCfg({ klines: K.filter((d) => d <= "2026-09-30"), calendar: { day: "2026-10-01", trading: false } });
+    await assert.rejects(act(ctx, { action: "save", date: "2026-10-01", items: [{ metric: "limit_up_count", direction: "up" }] }, "2026-10-01T12:00:00Z"),
+      (e: unknown) => e instanceof ServiceError && /休市/.test(e.message));
+  } finally { cleanup(ctx); }
+});
+
+test("写条件:日 K 和日历都取不到时,下一个工作日 09:15 起不许删(删掉的不留记录);改写照常放行、对账时标事后", async () => {
+  const ctx = fakeCtx();
+  const list = () => ledgerList(ctx, "verification").verification!;
+  try {
+    ctx.setCfg({});
+    await act(ctx, { action: "save", date: "2026-10-08", items: [{ metric: "limit_up_count", direction: "up" }, { metric: "broken_rate", direction: "down" }] }, "2026-10-08T12:00:00Z");
+    await assert.rejects(act(ctx, { action: "save", date: "2026-10-08", items: [{ metric: "limit_up_count", direction: "up" }] }, "2026-10-09T02:00:00Z"),
+      (e: unknown) => e instanceof ServiceError && /不能删/.test(e.message));
+    assert.equal(list().length, 2);
+    await act(ctx, { action: "save", date: "2026-10-08", items: [{ metric: "limit_up_count", direction: "down" }, { metric: "broken_rate", direction: "down" }] }, "2026-10-09T02:00:00Z");
+    assert.equal(list().find((x) => x.metric === "limit_up_count")!.direction, "down", "改写放行(写下时间在 09:15 之后,对账时是事后)");
+    // 09:15 以前删,放行
+    await act(ctx, { action: "save", date: "2026-10-08", items: [{ metric: "limit_up_count", direction: "down" }] }, "2026-10-09T01:00:00Z");
+    assert.equal(list().length, 1);
+  } finally { cleanup(ctx); }
+  const wk = fakeCtx();
+  try {
+    // 周六:日 K 取到了、下一场还没到 → 删除照常
+    wk.setCfg({ klines: K });
+    await act(wk, { action: "save", date: "2026-10-09", items: [{ metric: "limit_up_count", direction: "up" }] }, "2026-10-09T12:00:00Z");
+    await act(wk, { action: "save", date: "2026-10-09", items: [] }, "2026-10-10T08:00:00Z");
+    assert.equal(ledgerList(wk, "verification").verification!.length, 0);
+  } finally { cleanup(wk); }
 });

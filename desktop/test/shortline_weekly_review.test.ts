@@ -98,6 +98,10 @@ test("写好的周报:汇总在前;写的 AI、时间、算进来的交易日;�
     assert.match(t, /这一周写过 2 版: 截至 10-09 · 10-10 18:46\(最新\) 截至 10-08 · 10-09 17:00/);
     assert.match(t, /Claude订阅 写 · 10-10 18:46 写完 · 算进来的交易日 10-08、10-09/);
     assert.doesNotMatch(t, /还没收盘/, "默认看最新那版(已收盘)");
+    // 选中的版本由外层传进来时照它显示(外层再用同一个选择生成 Agent 上下文)
+    const pickedOld = textOf(r.html(WeeklyReviewView, { r: { ...base, versions: [SAVED, OLDER] }, onChanged: noop, pick: "w1", onPick: noop }));
+    assert.match(pickedOld, /还没收盘/);
+    assert.match(pickedOld, /算进来的交易日 10-08(?!、)/);
     assert.ok(t.indexOf("【我的交易卡】") > t.indexOf("再写一版") && t.indexOf("【我的交易卡】") < t.indexOf("本周汇总"));
     assert.ok(t.indexOf("本周汇总") < t.indexOf("情绪走势 每天的情绪读数"), "汇总排第一");
     assert.match(t, /涨停从 43 只到 69 只 \[1\] 。/);
@@ -136,7 +140,14 @@ test("给 AI 面板的页面上下文只有周报正文;没写过时说没写过
   await withRenderer(async (r) => {
     const { weeklySummary } = await r.load(FILE);
     const ctx = weeklySummary({ ...base, versions: [SAVED, OLDER] });
-    assert.match(ctx, /^2026-10-05 起这一周的 AI 周报\(截至 2026-10-09,10-10 18:46 写完\):/);
+    assert.match(ctx, /^2026-10-05 起这一周的 AI 周报\(截至 2026-10-09,10-10 18:46 写完;这一周写过 2 版,这是最新一版\):/);
+    // 🔴 选了旧版 / 正在写:发给 Agent 的和页面上显示的是同一份(2026-10-11 审计)
+    const old = { ...OLDER, sections: [stage("trend", { text: "旧版:涨停 50 只。" })] };
+    assert.equal(weeklySummary({ ...base, versions: [SAVED, old] }, "w1"),
+      "2026-10-05 起这一周的 AI 周报(截至 2026-10-08,10-09 17:00 写完;这一周写过 2 版,这是用户选的较早一版,不是最新):\n【情绪走势】旧版:涨停 50 只。");
+    const writing = { id: "r9", date: "2026-10-09", settled: true, ai: "x", started_at: "2026-10-10T11:00:00.000Z", finished_at: null, done: false, outcome: "running", saved_id: null, save_error: null,
+      stages: [stage("trend", { text: "新写的。" })], gaps: [], conditions: [], conditions_note: "" };
+    assert.match(weeklySummary({ ...base, versions: [SAVED, old], runs: [writing] }, "w1"), /正在写\(10-10 19:00 开始\),页面上是写到一半的这一版:\n【情绪走势】新写的。$/);
     assert.match(ctx, /【情绪走势】涨停从 43 只到 69 只/);
     assert.match(ctx, /【验证回看】跳过/);
     assert.match(ctx, /【本周汇总】这一周情绪回暖/);

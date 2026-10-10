@@ -19,7 +19,14 @@ export function ViewSlot<T>({ st, label, slow, children }: { st: ViewState<T>; l
       </div>
     );
   }
-  return <>{children(st.data)}</>;
+  return (
+    <>
+      {st.stale !== undefined && (
+        <p role="status" className="mb-2 text-xs text-warning">{label}最近一次刷新没取到:{st.stale || "原因不明"}。下面是上一次取到的内容。</p>
+      )}
+      {children(st.data)}
+    </>
+  );
 }
 
 /** 缺口(哪些天没取到、哪项没算)和来源,放在每个分页最下面 */

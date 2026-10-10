@@ -15,7 +15,7 @@ import {
   shortlineWeeklyReview, shortlineWeeklyReviewAct, splitWeeks, startWeeklyReview, verifyEvidence, weekStart, weekTally, type DayCheck,
 } from "../src/finance/shortline/weekly_review.ts";
 import { detectPython } from "../src/init.ts";
-import { ServiceError, ledgerList, type ServiceContext } from "../src/service.ts";
+import { ServiceError, ledgerInsertMany, ledgerList, type ServiceContext } from "../src/service.ts";
 import { listViews } from "../src/views.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -324,10 +324,16 @@ test("本周一天的读数都没有不开工、不调 AI;交易日历没取到�
   const ctx2 = fakeCtx();
   try {
     ctx2.setCfg({ ...CFG, klines: [] });
+    // 前一晚写过条件,但日 K 没取到、对不了账:不能说成「本周没有条件」
+    ledgerInsertMany(ctx2, { kind: "verification", records: [{ date: "2026-10-08", metric: "limit_up_count", direction: "up", reason: "" }] });
     const turn = fakeTurn(TEXTS);
     const s = await startWeeklyReview(ctx2, { date: "2026-10-09" }, sig(), NOW, turn);
     const r = await reviewFinished(s.id);
     assert.ok(r.gaps.some((g) => /上证A股指数日 K 没取到/.test(g)));
+    const v = r.stages.find((x) => x.id === "verify")!;
+    assert.equal(v.status, "skipped");
+    assert.doesNotMatch(v.error!, /本周没有要对账/);
+    assert.match(v.error!, /明日验证 2026-10-09:没法对账\(列不出前一个交易日/);
     assert.match(turn.seen.find((x) => x.session.endsWith("-trend"))!.message, /算进来的交易日 2026-10-09;上周的交易日没列出来/);
   } finally { cleanup(ctx2); }
 });

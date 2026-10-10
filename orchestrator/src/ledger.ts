@@ -470,6 +470,76 @@ export function insertRecords(dataRoot: string, kind: string, inputs: readonly R
   });
 }
 
+/** 记录去掉信封字段后的正文;键按字母排序后序列化,比内容时不受字段先后影响 */
+function bodyKey(r: Record<string, unknown>): string {
+  const rest: Record<string, unknown> = { ...r };
+  for (const k of ENVELOPE_KEYS) delete rest[k];
+  return JSON.stringify(rest, (_k, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v);
+}
+
+/**
+ * 整组替换:把满足 `match` 的那一组记录换成 `inputs`,**只落一次盘**。
+ * 带 id 的 = 改组里那条(正文没变就原样留下,updated_at 不动);不带 id 的 = 新增;组里没被提到的 = 删掉。
+ *
+ * 🔴 为什么要有它:逐条删、逐条加时,删完、加之前进程退出或磁盘写失败,这一组就永久残缺(旧的没了、新的没进去)。
+ *    这里先整批校验,再在同一把锁里算出新文件、只写一次 —— 要么全换,要么原样不动。
+ * 🔴 带的 id 必须在这一组里:不然一个调用就能顺手改掉组外的记录。
+ */
+export function replaceRecords(
+  dataRoot: string,
+  kind: string,
+  match: (r: LedgerRecord) => boolean,
+  inputs: readonly Record<string, unknown>[],
+): { records: LedgerRecord[]; saved: LedgerRecord[]; removed: string[] } {
+  const file = fileOf(dataRoot, kind);
+  const fn = validatorFor(kind);
+  const items = inputs.map((input, i) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new LedgerError("bad_record", `第 ${i + 1} 条不是对象`);
+    const id = input.id;
+    if (id !== undefined && (typeof id !== "string" || !id)) throw new LedgerError("bad_id", `第 ${i + 1} 条:id 必须是非空字符串`);
+    const rest: Record<string, unknown> = { ...input };
+    for (const k of ENVELOPE_KEYS) delete rest[k];
+    if (!fn(rest)) throw new LedgerError("bad_record", `第 ${i + 1} 条:${explain(fn)}`);
+    return { id: id as string | undefined, rest };
+  });
+  const ids = items.flatMap((x) => (x.id ? [x.id] : []));
+  if (new Set(ids).size !== ids.length) throw new LedgerError("bad_record", "同一条记录在这一批里出现了两次");
+  return withLock(file, () => {
+    const data = loadFile(file, kind);
+    const group = new Map(data.records.filter(match).map((r) => [r.id, r]));
+    const taken = new Set(data.records.map((r) => r.id));
+    const base = Date.now();
+    const saved: LedgerRecord[] = [];
+    const next = items.map(({ id, rest }, i) => {
+      const at = nowIso(new Date(base + i));
+      if (id !== undefined) {
+        const prev = group.get(id);
+        if (!prev) throw new LedgerError("not_found", `这一组里没有这条记录:${id}`);
+        if (bodyKey(prev) === bodyKey(rest)) return prev;
+        const r = { ...rest, id, kind, created_at: prev.created_at, updated_at: at } as LedgerRecord;
+        saved.push(r);
+        return r;
+      }
+      let fresh = newId(kind);
+      for (let n = 0; taken.has(fresh) && n < 5; n++) fresh = newId(kind);
+      if (taken.has(fresh)) throw new LedgerError("id_collision", "生成 id 连续撞车,请重试");
+      taken.add(fresh);
+      const r = { ...rest, id: fresh, kind, created_at: at, updated_at: at } as LedgerRecord;
+      saved.push(r);
+      return r;
+    });
+    const byId = new Map(next.map((r) => [r.id, r]));
+    const removed = [...group.keys()].filter((id) => !byId.has(id));
+    if (!saved.length && !removed.length) return { records: next, saved, removed };
+    // 组外的、留下的原位不动,新增的接在末尾
+    data.records = data.records.flatMap((r) => (!group.has(r.id) ? [r] : byId.has(r.id) ? [byId.get(r.id)!] : []));
+    data.records.push(...next.filter((r) => !group.has(r.id)));
+    saveVerified(file, kind, data, (rs) => next.every((a) => sameRecord(rs.find((r) => r.id === a.id), a)) && !removed.some((id) => rs.some((r) => r.id === id)));
+    return { records: next, saved, removed };
+  });
+}
+
 /** 删除一条。返回是否真的删掉了 —— 调用方要能区分"删了"和"本来就没有" */
 export function removeRecord(dataRoot: string, kind: string, id: string): boolean {
   if (typeof id !== "string" || !id) throw new LedgerError("bad_id", "id 必须是非空字符串");

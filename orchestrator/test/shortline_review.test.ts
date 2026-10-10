@@ -14,7 +14,7 @@ import {
   selectEvidence, shortlineReview, shortlineReviewAct, startReview, type TurnFn,
 } from "../src/finance/shortline/review.ts";
 import { detectPython } from "../src/init.ts";
-import { ServiceError, ledgerList, type ServiceContext } from "../src/service.ts";
+import { ServiceError, agentTurnFor, ledgerList, type ServiceContext } from "../src/service.ts";
 import { listViews } from "../src/views.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -339,6 +339,27 @@ test("链路:各段只看自己的证据;之后的数不进;只给当天的来�
   } finally { cleanup(ctx); }
 });
 
+test("同时点开工:取资料那几秒里也占名额;同一天只开一份、合计不超上限;没开成的放回名额", async () => {
+  const ctx = fakeCtx();
+  try {
+    ctx.setCfg(CFG);
+    const turn = fakeTurn(TEXTS);
+    const isCode = (code: string) => (r: PromiseSettledResult<unknown>) => r.status === "rejected" && r.reason instanceof ServiceError && r.reason.code === code;
+    // 同一天两次几乎同时:只有一份开得成
+    const same = await Promise.allSettled([startReview(ctx, { date: DATE }, sig(), NOW, turn), startReview(ctx, { date: DATE }, sig(), NOW, turn)]);
+    assert.equal(same.filter((r) => r.status === "fulfilled").length, 1);
+    assert.ok(same.some(isCode("review_busy")));
+    const first = same.find((r) => r.status === "fulfilled")! as PromiseFulfilledResult<Awaited<ReturnType<typeof startReview>>>;
+    // 已有一份在写,再同时点两天:第二天还在取资料时第三天就满了
+    const more = await Promise.allSettled([startReview(ctx, { date: "2026-10-08" }, sig(), NOW, turn), startReview(ctx, { date: "2026-10-07" }, sig(), NOW, turn)]);
+    assert.ok(isCode("no_data")(more[0]!), "10-08 没情绪数据,取完资料后不开");
+    assert.ok(isCode("capacity_full")(more[1]!), "10-08 取资料时占着名额");
+    // 10-08 没开成,名额放回:再开 10-07 走到取资料那一步(没数据),不是名额满
+    await assert.rejects(startReview(ctx, { date: "2026-10-07" }, sig(), NOW, turn), (e: unknown) => e instanceof ServiceError && e.code === "no_data");
+    await reviewFinished(first.value.id);
+  } finally { cleanup(ctx); }
+});
+
 test("还没收盘:提示 AI 并存成未收盘版;当天的行业资金流东财没取到改用新浪并说明", async () => {
   const ctx = fakeCtx();
   try {
@@ -388,6 +409,36 @@ test("格式不对重试一次;再不对这段算失败,其余照写;一段都�
       assert.deepEqual(ledgerList(ctx2, "shortline_review").shortline_review ?? [], []);
     } finally { cleanup(ctx2); }
   } finally { cleanup(ctx); }
+});
+
+test("🔴 开工后 AI 来源换了:这一轮不调 AI 直接停,后面几段也不再调;已写好的照存(审计 2026-10-11 Codex 范围 2 第 6 条)", async () => {
+  const ctx = fakeCtx();
+  const saved = process.env.VRA_PROVIDER;
+  delete process.env.VRA_PROVIDER;
+  try {
+    // 没指定 llm = 用后台默认;开工时是 Claude 订阅,中途被改成 Codex 订阅
+    const cfg = (profile: string) => fs.writeFileSync(path.join(ctx.dataRoot, "config.json"), JSON.stringify({ provider: { profile } }));
+    cfg("cli-claude");
+    const agent = agentTurnFor(ctx, { executionMode: "agent" });
+    cfg("cli-codex");
+    await assert.rejects(agent.turn("写一段", "s1"), (e: unknown) => e instanceof ServiceError && e.code === "ai_source_changed");
+
+    ctx.setCfg(CFG);
+    const seen: string[] = [];
+    const turn: TurnFn = async (_m, session) => {
+      seen.push(session);
+      if (session.endsWith("-sentiment")) return TEXTS.sentiment;
+      throw new ServiceError("ai_source_changed", "开工以后 AI 来源改了");
+    };
+    const r = await reviewFinished((await startReview(ctx, { date: DATE }, sig(), NOW, turn)).id);
+    assert.deepEqual(r.stages.map((x) => x.status), ["done", "failed", "failed", "skipped", "failed", "failed"]);
+    assert.equal(seen.length, 2, "换了来源以后一次都不再调");
+    assert.match(r.stages[2]!.error!, /ai_source_changed/);
+    assert.ok(r.saved_id, "换之前写好的那段照存");
+  } finally {
+    if (saved === undefined) delete process.env.VRA_PROVIDER; else process.env.VRA_PROVIDER = saved;
+    cleanup(ctx);
+  }
 });
 
 test("中途停:已写好的留着,正在写的和后面的都标已停止;整次不存", async () => {

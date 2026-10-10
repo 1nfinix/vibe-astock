@@ -62,13 +62,13 @@ def promotion_rates(date: str, prev: Optional[str] = None) -> dict:
 
 
 def _stats_from_settled(rows: list[dict], today_codes: Optional[set[str]], date: str) -> dict:
-    """从定稿记录算赚钱效应。样本就是记录本身,无所谓覆盖率。"""
+    """从定稿记录算赚钱效应。缺当天涨跌幅的行算进名单、不算进样本(覆盖率按此算)。"""
     vals = [r["ret"] for r in rows if r.get("ret") is not None]
     if not vals:
         return {}
     again = [r for r in rows if r.get("ret") is not None and (r["code"] in today_codes if today_codes is not None else S.is_limit_up_row(r, date))]
     return {
-        "available": True, "sample": len(vals), "coverage": len(vals), "coverage_rate": 1.0, "partial": False,
+        "available": True, **S.settled_cov(date, len(vals)),
         "avg": round(mean(vals), 2), "median": round(median(vals), 2),
         "positive_rate": round(sum(1 for v in vals if v > 0) / len(vals), 3),
         # 优先和晋级率共用东财池成员;今天的池取不到时才按「收在涨停价」推定
@@ -120,8 +120,8 @@ def consec_premium(date: str, prev: Optional[str] = None) -> dict:
         hi = [r for r in rows if (r.get("prev_boards") or 0) >= 2 and r.get("ret") is not None]
         if hi:
             vals = [r["ret"] for r in hi]
-            return {"available": True, "prev_date": prev, "source": "settled", "sample": len(vals), "coverage": len(vals),
-                    "coverage_rate": 1.0, "partial": False, "avg": round(mean(vals), 2), "median": round(median(vals), 2),
+            return {"available": True, "prev_date": prev, "source": "settled", **S.settled_cov(date, len(vals), lambda r: (r.get("prev_boards") or 0) >= 2),
+                    "avg": round(mean(vals), 2), "median": round(median(vals), 2),
                     "positive_rate": round(sum(1 for v in vals if v > 0) / len(vals), 3)}
 
     ok, why = S.live_quotes_are_close_of(date)
@@ -278,6 +278,9 @@ def daily_readings(date: str) -> dict:
     vals = [r["ret"] for r in rows or [] if r.get("ret") is not None]
     if vals:
         out.update(money_effect=round(median(vals), 2), deep_loss=sum(1 for v in vals if v <= -5), sample=len(vals))
+        cov = S.settled_cov(date, len(vals))
+        if cov["partial"]:
+            out["reasons"]["settled_partial"] = f"昨日涨停股有 {cov['expected_sample'] - len(vals)} 只缺当天涨跌幅,样本 {len(vals)}/{cov['expected_sample']}"
     else:
         out.update(money_effect=None, deep_loss=None, sample=None)
         out["reasons"]["settled"] = "昨日涨停股的当日表现(东财昨日涨停池)没取到"
@@ -315,7 +318,7 @@ def build_settled(date: Optional[str] = None) -> dict:
     out = [{"code": r["code"], "name": r.get("name") or "", "ret": r["ret"], "prev_boards": r.get("prev_boards") or 1,
             "seal_time": r.get("seal_time") or "", "sector": r.get("sector") or "", "limit_up": S.is_limit_up_row(r, d)}
            for r in rows]
-    return {**base, "available": True, "sample": len(out), "rows": out}
+    return {**base, "available": True, **S.settled_cov(d, len(out)), "rows": out}
 
 
 def build_metrics(date: Optional[str] = None) -> dict:

@@ -288,3 +288,19 @@ test("免安装包:构建产物放在已忽略的 dist/ 下;体检不扫包根�
   assert.match(b, /path\.join\(repoRoot, "dist", "portable"\)/);
   assert.match(read("orchestrator/src/doctor.ts"), /SCAN_SKIP_ROOT_DIRS = new Set\(\["runtime"\]\)/);
 });
+
+test("免安装包第一次启动的提示分清两类老用户:Python 版走「从旧版导入」,旧免安装包才复制 .local(Opus 审计 4.3)", () => {
+  for (const f of ["scripts/portable/start-portable.sh", "scripts/portable/start-portable.ps1"]) {
+    const s = read(f);
+    assert.match(s, /用过 Python 版 Vibe AStock（v1\.x）：启动后到「接入 AI」页最下面点「从旧版导入」/, f);
+    assert.match(s, /用过旧版免安装包：[^"]*把旧文件夹里的 \.local 整个复制到这个文件夹/, f);
+    assert.doesNotMatch(s, /用过旧版本、想带上原来的数据/, `${f}:v1.x 的数据不在 .local 里,照 VR 那句做带不来任何数据`);
+  }
+  const card = read("desktop/src/verticals/finance/components/VaImportCard.tsx");
+  assert.match(card, /<h3 className="mb-1 font-semibold">从旧版导入<\/h3>/, "提示里说的入口名和页面上一致");
+  for (const t of ["mac-arm64", "win-x64"] as const) {
+    const r = readmeText("2.0.0", t);
+    assert.match(r, /用过 Python 版 Vibe AStock（v1\.x）：数据不在 \.local 里。启动后到「接入 AI」页最下面点「从旧版导入」/, `${t} 包里的说明`);
+    assert.match(r, /Coming from the Python version \(v1\.x\): its data is not in \.local/, `${t} 包里的英文说明`);
+  }
+});

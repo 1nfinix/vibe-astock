@@ -28,6 +28,16 @@ export interface CalendarResult {
 
 export type EventGroup = "company" | "ledger" | "macro";
 
+/**
+ * 发给 AI 的事件:只因为在持仓里才进日历的股票(不在自选里),它的公司事件不给 ——
+ * Vibe AStock 不把持仓发给 AI(见 brand.ts PERSONAL_TRADES_TO_AI)。自己写的论点、判据、待办和宏观照常给。
+ */
+export function aiVisibleEvents(r: Pick<CalendarResult, "symbols">, events: readonly CalendarEvent[], sendHoldings: boolean): CalendarEvent[] {
+  if (sendHoldings) return [...events];
+  const heldOnly = new Set(r.symbols.filter((s) => !s.origin.includes("自选")).map((s) => s.symbol));
+  return events.filter((e) => !(e.symbol && heldOnly.has(e.symbol) && KIND_META[e.kind].group === "company"));
+}
+
 export const KIND_META: Record<EventKind, { label: string; group: EventGroup; tone: string }> = {
   disclosure: { label: "定期报告", group: "company", tone: "border-sky-500/40 text-sky-600 dark:text-sky-300" },
   earnings: { label: "财报日", group: "company", tone: "border-sky-500/40 text-sky-600 dark:text-sky-300" },

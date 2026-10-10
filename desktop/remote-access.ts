@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { isValidAccessToken } from "../orchestrator/src/access_token.ts";
+import { ACCESS_COOKIE } from "../orchestrator/src/brand.ts";
 
 /**
  * 远程访问模式(`scripts/start --remote`)的两道门,只装在对外的页面服务器上;本机模式与 VRA_LAN 不受影响。
@@ -20,7 +21,7 @@ import { isValidAccessToken } from "../orchestrator/src/access_token.ts";
 type Next = (error?: unknown) => void;
 export type Middleware = (req: IncomingMessage, res: ServerResponse, next: Next) => void;
 
-export const ACCESS_COOKIE = "vra_access";
+export { ACCESS_COOKIE };
 export const ACCESS_PARAM = "access";
 
 const digest = (value: string) => createHash("sha256").update(value, "utf8").digest();

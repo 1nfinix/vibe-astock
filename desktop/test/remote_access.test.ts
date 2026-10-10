@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { preview, resolveConfig } from "vite";
 
-import { createAccessGate, createRemoteOriginGuard, requestIsHttps, type Middleware } from "../remote-access.ts";
+import { ACCESS_COOKIE, createAccessGate, createRemoteOriginGuard, requestIsHttps, type Middleware } from "../remote-access.ts";
 import { UI_PORT } from "../src/verticals/finance/lib/brand.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -184,7 +184,9 @@ test("远程访问:没口令什么都拿不到;分享链接换 HttpOnly cookie �
     preview: { host: "127.0.0.1", port: 0, strictPort: false, proxy: { "/api": { target: `http://127.0.0.1:${targetPort}` } } } });
   try {
     const port = (server.httpServer.address() as { port: number }).port;
-    const cookie = `vra_access=${TOKEN}`;
+    const cookie = `${ACCESS_COOKIE}=${TOKEN}`;
+    // cookie 不按端口分:和 VR(vra_access)同名会在同一台主机上互相顶掉登录
+    assert.notEqual(ACCESS_COOKIE, "vra_access");
 
     // ① 没口令:页面、静态资源、接口一律 401,接口请求根本到不了后端
     const page = await raw(port, { path: "/" });
@@ -197,15 +199,16 @@ test("远程访问:没口令什么都拿不到;分享链接换 HttpOnly cookie �
     assert.equal(api.status, 401);
     assert.equal(JSON.parse(api.body).error, "access_required");
     assert.equal(seen, 0);
-    assert.equal((await raw(port, { path: "/", headers: { Cookie: "vra_access=wrong-token-wrong-token-wrong-token-00" } })).status, 401);
+    assert.equal((await raw(port, { path: "/", headers: { Cookie: `${ACCESS_COOKIE}=wrong-token-wrong-token-wrong-token-00` } })).status, 401);
     assert.equal((await raw(port, { path: "/?access=wrong-token-wrong-token-wrong-token-00" })).status, 401);
+    assert.equal((await raw(port, { path: "/", headers: { Cookie: `vra_access=${TOKEN}` } })).status, 401, "VR 那个名字的 cookie 不认");
 
     // ② 分享链接:换成 cookie,303 跳回去掉口令的同一地址;口令不进 Location
     const link = await raw(port, { path: `/research/abc?x=1&access=${TOKEN}` });
     assert.equal(link.status, 303);
     assert.equal(link.headers.location, "/research/abc?x=1");
     const setCookie = String(link.headers["set-cookie"]);
-    assert.match(setCookie, new RegExp(`^vra_access=${TOKEN};`));
+    assert.match(setCookie, new RegExp(`^${ACCESS_COOKIE}=${TOKEN};`));
     assert.match(setCookie, /HttpOnly/);
     assert.match(setCookie, /SameSite=Lax/);
     assert.match(setCookie, /Path=\//);
@@ -221,6 +224,8 @@ test("远程访问:没口令什么都拿不到;分享链接换 HttpOnly cookie �
 
     // ③ 带 cookie:页面与前端路由正常;云平台的公网域名(任意 Host)也放行
     const ok = await raw(port, { path: "/", headers: { Cookie: cookie } });
+    // 同一台主机上 VR 的登录 cookie 并排存在(口令不同)也互不影响
+    assert.equal((await raw(port, { path: "/", headers: { Cookie: `vra_access=vr-token-vr-token-vr-token-vr-token-00; ${cookie}` } })).status, 200);
     assert.equal(ok.status, 200);
     assert.match(ok.body, /remote-ok/);
     assert.equal((await raw(port, { path: "/settings", headers: { Cookie: cookie, Host: "abc.platform.example" } })).status, 200);

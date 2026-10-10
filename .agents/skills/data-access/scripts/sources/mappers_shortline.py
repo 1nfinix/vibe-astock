@@ -146,7 +146,7 @@ def shortline_daily_map(result: dict, ctx: dict) -> dict:
     a.num("promotion_base", r.get("promotion_base"), "只", key="1进2", note=n)
     a.num("promotion_promoted", r.get("promotion_promoted"), "只", key="1进2", note=n)
     a.num("promotion_rate", r.get("promotion_1to2"), "小数", key="1进2", note=n)
-    fields = {"summary": "limit_up_count", "settled": "money_effect_median_ret", "promotion": "promotion_rate"}
+    fields = {"summary": "limit_up_count", "settled": "money_effect_median_ret", "settled_partial": "money_effect_sample", "promotion": "promotion_rate"}
     for k, why in (r.get("reasons") or {}).items():
         a.missing.append({"field": fields.get(k, k), "period": day, "reason": why})
     extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_daily(result), "result": result,
@@ -326,6 +326,9 @@ def shortline_facts_map(result: dict, ctx: dict) -> dict:
             k = f"{e['tag']}|{e['code']}"
             a.text("event", f"{e['tag']}｜{e['name']}（{e['code']}）｜{e['note']}", key=k, note=f"{e.get('sector') or '未分类'}；{e.get('board')}")
             a.num("event_ret", e.get("ret"), "%", key=k)
+        if evs.get("prev_available") is False:
+            # 断板 / 高标跌停要靠昨日板数分档;没取到就标缺口,信封是「部分」、不进缓存
+            a.missing.append({"field": "event_prev_boards", "period": day, "reason": "前一交易日涨停池未取得，断板事件没法按昨日板数分档"})
 
     bb: dict = result.get("by_board") or {}
     if a.block("by_board", bb):
@@ -444,7 +447,7 @@ def shortline_live_map(result: dict, ctx: dict) -> dict:
     a.num("money_effect_sample", v.get("sample"), "只", note=m)
     a.num("money_effect_median_ret", v.get("money_effect"), "%", note=m)
     a.num("loss_deep5_count", v.get("deep_loss"), "只", note=m + "；跌幅 ≥ 5%")
-    fields = {"promotion": ("promotion_rate",), "settled": ("money_effect_median_ret", "loss_deep5_count"),
+    fields = {"promotion": ("promotion_rate",), "settled": ("money_effect_median_ret", "loss_deep5_count"), "settled_partial": ("money_effect_sample",),
               "zb": ("break_board_count", "seal_rate", "broken_rate"), "dt": ("limit_down_count",)}
     for k, why in (result.get("reasons") or {}).items():
         a.missing.extend({"field": f, "period": day, "reason": why} for f in fields.get(k, (k,)))

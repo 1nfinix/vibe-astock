@@ -103,15 +103,18 @@ test("实时动态:收盘后 / 休市不判断异动,写清原因和刷新间隔
   });
 });
 
-test("给 AI 的实时动态摘要:异动、持仓浮动盈亏、梯队强弱;不含股数成本", async () => {
+test("给 AI 的实时动态摘要:异动、自选、梯队强弱;不含持仓(只因持仓才盯的异动也不给)", async () => {
   await withRenderer(async (r) => {
     const { liveSummary } = await r.load(`${DIR}/LiveTab.tsx`);
-    const s = liveSummary(LIVE);
+    const mixed = { ts: "09:59:00", code: "002001", name: "新和成", kind: "急跌", change_pct: -1.8, price: 20, pct: -3.5, msg: "2 分钟 -1.8%", sources: ["持仓", "昨日2板"] };
+    const s = liveSummary({ ...LIVE, alerts: [...LIVE.alerts, mixed] });
     assert.match(s, /北京时间 2026-10-12 10:01:32,上午连续竞价,正在判断异动/);
-    assert.match(s, /10:01:00 急拉 平安银行\(000001\) 1 分钟 \+2\.0%.* \[持仓\]/);
-    assert.match(s, /持仓:平安银行\(000001\) 12 \+1\.20% 浮动盈亏 \+20\.00%;浦发银行\(600000\) 没取到/);
+    assert.match(s, /10:01:30 封板 新华传媒\(600825\) 触及涨停 8\.8 \[昨日9板\]/);
+    assert.match(s, /09:59:00 急跌 新和成\(002001\) 2 分钟 -1\.8% \[昨日2板\]/, "同时在梯队里的,异动照给、去掉持仓标签");
+    assert.match(s, /用户的持仓按产品规则不发给 AI/);
     assert.match(s, /自选:宁德时代\(300750\) 250\.5 -0\.80%\(非今日行情\)/);
     assert.match(s, /昨日梯队\(2026-10-09 涨停 3 只,最高 9 板\):取到今天行情 2\/3 只 · 上涨 1 · 下跌 1 · 封住 1。2 板以上:9板 新华传媒\(600825\) 8\.8 \+10\.00% · 出版 封住;2板 新和成/);
+    for (const x of ["平安银行", "000001", "浦发银行", "600000", "浮动盈亏", "[持仓", "、持仓", "持仓:"]) assert.equal(s.includes(x), false, x);
     assert.doesNotMatch(s, /股数|成本/);
   });
 });

@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { textOf, withRenderer } from "./helpers/render.ts";
 import { MASK } from "../src/verticals/finance/lib/privacy.ts";
 import {
-  boardText, fillsPayload, maskJournalText, parseNum, rowState, ruleValueText, violationText,
+  boardText, equityChart, fillsPayload, maskJournalText, parseNum, rowState, ruleValueText, violationText,
   type EnvRow, type JournalRow, type JournalView, type Violation,
 } from "../src/verticals/finance/lib/journal.ts";
 
@@ -172,6 +172,12 @@ test("风险与纪律:在险资金、权益曲线、纪律、规矩都在;亏损
   assert.match(hidden.text, new RegExp(`占用本金 ${MASK} 元`));
   assert.match(hidden.text, /−8\.33%|-7\.6%/);
   assert.match(hidden.html, /type="password"/, "账户规模输入框换成密码样式");
+  // 🔴 金额曲线的形状本身就是金额大小:隐私模式下不画,也不往图表里传金额序列
+  assert.match(hidden.text, /隐私模式下不画曲线/);
+  assert.doesNotMatch(shown.text, /隐私模式下不画曲线/);
+  const pts = [{ date: "2026-10-08", cum_pnl: 984.29, drawdown: 0 }, { date: "2026-10-09", cum_pnl: -2055.71, drawdown: 3040 }];
+  assert.equal(equityChart(pts, {} as never, true), null);
+  assert.ok(JSON.stringify(equityChart(pts, {} as never, false)).includes("984.29"));
 });
 
 /* ---------------- 复查 / 模式卡 ---------------- */
@@ -206,4 +212,26 @@ test("交易日志不登记 AI 页面上下文:个人交易数据不进 AI", () 
   const files = [new URL("../src/verticals/finance/pages/Journal.tsx", import.meta.url), ...readdirSync(dir).map((f) => new URL(f, dir))];
   // 注释里会写「不调 useAiPage」,所以只查真正的导入和调用
   for (const f of files) assert.doesNotMatch(readFileSync(f, "utf8"), /ai\/pageContext["']|\buseAiPage\s*\(/, `${f.pathname} 不该接 AI 页面上下文`);
+});
+
+test("🔴 隐私模式:编辑标注、补成交、记一笔里的价位 / 股数 / 费用输入框换成密码样式(2026-10-11 审计)", async () => {
+  const row = { ...VIEW.rows.find((r) => r.episode && r.episode.open_shares > 0)!, planned_stop: 9.5, planned_target: 12.3 };
+  const typeOf = (html: string, label: string) => {
+    const tag = html.match(new RegExp(`<input[^>]*aria-label="${label}"[^>]*>`))?.[0];
+    assert.ok(tag, `没找到输入框 ${label}`);
+    return tag.match(/type="(\w+)"/)?.[1];
+  };
+  for (const hide of [true, false]) {
+    const want = hide ? "password" : "text";
+    const tag = await render("forms.tsx", "TagEditor", { row, playbooks: VIEW.playbooks, hide, act: noop, onDone: noop });
+    assert.equal(typeOf(tag.html, "计划止损价"), want);
+    assert.equal(typeOf(tag.html, "计划目标价"), want);
+    const fill = await render("forms.tsx", "AppendFill", { row, today: VIEW.today, hide, act: noop, onDone: noop });
+    for (const label of ["成交价", "股数", "费用"]) assert.equal(typeOf(fill.html, label), want, label);
+    assert.equal(fill.text.includes(MASK), hide, "旁边的「现在还有 N 股」跟着遮");
+    const rec = await render("forms.tsx", "RecordForm", { today: VIEW.today, playbooks: VIEW.playbooks, hide, act: noop, openShares: () => undefined });
+    for (const label of ["计划止损价", "计划目标价", "第 1 笔成交价", "第 1 笔股数", "第 1 笔费用"]) assert.equal(typeOf(rec.html, label), want, label);
+    // 代码、日期、备注不是金额,不遮
+    assert.notEqual(typeOf(rec.html, "代码"), "password");
+  }
 });

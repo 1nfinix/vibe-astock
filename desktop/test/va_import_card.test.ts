@@ -68,6 +68,19 @@ test("预览:每类找到 / 要导入 / 以前导过 / 跳过(带原因);对不�
     assert.match(rt, /这些没写成\(再导一次会补上,已写的不会重复\): · 盘中快照 2026-10-09 09:25:新版这个时点刚好已经有快照了,没覆盖/);
     const none = textOf(r.html(VaImportResultView, { r: { ...res, backup: null, written: {}, failed: [] } }));
     assert.equal(none, "这次没有写进任何东西。");
+
+    // 🔴 隐私模式:说明里的股数和金额遮掉,代码、日期和原因照常(2026-10-11 审计)
+    const why = "卖出 300 股,超过当时持有的 200 股(之前的买入或送转可能没录)";
+    const priv = { ...p, groups: [group("journal", "交易记录", { found: 1, skipped: [{ what: "600000 2026-09-01", why }], notes: [`成本 1500 元那笔:${why}`] })],
+      warnings: [`导入的 600000 2026-09-01 那笔算不了:${why}`] };
+    const shown = textOf(r.html(VaImportPreviewView, { p: priv, hide: false }));
+    assert.match(shown, /卖出 300 股/);
+    const masked = textOf(r.html(VaImportPreviewView, { p: priv, hide: true }));
+    for (const s of ["300", "200", "1500"]) assert.ok(!masked.includes(s), `隐私模式下还露出 ${s}`);
+    assert.match(masked, /600000 2026-09-01:卖出 •••• 股/);
+    assert.match(masked, /导入的 600000 2026-09-01 那笔算不了/);
+    const failed = textOf(r.html(VaImportResultView, { r: { ...res, failed: [{ what: "600000 2026-09-01", why }] }, hide: true }));
+    assert.ok(!failed.includes("300 股"), failed);
   });
 });
 

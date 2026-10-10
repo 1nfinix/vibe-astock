@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, backend } from "@/lib/backend";
 import type { JournalView } from "@/lib/journal";
+import { serialQueue } from "@/lib/serialQueue";
 
 export type Load<T> = { state: "loading" } | { state: "done"; data: T } | { state: "failed"; why: string };
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -20,6 +21,8 @@ export function useJournal() {
   const [staleWhy, setStaleWhy] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ctl = useRef<AbortController | null>(null);
+  // 写动作排队:先点的先写、先回来,后回来的视图一定更新(见 serialQueue)
+  const queue = useRef(serialQueue());
 
   const reload = useCallback(() => {
     ctl.current?.abort();
@@ -38,8 +41,11 @@ export function useJournal() {
 
   useEffect(() => { reload(); return () => ctl.current?.abort(); }, [reload]);
 
-  /** 写一次。失败照原样抛给调用方显示;「成交记上了、标注没写」也要重读,页面才看得到那几笔 */
-  const act = useCallback(async (body: JournalAction) => {
+  /**
+   * 写一次。失败照原样抛给调用方显示;「成交记上了、标注没写」也要重读,页面才看得到那几笔。
+   * 写完会掐掉还在路上的重读:它读的可能是这次写之前的台账。
+   */
+  const act = useCallback((body: JournalAction) => queue.current(async () => {
     try {
       const r = await backend.journalAct(body);
       ctl.current?.abort();
@@ -52,7 +58,7 @@ export function useJournal() {
       if (e instanceof ApiError && e.code === "partial") reload();
       throw e;
     }
-  }, [reload]);
+  }), [reload]);
 
   return { st, staleWhy, busy, revision, reload, act };
 }

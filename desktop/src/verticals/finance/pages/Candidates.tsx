@@ -10,6 +10,7 @@ import {
 } from "@/lib/candidates";
 import { shortTime } from "@/lib/chatSources";
 import { storageGet, storageSet } from "@/lib/storage";
+import { PERSONAL_TRADES_TO_AI } from "@/lib/brand";
 import { useAiPage } from "../../../core/ai/pageContext";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,23 @@ function CheckCell({ c }: { c: CandidateCheck | undefined }) {
     </span>
     <span className="mt-0.5 block whitespace-nowrap text-xs tabular-nums text-muted-foreground">{c.shown}</span>
   </td>;
+}
+
+/** 候选池登记给 AI 的上下文(单独拿出来便于测试:范围是「我的持仓」时不列逐只结果) */
+export function candidatesAiContext(data: CandidateResult | null): string {
+  return data
+    ? `候选池(只排除、不排名;按代码排列):范围 ${data.universe.label} 共 ${data.universe.size} 只`
+      + `${data.universe.as_of ? `,成分文件日期 ${data.universe.as_of}` : ""}(${data.universe.source});行情来自${data.quotes.source}${data.quotes.fetched_at ? `,取于 ${data.quotes.fetched_at}` : ""}。\n`
+      + `条件:${data.conditions.map((c) => c.label).join(";")}\n`
+      + `全部满足 ${data.counts.met} 只,有缺数据 ${data.counts.missing} 只,有不满足 ${data.counts.unmet} 只。\n`
+      // Vibe AStock:范围是「我的持仓」时不列代码(缺口里也会写代码)—— 名单本身就是持仓(见 brand.ts PERSONAL_TRADES_TO_AI)
+      + (data.universe.id === "position" && !PERSONAL_TRADES_TO_AI ? "范围是用户自己的持仓,按产品规则逐只结果和缺口不发给 AI,请用户在页面上查看。" : (["met", "missing"] as const).map((k) => {
+        const list = rowsOfTab(data.rows, k).slice(0, 80);
+        return list.length ? `${k === "met" ? "全部满足" : "有缺数据"}${list.length < data.counts[k] ? `(前 ${list.length} 只)` : ""}:\n`
+          + list.map((r) => `${r.symbol} ${r.name}:${r.checks.map((c) => `${c.id}=${c.shown}(${STATE_META[c.state].label})`).join(",")}`).join("\n") : "";
+      }).filter(Boolean).join("\n")
+      + (data.gaps.length ? `\n没取到:${data.gaps.join(";")}` : ""))
+    : "候选池:还没有核对结果。";
 }
 
 export function Candidates() {
@@ -72,18 +90,7 @@ export function Candidates() {
   useAiPage({
     key: "candidates",
     title: "候选池",
-    context: data
-      ? `候选池(只排除、不排名;按代码排列):范围 ${data.universe.label} 共 ${data.universe.size} 只`
-        + `${data.universe.as_of ? `,成分文件日期 ${data.universe.as_of}` : ""}(${data.universe.source});行情来自${data.quotes.source}${data.quotes.fetched_at ? `,取于 ${data.quotes.fetched_at}` : ""}。\n`
-        + `条件:${data.conditions.map((c) => c.label).join(";")}\n`
-        + `全部满足 ${data.counts.met} 只,有缺数据 ${data.counts.missing} 只,有不满足 ${data.counts.unmet} 只。\n`
-        + (["met", "missing"] as const).map((k) => {
-          const list = rowsOfTab(data.rows, k).slice(0, 80);
-          return list.length ? `${k === "met" ? "全部满足" : "有缺数据"}${list.length < data.counts[k] ? `(前 ${list.length} 只)` : ""}:\n`
-            + list.map((r) => `${r.symbol} ${r.name}:${r.checks.map((c) => `${c.id}=${c.shown}(${STATE_META[c.state].label})`).join(",")}`).join("\n") : "";
-        }).filter(Boolean).join("\n")
-        + (data.gaps.length ? `\n没取到:${data.gaps.join(";")}` : "")
-      : "候选池:还没有核对结果。",
+    context: candidatesAiContext(data),
     suggestions: ["哪一条条件排除的最多", "缺数据的几只分别缺什么"],
   });
 

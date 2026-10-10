@@ -609,20 +609,33 @@ async function runJob(ctx: ServiceContext, def: ScheduleDef, job: ScheduledJobDe
   }
 }
 
-async function gateFor(ctx: ServiceContext, def: ScheduleDef, day: string, now: Date): Promise<GateResult> {
+/**
+ * 同一数据目录、同一天的门判断同时只发一个。每拍钩子 60 秒超时时,它要的门判断可能还在路上(门判断自己 90 秒才超时);
+ * 任务那边或下一拍再要就接着等这一个:不并发再查一遍,也不会让晚到的「没判断出来」盖掉刚判好的结果。
+ */
+const gateInflight = new Map<string, Promise<GateResult>>();
+
+function gateFor(ctx: ServiceContext, def: ScheduleDef, day: string, now: Date): Promise<GateResult> {
   const cached = loadState(ctx.dataRoot).gate;
   if (cached && cached.day === day && (cached.status !== "unavailable" || now.getTime() - Date.parse(cached.checked_at) < GATE_RETRY_MS)) {
-    return { status: cached.status, reason: cached.reason ?? "" } as GateResult;
+    return Promise.resolve({ status: cached.status, reason: cached.reason ?? "" } as GateResult);
   }
-  let g: GateResult;
-  try {
-    g = await withTimeout(GATE_TIMEOUT_MS, (signal) => def.gate({ ctx, day, now, signal }), "判断今天是否运行");
-    if (!isObj(g) || !["open", "closed", "unavailable"].includes(String(g.status))) g = { status: "unavailable", reason: "判断结果格式不对" };
-  } catch (e) {
-    g = { status: "unavailable", reason: e instanceof Error ? e.message : String(e) };
-  }
-  await mutateState(ctx.dataRoot, (s) => { s.gate = { day, status: g.status, ...(g.reason ? { reason: g.reason } : {}), checked_at: now.toISOString() }; });
-  return g;
+  const key = `${ctx.dataRoot}\n${day}`;
+  const pending = gateInflight.get(key);
+  if (pending) return pending;
+  const p = (async () => {
+    let g: GateResult;
+    try {
+      g = await withTimeout(GATE_TIMEOUT_MS, (signal) => def.gate({ ctx, day, now, signal }), "判断今天是否运行");
+      if (!isObj(g) || !["open", "closed", "unavailable"].includes(String(g.status))) g = { status: "unavailable", reason: "判断结果格式不对" };
+    } catch (e) {
+      g = { status: "unavailable", reason: e instanceof Error ? e.message : String(e) };
+    }
+    await mutateState(ctx.dataRoot, (s) => { s.gate = { day, status: g.status, ...(g.reason ? { reason: g.reason } : {}), checked_at: now.toISOString() }; });
+    return g;
+  })().finally(() => gateInflight.delete(key));
+  gateInflight.set(key, p);
+  return p;
 }
 
 /**
@@ -654,10 +667,14 @@ function tryLock(dataRoot: string, now: Date): { unlock: () => void; touch: () =
 
 export interface TickReport { day: string; hm: string; due: string[]; gate?: GateResult; ran: { id: string; status: string; note?: string }[]; skipped?: string; beat?: string }
 
-/** 调度一拍:把到点且今天还没跑的任务跑掉。可测 —— 传入 now 和 def 即可,不碰真时钟 */
-export async function tick(ctx: ServiceContext, opts: { now?: Date; def?: ScheduleDef | null; deps?: Deps } = {}): Promise<TickReport> {
+/**
+ * 调度一拍:把到点且今天还没跑的任务跑掉。可测 —— 传入 now 和 def 即可,不碰真时钟;
+ * 要模拟队列执行中时间往前走,传 clock(每个任务开始前读一次)。
+ */
+export async function tick(ctx: ServiceContext, opts: { now?: Date; clock?: () => Date; def?: ScheduleDef | null; deps?: Deps } = {}): Promise<TickReport> {
   const def = opts.def === undefined ? currentSchedule() : opts.def;
-  const now = opts.now ?? new Date();
+  const clock = opts.clock ?? (() => opts.now ?? new Date());
+  const now = opts.now ?? clock();
   const { day, hm } = localClock(now, def?.timeZone ?? "UTC");
   const report: TickReport = { day, hm, due: [], ran: [] };
   if (!def) return { ...report, skipped: "没有注册定时任务" };
@@ -708,10 +725,19 @@ export async function tick(ctx: ServiceContext, opts: { now?: Date; def?: Schedu
       for (const j of due) report.ran.push({ id: j.id, status: "skipped", note: gate.reason });
       return report;
     }
-    for (const j of due) {
+    for (const [i, j] of due.entries()) {
       lock.touch();
-      // 前面的任务可能跑了几分钟:每个任务按它开始的时刻算(测试传了 now 就用 now)
-      const st = await runJob(ctx, def, j, opts.now ?? new Date(), false, opts.deps ?? {}).catch((e): JobState => ({ status: "failed", note: e instanceof Error ? e.message : String(e) }));
+      // 前面的任务可能跑了几分钟:每个任务按它开始的时刻算(测试传了 now 就用 now)。
+      // 🔴 开市判定和到点条件都是按开拍那一刻算的:队列跑过了午夜(或时钟跳到别的日期)就停,
+      //    剩下的留给下一拍按新的一天重新判断 —— 否则周五的「开市」会带到周六,周六被记成跑过(2026-10-11 审计)
+      const at = clock();
+      const c = localClock(at, def.timeZone);
+      if (c.day !== day) {
+        for (const rest of due.slice(i)) report.ran.push({ id: rest.id, status: "deferred", note: `已经到了 ${c.day},留给下一拍按新的一天重新判断` });
+        break;
+      }
+      if (jobAt(settings, j) > c.hm) { report.ran.push({ id: j.id, status: "deferred", note: "时钟往回调了,还没到点" }); continue; }
+      const st = await runJob(ctx, def, j, at, false, opts.deps ?? {}).catch((e): JobState => ({ status: "failed", note: e instanceof Error ? e.message : String(e) }));
       report.ran.push({ id: j.id, status: st.status ?? "ok", ...(st.note ? { note: st.note } : {}) });
     }
     return report;

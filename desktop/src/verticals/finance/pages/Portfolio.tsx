@@ -26,7 +26,8 @@ import { perfContextText } from "@/lib/perfView";
 import { replayContextText } from "@/lib/replayView";
 import { xrayContextText } from "@/lib/xrayView";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
-import { hideIf, maskPrivateText } from "@/lib/privacy";
+import { PERSONAL_DATA_WITHHELD, hideIf, maskPrivateText } from "@/lib/privacy";
+import { PERSONAL_TRADES_TO_AI } from "@/lib/brand";
 import { currencyLabel } from "@/lib/marketSymbol";
 
 const REFRESH_MS = 30 * 60 * 1000; // 每半小时自动刷新
@@ -85,6 +86,9 @@ type Sub = "perf" | "trades" | "xray" | "replay";
 
 /** `tabs`：放在页头下面的「自选 / 持仓」切换（这一页挂在「自选与持仓」里）。 */
 /** 给 AI 的一行持仓：没取到现价就直说，不写成「现价null 浮盈null」（第四轮审计 C4） */
+/** 持仓页登记给 AI 的上下文。Vibe AStock:持仓、成本、盈亏都不发给 AI(见 brand.ts),只给一段说明 */
+export const portfolioAiContext = (full: string): string => (PERSONAL_TRADES_TO_AI ? full : PERSONAL_DATA_WITHHELD);
+
 export function holdingContextLine(h: Holding): string {
   const live = h.price == null
     ? "现价没取到（市值、浮盈没算）"
@@ -232,13 +236,13 @@ export function Portfolio({ tabs }: { tabs?: ReactNode } = {}) {
   const perfText = perfContextText(perf.result);
   // 持仓变了以后，旧的回放结果不再给 AI（它对应的是之前的持仓）
   const replayText = replay.stale ? "" : replayContextText(replay.result);
-  const aiContext = [holdingsText, perfText, replayText].filter(Boolean).join("\n");
+  const aiContext = portfolioAiContext([holdingsText, perfText, replayText].filter(Boolean).join("\n"));
 
   useAiPage({
     key: "portfolio",
     title: "我的持仓",
     context: aiContext,
-    suggestions: ["我的持仓集中在哪些方向", "结构上有什么风险", "帮我梳理一下"],
+    suggestions: PERSONAL_TRADES_TO_AI ? ["我的持仓集中在哪些方向", "结构上有什么风险", "帮我梳理一下"] : ["持仓集中度一般怎么看", "怎么给自己定止损和仓位规矩"],
   });
 
   const fields = FIELDS_OF[form.type];

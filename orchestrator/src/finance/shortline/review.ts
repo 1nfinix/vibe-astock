@@ -347,6 +347,8 @@ export interface RunSpec {
 }
 
 const sessions = new Map<string, Session>();
+/** 过了 ensureCapacity、还在取资料的开工请求(见 ensureCapacity) */
+const starting = new Map<symbol, { kind: string; group: string }>();
 
 function sweep(now = Date.now()): void {
   for (const [k, s] of sessions) if (s.finishedAt !== null && now - s.finishedAt > KEEP_FINISHED_MS) sessions.delete(k);
@@ -446,8 +448,8 @@ async function runStage(s: Session, st: StageState, turn: TurnFn): Promise<void>
     st.unknown_cites = c.unknown;
     st.status = "done";
   } catch (e) {
-    if (e instanceof ChatError && e.code === "agent_shutdown_failed") {
-      // 停没停下来不确定:后面的一律不再调 AI
+    if ((e instanceof ChatError && e.code === "agent_shutdown_failed") || (e instanceof ServiceError && e.code === "ai_source_changed")) {
+      // 停没停下来不确定 / AI 来源中途换了(审计 2026-10-11 Codex 范围 2 第 6 条):后面的一律不再调 AI
       for (const x of s.stages) if (x.status === "running" || x.status === "pending") { x.status = "failed"; x.error = `${e.code}:${e.message}`; }
       return;
     }
@@ -501,12 +503,17 @@ async function runAll(ctx: ServiceContext, s: Session, turn: TurnFn, now: () => 
 /**
  * 开工前的检查:同一组(同一天 / 同一周)不能同时写两份;日复盘和周报合起来最多同时跑 MAX_RUNNING 份。
  * `label` 是报错里说的那一组(「2026-10-09 的复盘」「2026-10-05 起这一周的周报」)。
+ * 过了检查就先占一个名额(还在取资料、没进 sessions 的也算),返回释放函数:调用方在 launchRun 之后或失败时释放。
+ * 🔴 不先占的话,两次几乎同时点开工会都通过检查(取资料要几秒),同一天写出两份、或超过上限。
  */
-export function ensureCapacity(kind: string, group: string, label: string): void {
+export function ensureCapacity(kind: string, group: string, label: string): () => void {
   sweep();
-  const busy = [...sessions.values()].filter((s) => !s.done);
-  if (busy.some((s) => s.spec.kind === kind && s.spec.group === group)) throw new ServiceError("review_busy", `${label}正在写,等它写完或先停掉`);
+  const busy = [...[...sessions.values()].filter((s) => !s.done).map((s) => s.spec), ...starting.values()];
+  if (busy.some((s) => s.kind === kind && s.group === group)) throw new ServiceError("review_busy", `${label}正在写,等它写完或先停掉`);
   if (busy.length >= MAX_RUNNING) throw new ServiceError("capacity_full", `同时在写的 AI 复盘和周报合计最多 ${MAX_RUNNING} 份,等前面的写完`);
+  const key = Symbol(label);
+  starting.set(key, { kind, group });
+  return () => { starting.delete(key); };
 }
 
 /** 请求里带的 AI 显示名(剥控制字符、限长) */
@@ -545,7 +552,15 @@ export async function startReview(ctx: ServiceContext, body: Record<string, unkn
   if (!validDate(date)) throw new ServiceError("bad_request", "date 要写成 YYYY-MM-DD");
   const today = localClock(now, SCHEDULE_TZ).day;
   if (date > today) throw new ServiceError("bad_request", `${date} 还没到`);
-  ensureCapacity(LEDGER_KIND, date, `${date} 的复盘`);
+  const release = ensureCapacity(LEDGER_KIND, date, `${date} 的复盘`);
+  try {
+    return await prepareReview(ctx, body, date, today, signal, now, turn);
+  } finally {
+    release();
+  }
+}
+
+async function prepareReview(ctx: ServiceContext, body: Record<string, unknown>, date: string, today: string, signal: AbortSignal, now: Date, turn?: TurnFn): Promise<ReviewRun> {
   // 没接 AI 就别白取一遍数
   const agent = turn ? { turn, fingerprint: "" } : agentTurnFor(ctx, body);
   const ai = aiName(body);
@@ -602,6 +617,7 @@ export async function reviewFinished(id: string): Promise<ReviewRun> {
 export function resetReviews(): void {
   for (const s of sessions.values()) s.abort.abort();
   sessions.clear();
+  starting.clear();
 }
 
 // ---------------------------------------------------------------- 视图

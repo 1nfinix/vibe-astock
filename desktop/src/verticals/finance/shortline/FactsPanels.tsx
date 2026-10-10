@@ -106,6 +106,14 @@ export function Matrix({ fm }: { fm?: FeedbackMatrix }) {
   );
 }
 
+/**
+ * 跌停按哪天的制度判。日期和取数层 shortline.py 的 ST_10PCT_FROM / CHINEXT_20PCT_FROM 是同一组
+ * (测试对着那两个常量查),计算按数据那一天的规则,这里把两次改制都写出来。
+ */
+export const LIMIT_RULES_TEXT =
+  "跌停按每只票在那一天的制度判,不是统一 10%:主板 10%;科创板 20%;创业板 2020-08-24 起 20%、之前 10%;" +
+  "主板 ST 2026-07-06 起 10%、之前 5%;北交所 30%。";
+
 /** 亏钱效应 —— 昨日涨停股今天有多疼 */
 export function LossEffectSection({ le }: { le?: LossEffect }) {
   const partial = coverageNote(le);
@@ -116,7 +124,7 @@ export function LossEffectSection({ le }: { le?: LossEffect }) {
       hint="⚠️ 这一栏只统计【昨日涨停的那批票】今天的表现,不是全市场。判退潮先看昨天的强势股今天有多疼 —— 炸板率只说明板没封住,说明不了封不住之后亏多少。"
       caliber={"样本 = 昨日涨停池全部个股,收盘对收盘。\n" +
         "「跌超5%/7%」按当天收盘涨跌幅算,不看盘中最低;**恰好跌 5.00% / 7.00% 都算进去**。\n" +
-        "跌停按每只票自己的制度判(主板 10%、创业科创 20%、ST 主板 5%、北交所 30%),不是统一 10%。\n" +
+        LIMIT_RULES_TEXT + "\n" +
         "⚠️ 与全市场「跌超5%」不是同一个分母:这里的分母只有昨日涨停那批(见下方样本数),\n" +
         "全市场的分母是全 A 五千多只。两个数不能直接比大小。"}
       available={le?.available}

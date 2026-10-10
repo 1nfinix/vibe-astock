@@ -35,7 +35,8 @@ unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
 unset VRA_DATA_ROOT
 if [ ! -f "$ROOT/.local/config.json" ]; then
   echo "[Vibe AStock] 第一次在这个文件夹启动，新建空白数据目录 .local。"
-  echo "  用过旧版本、想带上原来的数据：先按 Ctrl+C 关掉，把旧文件夹里的 .local 整个复制到这个文件夹，再双击启动。"
+  echo "  用过 Python 版 Vibe AStock（v1.x）：启动后到「接入 AI」页最下面点「从旧版导入」，把原来的交易日志和复盘搬过来。"
+  echo "  用过旧版免安装包：先按 Ctrl+C 关掉，把旧文件夹里的 .local 整个复制到这个文件夹，再双击启动。"
   # 初始化的「下一步」是写给源码版的（scripts/start、填 python），这里不显示；出错信息照常显示
   node "$ROOT/orchestrator/src/init.ts" >/dev/null
 fi

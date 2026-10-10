@@ -248,10 +248,13 @@ export function fillsPayload(drafts: readonly FillDraft[]): { fills: FillPayload
 
 type Obj = Record<string, unknown>;
 
-/** 权益曲线:累计净盈亏 + 距高点回撤。隐私模式下纵轴和提示里的金额都遮掉,只看形状 */
+/**
+ * 权益曲线:累计净盈亏 + 距高点回撤(元)。
+ * 🔴 隐私模式下不画:只遮纵轴和提示不够,曲线的高低、斜率、面积就是每笔盈亏的相对大小(2026-10-11 审计)。
+ */
 export function equityChart(points: readonly { date: string; cum_pnl: number; drawdown: number }[], p: ChartPalette, hide: boolean): Obj | null {
-  if (points.length < 2) return null;
-  const fmt = (x: unknown) => (hide ? MASK : typeof x === "number" ? money(x) : "—");
+  if (points.length < 2 || hide) return null;
+  const fmt = (x: unknown) => (typeof x === "number" ? money(x) : "—");
   return {
     animation: false,
     grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
@@ -260,7 +263,7 @@ export function equityChart(points: readonly { date: string; cum_pnl: number; dr
     xAxis: { type: "category", data: points.map((x, i) => `${i + 1} · ${x.date}`), boundaryGap: false,
       axisLabel: { color: p.text, fontSize: 11, formatter: (s: string) => s.split(" · ")[1] ?? s },
       axisLine: { lineStyle: { color: p.axis } }, axisTick: { show: false } },
-    yAxis: { type: "value", scale: true, axisLabel: { color: p.text, fontSize: 11, show: !hide, formatter: (x: number) => money(x) }, splitLine: { lineStyle: { color: p.grid } } },
+    yAxis: { type: "value", scale: true, axisLabel: { color: p.text, fontSize: 11, formatter: (x: number) => money(x) }, splitLine: { lineStyle: { color: p.grid } } },
     series: [
       { name: "累计净盈亏", type: "line", showSymbol: false, lineStyle: { width: 1.6, color: p.primary }, itemStyle: { color: p.primary }, data: points.map((x) => x.cum_pnl),
         markLine: { silent: true, symbol: "none", lineStyle: { color: p.axis, type: "dashed" }, label: { show: false }, data: [{ yAxis: 0 }] } },

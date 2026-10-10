@@ -16,6 +16,7 @@
  * 存储:`<数据目录>/shortline/intraday/<日期>/<HHMM>.json`,各时点的结果另记 `status.json`。
  * 不走台账:机器存的盘面数据,台账是用户自己记的东西(见开发计划「阶段 4 定下的做法」)。
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -206,6 +207,43 @@ export const dayDir = (dataRoot: string, day: string) => path.join(dataRoot, INT
 const slotFile = (dataRoot: string, day: string, slot: Slot) => path.join(dayDir(dataRoot, day), `${slot.replace(":", "")}.json`);
 const statusFile = (dataRoot: string, day: string) => path.join(dayDir(dataRoot, day), "status.json");
 
+/**
+ * 只新建、不覆盖:先写临时文件,再硬链接成正式文件名(同名文件已在时链接失败)。返回 false = 已经有人存了这张。
+ * 🔴 存档前查一次「有没有」不够:取数要好几秒,定时和手动(或两个页面)同时进来时都查到「没有」,
+ *    后存完的会把先存的那张悄悄换掉(审计 2026-10-11 Codex 范围 2 第 5 条)。
+ */
+export function writeNewJson(file: string, obj: unknown): boolean {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}-${crypto.randomBytes(6).toString("hex")}.part`;
+  const fd = fs.openSync(tmp, "wx");
+  try {
+    fs.writeSync(fd, `${JSON.stringify(obj, null, 2)}\n`);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.linkSync(tmp, file);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw e;
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+/** 同一个数据目录、同一天、同一个时点同时只取一次数:后来的等先来的结果 */
+const capturing = new Map<string, Promise<CaptureResult>>();
+function captureOnce(ctx: ServiceContext, day: string, slot: Slot, signal: AbortSignal, deps: CaptureDeps): { mine: boolean; run: Promise<CaptureResult> } {
+  const key = `${path.resolve(ctx.dataRoot)}|${day}|${slot}`;
+  const cur = capturing.get(key);
+  if (cur) return { mine: false, run: cur };
+  const run = captureSnapshot(ctx, slot, signal, deps).finally(() => capturing.delete(key));
+  capturing.set(key, run);
+  return { mine: true, run };
+}
+
 export type SlotState = "saved" | "failed" | "skipped";
 export interface SlotStatus { state: SlotState; reason?: string; at: string; tries: number }
 
@@ -259,7 +297,8 @@ export function loadDay(dataRoot: string, day: string): { snapshots: Snapshot[];
 
 type Fetch = (ctx: ServiceContext, req: Parameters<typeof fetchEndpoint>[1]) => Promise<Pick<FetchResult, "envelope">>;
 export interface CaptureDeps { fetch?: Fetch; clock?: () => Date }
-export type CaptureResult = { ok: true; snapshot: Snapshot } | { ok: false; reason: string };
+/** `already` = 这个时点在取数期间已经被别的请求存上了;先存的那张保留,这次的不写 */
+export type CaptureResult = { ok: true; snapshot: Snapshot } | { ok: false; reason: string; already?: true };
 
 /** 时点和此刻对不上的原因;对得上 = null */
 export function timingProblem(slot: Slot, hm: string): string | null {
@@ -340,7 +379,7 @@ export async function captureSnapshot(ctx: ServiceContext, slot: Slot, signal: A
     basis, prev_date: ladder.sample_date, cohort, live, ...(liveReason ? { live_reason: liveReason } : {}), gaps,
   };
   try {
-    writeJson(slotFile(ctx.dataRoot, day, slot), snapshot);
+    if (!writeNewJson(slotFile(ctx.dataRoot, day, slot), snapshot)) return { ok: false, reason: "这个时点已经有一张了(别的请求先存上),保留先存的那张", already: true };
   } catch {
     return { ok: false, reason: "快照没存上(检查数据目录的权限或磁盘空间)" };
   }
@@ -366,7 +405,8 @@ export async function intradayBeat(
     writeStatus(b.ctx.dataRoot, day, slot, { state: "skipped", reason: gate.reason, at, tries });
     return;
   }
-  const r = await captureSnapshot(b.ctx, slot, b.signal, deps);
+  const r = await captureOnce(b.ctx, day, slot, b.signal, deps).run;
+  if (!r.ok && r.already) return;
   writeStatus(b.ctx.dataRoot, day, slot, r.ok ? { state: "saved", at, tries } : { state: "failed", reason: r.reason, at, tries });
   return `盘中快照 ${slot}:${r.ok ? `已存(昨日涨停 ${r.snapshot.cohort.sample}/${r.snapshot.cohort.expected} 只)` : `没存,${r.reason}`}`;
 }
@@ -536,7 +576,11 @@ export async function shortlineIntradayAct(ctx: ServiceContext, body: Record<str
   if (!slot) throw new ServiceError("bad_request", `现在(${hm})不在任何快照时点的有效窗口里:${SLOTS.map((s) => `${s}–${windowEnd(s)}`).join("、")}`);
   if (fs.existsSync(slotFile(ctx.dataRoot, day, slot))) return { slot, ok: true, already: true, reason: null };
   const prev = readStatus(ctx.dataRoot, day)[slot];
-  const r = await captureSnapshot(ctx, slot, signal, deps);
+  const c = captureOnce(ctx, day, slot, signal, deps);
+  const r = await c.run;
+  // 别的请求正在存或刚存上:不重抓、不改它记的状态,照它的结果说
+  if (!c.mine) return { slot, ok: r.ok, already: r.ok, reason: r.ok ? null : r.reason };
+  if (!r.ok && r.already) return { slot, ok: true, already: true, reason: null };
   writeStatus(ctx.dataRoot, day, slot, r.ok ? { state: "saved", at: clock().toISOString(), tries: (prev?.tries ?? 0) + 1 } : { state: "failed", reason: r.reason, at: clock().toISOString(), tries: (prev?.tries ?? 0) + 1 });
   return { slot, ok: r.ok, already: false, reason: r.ok ? null : r.reason };
 }

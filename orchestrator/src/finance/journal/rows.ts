@@ -10,7 +10,7 @@
  */
 import type { LedgerRecord } from "../../ledger.ts";
 import { PLAYBOOKS } from "./defs.ts";
-import { A_SHARE, type Episode } from "./episodes.ts";
+import { isJournalSymbol, type Episode } from "./episodes.ts";
 import { realDay } from "./num.ts";
 
 export interface Tag {
@@ -95,7 +95,7 @@ export function buildRows(
   const manual: JournalRow[] = [];
 
   for (const t of tags) {
-    if (!A_SHARE.test(t.symbol)) { orphans.push({ id: t.id, symbol: t.symbol, why: "交易日志只管 A 股(六位代码)" }); continue; }
+    if (!isJournalSymbol(t.symbol)) { orphans.push({ id: t.id, symbol: t.symbol, why: "交易日志只管 A 股股票(ETF、基金、债券不记)" }); continue; }
     if (!t.trade_id) {
       if (!realDay(t.date)) { orphans.push({ id: t.id, symbol: t.symbol, why: "没有成交明细的补记要写日期" }); continue; }
       manual.push({

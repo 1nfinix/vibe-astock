@@ -91,6 +91,9 @@ def build_live() -> dict:
     vals = [r["ret"] for r in rows or [] if r.get("ret") is not None]
     if vals:
         live.update(money_effect=round(median(vals), 2), deep_loss=sum(1 for v in vals if v <= -5), sample=len(vals))
+        cov = S.settled_cov(today, len(vals))
+        if cov["partial"]:
+            reasons["settled_partial"] = f"昨日涨停股有 {cov['expected_sample'] - len(vals)} 只此刻缺涨跌幅,样本 {len(vals)}/{cov['expected_sample']}"
     else:
         live.update(money_effect=None, deep_loss=None, sample=None)
         reasons["settled"] = "昨日涨停股此刻的表现（东财昨日涨停池）没取到"

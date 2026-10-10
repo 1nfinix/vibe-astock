@@ -106,10 +106,16 @@ export const FINANCE_ENUM_LABELS: Record<string, string> = {
   ...Object.fromEntries(VERIFY_METRICS.map((m) => [m.key, m.label])),
 };
 
+/**
+ * 🔴 `hiddenFromAssistant: true` 的六种(清仓、交易流水、持有、交易标注、交易日志设置、模式卡)是用户自己的成交与持仓,
+ *    **不交给模型**:聊天助手读台账时看不到它们,页面也不把它们放进发给 AI 的页面上下文(沿用旧版 VA「个人交易记录不接入任何 AI」)。
+ *    自选、笔记、论点、判据、复盘这些可以给模型看。新增种类时想清楚放哪边。
+ */
 export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
   /** 用户手动记录已发生的清仓，不下单、不自动扣减另一张持有台账。 */
   closed_position: {
     label: "清仓记录",
+    hiddenFromAssistant: true,
     properties: {
       symbol: REQUIRED_SYMBOL,
       name: TEXT(40),
@@ -129,6 +135,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   trade: {
     label: "交易流水",
+    hiddenFromAssistant: true,
     properties: {
       symbol: REQUIRED_SYMBOL,
       name: TEXT(40),
@@ -156,6 +163,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   position: {
     label: "持有",
+    hiddenFromAssistant: true,
     properties: {
       symbol: REQUIRED_SYMBOL,
       name: TEXT(40),
@@ -353,6 +361,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   journal_tag: {
     label: "交易标注",
+    hiddenFromAssistant: true,
     properties: {
       symbol: REQUIRED_SYMBOL,
       name: TEXT(40),
@@ -378,6 +387,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   journal_settings: {
     label: "交易日志设置",
+    hiddenFromAssistant: true,
     properties: {
       commission_rate: { type: "number", minimum: 0, maximum: MAX_RATE },
       commission_min: { type: "number", minimum: 0 },
@@ -398,6 +408,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   mode_card: {
     label: "模式卡",
+    hiddenFromAssistant: true,
     properties: {
       name: NONEMPTY(MODE_NAME_MAX),
       playbook: { type: "string", enum: PLAYBOOKS },

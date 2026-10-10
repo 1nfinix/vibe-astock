@@ -17,7 +17,7 @@ import re
 import sys
 import unicodedata
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import TZ_SH  # noqa: E402
@@ -177,7 +177,8 @@ def is_limit_up_row(row: dict, day: Optional[str] = None) -> Optional[bool]:
     """这一行当天涨停了吗:优先「现价 == 涨停价」,缺价格时按制度推定;涨跌幅也没有就是不知道。"""
     close, limit = row.get("close"), row.get("limit_price")
     if isinstance(close, (int, float)) and isinstance(limit, (int, float)) and limit > 0:
-        return abs(close - limit) < 0.011
+        # 按分比:差一分钱(10.99 对 11.00)就是没封住。原来 abs(差) < 0.011 会把差一分算成涨停
+        return round(close * 100) == round(limit * 100)
     ret = row.get("ret")
     if ret is None:
         return None
@@ -296,6 +297,15 @@ def _dt_row(p: dict) -> Optional[dict]:
 
 
 _API = {"zt": ("getTopicZTPool", "fbt:asc", _zt_row), "zb": ("getTopicZBPool", "fbt:asc", _zb_row), "dt": ("getTopicDTPool", "fund:asc", _dt_row)}
+# 这些列缺了就整池不用(当取数失败):缺开板次数会被算成「一次没炸过」,缺连板数会被算成首板(10-11 实测这几列都在)
+_REQUIRED = {"zt": ("zbc", "lbc"), "zb": ("zbc",), "dt": (), "yzt": ("ylbc",)}
+
+
+def _check_required(kind: str, raw: list[dict]) -> None:
+    for f in _REQUIRED[kind]:
+        bad = sum(1 for p in raw if p.get(f) in (None, "", "-") and _base(p) is not None)   # 代码无效的行本来就丢
+        if bad:
+            raise RuntimeError(f"东财{kind}池有 {bad} 行缺「{f}」,上游格式可能变了;不按默认值补")
 _POOL: dict[tuple[str, str], list[dict]] = {}
 _FIELDS: dict[tuple[str, str], list[str]] = {}
 
@@ -326,6 +336,7 @@ def pool(kind: str, day: str) -> list[dict]:
         raw = em._em_zt_api(api, sort, d)
         if raw:
             _FIELDS[key] = _keys(raw)
+        _check_required(kind, raw)
         rows = [r for r in (row(p) for p in raw) if r is not None]
         _POOL[key] = rows
     return _POOL[key]
@@ -351,6 +362,7 @@ def zt_pool(day: str) -> Optional[list[dict]]:
 
 
 _SETTLED: dict[str, list[dict]] = {}
+_SETTLED_NORET: dict[str, list[dict]] = {}   # 代码有效、但当天涨跌幅缺的行(只用来算覆盖率)
 
 
 def settled_pool(day: str) -> Optional[list[dict]]:
@@ -369,18 +381,32 @@ def settled_pool(day: str) -> Optional[list[dict]]:
             return None
         if raw:
             _FIELDS[("yzt", d)] = _keys(raw)
-        rows = []
+        try:
+            _check_required("yzt", raw)
+        except RuntimeError:
+            return None
+        rows: list[dict] = []
+        noret: list[dict] = []
         for p in raw:
             r = _base(p)
-            if r is None or r["ret"] is None:
+            if r is None:
                 continue
             r.update({"prev_boards": _int(p.get("ylbc")) or 1, "seal_time": hhmmss(p.get("yfbt")),
                       "limit_price": _price(p.get("ztp")), "zt_stat": _stat(p)})
-            rows.append(r)
+            (rows if r["ret"] is not None else noret).append(r)
         if not rows:
             return None
-        _SETTLED[d] = rows
+        _SETTLED[d], _SETTLED_NORET[d] = rows, noret
     return _SETTLED[d]
+
+
+def settled_cov(day: str, n: int, scope: Optional[Callable[[dict], bool]] = None) -> dict:
+    """定稿记录算出的指标的样本说明:`n` 只有涨跌幅;同一范围里缺涨跌幅的也算进名单。
+    🔴 缺的行原来被悄悄丢掉、却报覆盖率 100%(partial=False 会进长期缓存)。"""
+    miss = sum(1 for r in _SETTLED_NORET.get(compact(day), []) if scope is None or scope(r))
+    total = n + miss
+    return {"sample": n, "coverage": n, "expected_sample": total,
+            "coverage_rate": round(n / total, 3) if total else None, "partial": miss > 0}
 
 
 # ---------------------------------------------------------------- 实时行情兜底

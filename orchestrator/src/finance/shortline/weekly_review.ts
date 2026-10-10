@@ -206,7 +206,8 @@ async function dayChecks(ctx: ServiceContext, days: string[], signal: AbortSigna
   const got = await pool(days, 2, async (d) => {
     try {
       const v = await shortlineVerify(ctx, { date: d }, signal, now);
-      if (!v.check.available) return null;
+      // 🔴 对不了账 ≠ 没有条件:日 K 没取到时列不出前一晚,这时说「本周没有条件」就是错话(审计 2026-10-11 Codex 范围 2 第 9 条)
+      if (!v.check.available) { gaps.push(`明日验证 ${d}:没法对账(${safeNote(v.check.reason).slice(0, 120)})`); return null; }
       return v.check.results.length ? { set_date: v.check.set_date, date: d, provisional: v.check.provisional, results: v.check.results } : null;
     } catch (e) {
       if (signal.aborted) throw e;
@@ -227,7 +228,15 @@ export async function startWeeklyReview(ctx: ServiceContext, body: Record<string
   const today = localClock(now, SCHEDULE_TZ).day;
   if (end > today) throw new ServiceError("bad_request", `${end} 还没到`);
   const ws = weekStart(end);
-  ensureCapacity(LEDGER_KIND, ws, `${ws} 起这一周的周报`);
+  const release = ensureCapacity(LEDGER_KIND, ws, `${ws} 起这一周的周报`);
+  try {
+    return await prepareWeekly(ctx, body, end, ws, today, signal, now, turn);
+  } finally {
+    release();
+  }
+}
+
+async function prepareWeekly(ctx: ServiceContext, body: Record<string, unknown>, end: string, ws: string, today: string, signal: AbortSignal, now: Date, turn?: TurnFn): Promise<ReviewRun> {
   const agent = turn ? { turn, fingerprint: "" } : agentTurnFor(ctx, body);
   const ai = aiName(body);
 

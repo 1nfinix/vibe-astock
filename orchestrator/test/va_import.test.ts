@@ -12,6 +12,7 @@ import { ServiceError, ledgerList, ledgerRemove, ledgerUpsert, type ServiceConte
 import { runViewAction } from "../src/views.ts";
 import { journalView } from "../src/finance/journal/view.ts";
 import { B_SHARE_UNSUPPORTED } from "../src/finance/holdings.ts";
+import { JOURNAL_ONLY_STOCKS } from "../src/finance/journal/episodes.ts";
 import { loadDay } from "../src/finance/shortline/intraday.ts";
 import { isLate, itemsByDate } from "../src/finance/shortline/verification.ts";
 import { shortlineReview } from "../src/finance/shortline/review.ts";
@@ -315,13 +316,45 @@ test("坏文件:读不出 / 符号链接 / 卖超 都跳过并说明,不影响�
   env.trades.push({ id: "badbadbad002", code: "60000", date: "2026-09-01", fills: [] });
   env.trades.push({ id: "badbadbad003", code: "600000", date: "2026-09-01", fills: [{ side: "buy", date: "2026-09-01", price: -1, shares: 100 }] });
   env.trades.push({ id: "badbadbad004", code: "900901", date: "2026-09-01", fills: [{ side: "buy", date: "2026-09-01", price: 1, shares: 100 }] });
+  env.trades.push({ id: "badbadbad005", code: "510300", date: "2026-09-01", fills: [{ side: "buy", date: "2026-09-01", price: 4, shares: 1000 }] });
   fs.writeFileSync(path.join(va, "journal", "trades.json"), JSON.stringify(env));
   const p = previewOf(planImport(ctx, resolveVaDir(ctx, va), NOW));
   assert.match(reasons(p, "modes")[0]!, /不是有效的 JSON/);
   assert.match(reasons(p, "deepdive").join(), /符号链接/);
-  assert.deepEqual(reasons(p, "journal").map((w) => w.slice(0, 16)), ["成交明细里卖出超过了持有(旧版也", "代码不是 6 位数字", "第 1 笔价格或股数不对", B_SHARE_UNSUPPORTED.slice(0, 16)]);
+  assert.deepEqual(reasons(p, "journal").map((w) => w.slice(0, 16)), ["成交明细里卖出超过了持有(旧版也", "代码不是 6 位数字", "第 1 笔价格或股数不对", B_SHARE_UNSUPPORTED.slice(0, 16), JOURNAL_ONLY_STOCKS.slice(0, 16)]);
   assert.equal(grp(p, "journal").add, 4);
   assert.deepEqual(p.warnings, []);
+}));
+
+test("文件夹是符号链接 / 读不了:整组不读并说明(不只查最后那个文件);同一分钟的两个深挖版本都导", withRoot(async (ctx, va) => {
+  const outside = path.join(path.dirname(va), "outside");
+  fs.mkdirSync(outside);
+  // journal/ 整个指向目录外:trades.json 自己是普通文件,原来照样会读
+  fs.renameSync(path.join(va, "journal"), path.join(outside, "journal"));
+  fs.symlinkSync(path.join(outside, "journal"), path.join(va, "journal"));
+  fs.renameSync(path.join(va, "reviews", "_versions"), path.join(outside, "_versions"));
+  fs.symlinkSync(path.join(outside, "_versions"), path.join(va, "reviews", "_versions"));
+  // 深挖:同一只、同一分钟的两个不同版本(各有 job_id)
+  const base = JSON.parse(fs.readFileSync(path.join(va, "deepdive", "600519.json"), "utf8"));
+  fs.rmSync(path.join(va, "deepdive", "versions"), { recursive: true });
+  fs.mkdirSync(path.join(va, "deepdive", "versions"));
+  const j1 = "a".repeat(32), j2 = "b".repeat(32);
+  fs.writeFileSync(path.join(va, "deepdive", "versions", `${j1}.json`), JSON.stringify({ ...base, job_id: j1, verdict_md: "# 第一版\n\n- 甲" }));
+  fs.writeFileSync(path.join(va, "deepdive", "versions", `${j2}.json`), JSON.stringify({ ...base, job_id: j2, verdict_md: "# 第二版\n\n- 乙" }));
+  fs.writeFileSync(path.join(va, "deepdive", "600519.json"), JSON.stringify({ ...base, job_id: j2, verdict_md: "# 第二版\n\n- 乙" }));
+  fs.chmodSync(path.join(va, "intraday"), 0o000);
+  try {
+    const p = previewOf(planImport(ctx, resolveVaDir(ctx, va), NOW));
+    assert.equal(grp(p, "journal").add, 0);
+    assert.match(reasons(p, "journal").join(), /所在文件夹是符号链接/);
+    assert.match(reasons(p, "settings").join(), /所在文件夹是符号链接/, "journal/fees.json 也不读");
+    assert.ok(grp(p, "reviews").skipped.some((x) => x.what === "reviews/_versions/" && /符号链接/.test(x.why)), JSON.stringify(grp(p, "reviews").skipped));
+    assert.ok(grp(p, "intraday").skipped.some((x) => x.what === "intraday/" && /读不了\(EACCES\)/.test(x.why)), JSON.stringify(grp(p, "intraday").skipped));
+    assert.deepEqual([grp(p, "deepdive").add, grp(p, "deepdive").already], [2, 1], "两个版本各导一份;当前那份和第二版内容相同,算一份");
+    runImport(ctx, resolveVaDir(ctx, va), NOW);
+    const again = previewOf(planImport(ctx, resolveVaDir(ctx, va), NOW));
+    assert.deepEqual([grp(again, "deepdive").add, grp(again, "deepdive").already], [0, 3]);
+  } finally { fs.chmodSync(path.join(va, "intraday"), 0o755); }
 }));
 
 test("预演:旧版各条记录各算各的,新版同一只票的流水合在一起算 —— 合起来对不上的,导入前先列出来", withRoot(async (ctx, va) => {
@@ -348,9 +381,9 @@ test("预演:新版里已经手记过同一笔成交(同代码、同一天、同
   ledgerUpsert(ctx, { kind: "trade", record: { symbol: "300750", type: "buy", date: "2026-09-02", shares: 100, price: 200.01 } }); // 价不同
   ledgerUpsert(ctx, { kind: "trade", record: { symbol: "002463", type: "buy", date: "2026-09-08", shares: 200, price: 20 } }); // 量不同
   ledgerUpsert(ctx, { kind: "trade", record: { symbol: "300750", type: "sell", date: "2026-09-02", shares: 100, price: 200 } }); // 方向不同
-  const dup = (p: { warnings: string[] }) => p.warnings.filter((w) => w.includes("和已记的一笔一模一样"));
+  const dup = (p: { warnings: string[] }) => p.warnings.filter((w) => w.includes("和已记的一笔同价同量"));
   const p = previewOf(planImport(ctx, resolveVaDir(ctx, va), NOW));
-  assert.deepEqual(dup(p), ["导入的 600519 2026-09-01 买 100 股(成交价 10)和已记的一笔一模一样;如果是同一笔就记重了,导入后到「我的股票」的交易流水删掉多的那笔"]);
+  assert.deepEqual(dup(p), ["导入的 600519 2026-09-01 那笔买入和已记的一笔同价同量,一模一样;如果是同一笔就记重了,导入后到「我的股票」的交易流水删掉多的那笔"]);
   // 导完再预览:导过的按来源跳过,不再拿自己导进去的那笔当重复
   runImport(ctx, resolveVaDir(ctx, va), NOW);
   assert.deepEqual(dup(previewOf(planImport(ctx, resolveVaDir(ctx, va), NOW))), []);

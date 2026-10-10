@@ -159,6 +159,7 @@ export function readmeText(version: string, target: Target): string {
       ? "数据：放在这个文件夹的 .local 里（交易流水、研究记录、设置都在这里）。"
       : "数据：放在这个文件夹的 .local 里（交易流水、研究记录、设置都在这里）。访达默认不显示以点开头的文件夹，按 Command+Shift+.（句点）就能看到。",
     "升级：下载新版本的包解压到新文件夹，把旧文件夹里的 .local 整个复制过去，再双击新文件夹里的启动文件。旧文件夹确认没问题后再删。",
+    "用过 Python 版 Vibe AStock（v1.x）：数据不在 .local 里。启动后到「接入 AI」页最下面点「从旧版导入」，先预览再导入。",
     "AI：沿用你电脑上已登录的 Claude Code / Codex / WorkBuddy，或在设置页填模型 API。",
     "新版提示：每天联网查一次 GitHub 上有没有新版本（只发送版本号；没查成隔一小时再试），可在「接入 AI」页最下面关掉。",
     "",
@@ -173,6 +174,7 @@ export function readmeText(version: string, target: Target): string {
       ? "Data: kept in this folder's .local directory."
       : "Data: kept in this folder's .local directory. Finder hides folders whose names start with a dot; press Command+Shift+. (period) to show them.",
     "Upgrade: unzip the new package into a new folder, copy the old folder's .local into it, then start from the new folder. Delete the old folder once everything looks right.",
+    "Coming from the Python version (v1.x): its data is not in .local. After starting, use \"从旧版导入\" (import from the old version) at the bottom of the \"接入 AI\" page; it previews before importing.",
     "Update notice: once a day the app asks GitHub whether a newer version exists (only the version number is sent; after a failed check it retries an hour later). Turn it off at the bottom of the \"接入 AI\" page.",
     "",
   ].join(win ? "\r\n" : "\n");

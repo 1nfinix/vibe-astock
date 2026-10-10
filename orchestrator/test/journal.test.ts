@@ -181,6 +181,16 @@ test("不参与计算的流水和持仓页同一个判断;港美股不进交易�
   assert.match(r.issues.find((i) => i.id === broken.id)!.why, /不合台账规则/);
   assert.deepEqual(r.skipped_non_a, ["00700.HK"]);
   assert.equal(r.episodes.length, 1);
+  // 🔴 ETF、可转债、国债逆回购不是股票:不进交易日志,不按股票扣印花税(审计 2026-10-11 Codex 范围 2 第 7 条)
+  const notStock = ["510300", "159915", "113050", "123100", "204001", "131810", "019547"].flatMap((symbol) => [
+    tr({ symbol, type: "buy", date: "2025-06-02", shares: 10000, price: 4 }), tr({ symbol, type: "sell", date: "2025-06-03", shares: 10000, price: 4.01 })]);
+  const r2 = buildEpisodes([ok, ...notStock], DEFAULT_FEES);
+  assert.equal(r2.episodes.length, 1, "只剩那只股票");
+  assert.deepEqual(r2.skipped_non_a, ["019547", "113050", "123100", "131810", "159915", "204001", "510300"]);
+  // 股票的各个板块照常进(沪深主板、科创板、创业板、北交所新老代码)
+  for (const symbol of ["600519", "605001", "688981", "000001", "001979", "002594", "003816", "300750", "301001", "302132", "920001", "430047", "833171"]) {
+    assert.equal(buildEpisodes([tr({ symbol, type: "buy", date: "2025-06-02", shares: 100, price: 10 })], DEFAULT_FEES).episodes.length, 1, symbol);
+  }
   assert.equal(r.episodes[0]!.open_shares, 100);
   // 被跳过的卖出不改状态:和持仓页同样的持有数
   assert.equal(replayTrades([ok, over], "average").holdings[0]!.shares, 100);
@@ -205,9 +215,10 @@ test("标注:挂到包含那笔流水的一轮;多条只认最后修改的;挂�
   const skip = tag({ trade_id: over.id });
   const wrongSym = tag({ trade_id: b1.id, symbol: "000001" });
   const hk = tag({ symbol: "00700.HK", trade_id: b1.id });
+  const etf = tag({ symbol: "510300", date: "2025-06-30", pnl_pct: 1 });
   const man = tag({ date: "2025-06-30", pnl_pct: -3, playbook: "接力" });
   const noDate = tag({ pnl_pct: 2 });
-  const r = buildRows(ep.episodes, [old, nw, gone, skip, wrongSym, hk, man, noDate], skipped, known);
+  const r = buildRows(ep.episodes, [old, nw, gone, skip, wrongSym, hk, etf, man, noDate], skipped, known);
   assert.equal(r.rows.length, 2);
   const row = r.rows.find((x) => x.kind === "episode")!;
   assert.equal(row.tag_id, nw.id);
@@ -222,6 +233,7 @@ test("标注:挂到包含那笔流水的一轮;多条只认最后修改的;挂�
   assert.match(why[skip.id]!, /不参与计算/);
   assert.match(why[wrongSym.id]!, /对不上/);
   assert.match(why[hk.id]!, /只管 A 股/);
+  assert.match(why[etf.id]!, /ETF/, "ETF 的补记也不进交易日志");
   assert.match(why[noDate.id]!, /要写日期/);
   const m = r.rows.find((x) => x.kind === "manual")!;
   assert.equal(m.key, man.id);
@@ -335,6 +347,7 @@ test("记一笔:成交整批写进交易流水并写标注;算不了的一条都
   // 标注不合规则:先拒,流水也不写
   await assert.rejects(act(ctx, { action: "record", symbol: "000001", fills: [{ type: "buy", date: "2026-09-01", shares: 100, price: 9 }], planned_stop: -1 }), bad(/标注写不进去/));
   await assert.rejects(act(ctx, { action: "record", symbol: "00700.HK", fills: [{ type: "buy", date: "2026-09-01", shares: 100, price: 9 }] }), bad(/只管 A 股/));
+  await assert.rejects(act(ctx, { action: "record", symbol: "510300", fills: [{ type: "buy", date: "2026-09-01", shares: 100, price: 4 }] }), bad(/ETF/));
   await assert.rejects(act(ctx, { action: "record", symbol: "000001", fills: [{ type: "buy", date: "2026-02-31", shares: 100, price: 9 }] }), bad(/写不进去/));
   await assert.rejects(act(ctx, { action: "record", symbol: "000001", fills: [{ type: "buy", date: "2026-09-01", shares: 100, price: 9 }], pnl_pct: 3 }), bad(/不能手填/));
   assert.equal(ledgerList(ctx, "trade").trade!.length, 4);
@@ -377,6 +390,7 @@ test("补记:新建、修改、删除;不收止损;要 A 股和有效日期", wi
   assert.equal(v.rows[0]!.playbook, null);
   await assert.rejects(act(ctx, { action: "manual", symbol: "000001", date: "2025-01-02", planned_stop: 9 }), bad(/不收计划止损/));
   await assert.rejects(act(ctx, { action: "manual", symbol: "AAPL", date: "2025-01-02" }), bad(/只管 A 股/));
+  await assert.rejects(act(ctx, { action: "manual", symbol: "113050", date: "2025-01-02" }), bad(/可转债/));
   await assert.rejects(act(ctx, { action: "manual", symbol: "000001", date: "2025-13-01" }), bad(/有效日期/));
   await assert.rejects(act(ctx, { action: "manual", symbol: "000001", date: "2025-01-02", pnl_pct: 2000 }), bad(/标注写不进去/));
   await assert.rejects(act(ctx, { action: "manual", id: "nope", symbol: "000001", date: "2025-01-02" }), bad(/没有这条补记/));

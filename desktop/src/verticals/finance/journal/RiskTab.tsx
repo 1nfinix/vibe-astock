@@ -92,7 +92,9 @@ function EquityPanel({ eq, hide }: { eq: Equity; hide: boolean }) {
         <Tile k="没创新高" v={`${eq.trades_since_peak} 笔`} sub={eq.longest_underwater ? `最长 ${eq.longest_underwater} 笔没创新高` : undefined} />
         <Tile k="Profit Factor" v={eq.profit_factor === null ? "—" : String(eq.profit_factor)} sub={`胜率 ${ratePct(eq.win_rate)} · 盈亏比 ${eq.payoff_ratio ?? "—"}`} />
       </div>
-      {option && <div className="mt-3"><EChart option={option} height={240} /></div>}
+      {hide
+        ? <p className="mt-3 text-[12px] text-muted-foreground">隐私模式下不画曲线:曲线的高低就是每笔盈亏的大小。</p>
+        : option && <div className="mt-3"><EChart option={option} height={240} /></div>}
       <p className="mt-3 border-t border-border pt-2.5 text-[12px] tabular-nums">
         <span className="text-muted-foreground">去掉最好 1 笔:</span>
         <b className={tone(eq.net_without_best1)}>{hideIf(hide, moneySigned(eq.net_without_best1))}</b>

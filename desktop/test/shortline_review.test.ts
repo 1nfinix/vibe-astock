@@ -53,6 +53,8 @@ test("写好的复盘:汇总在前带建议,正文的证据编号换成角标、
     assert.match(t, /这一天写过 2 版: 10-10 18:46\(最新\) 10-10 17:00/);
     assert.match(t, /Claude订阅 写 · 10-10 18:46 写完/);
     assert.doesNotMatch(t, /还没收盘/, "默认看最新那版(已收盘)");
+    const pickedOld = textOf(r.html(ReviewView, { r: { ...base, versions: [SAVED, OLDER] }, onChanged: noop, pick: "v1", onPick: noop }));
+    assert.match(pickedOld, /还没收盘/, "外层传进来的选择照用(外层用同一个选择生成 Agent 上下文)");
     // 汇总排第一,建议的读数和方向用名字写
     assert.ok(t.indexOf("汇总") < t.indexOf("情绪 赚钱效应"));
     assert.match(t, /AI 建议明天看这几个读数 涨停家数 上升 如果涨停继续增加,说明情绪延续 炸板率 下降 另有 1 条建议不在读数清单里,没采用 加进明日验证/);
@@ -150,7 +152,17 @@ test("加进明日验证:人写过的读数不改,满 8 条不再加;一条都�
 
     assert.equal(reviewSummary(base), "2026-10-09 还没写过 AI 复盘。");
     const s = reviewSummary({ ...base, versions: [SAVED, OLDER] });
-    assert.match(s, /^2026-10-09 的 AI 复盘\(10-10 18:46 写完\):\n【情绪】涨停 69 只\[ev-aaaaaaaaaaaa\]/);
+    assert.match(s, /^2026-10-09 的 AI 复盘\(10-10 18:46 写完;这一天写过 2 版,这是最新一版\):\n【情绪】涨停 69 只\[ev-aaaaaaaaaaaa\]/);
+    // 🔴 选了旧版:发给 Agent 的是页面上那一版,不是最新版(2026-10-11 审计)
+    const old = { ...OLDER, sections: [stage("sentiment", { text: "旧版写的:涨停 50 只。" })] };
+    const picked = reviewSummary({ ...base, versions: [SAVED, old] }, "v1");
+    assert.match(picked, /^2026-10-09 的 AI 复盘\(10-10 17:00 写完;这一天写过 2 版,这是用户选的较早一版,不是最新\):\n【情绪】旧版写的:涨停 50 只。$/);
+    assert.equal(reviewSummary({ ...base, versions: [SAVED, old] }, "不存在"), s, "选的版本没了就回到最新");
+    // 正在写新一版:页面显示写到一半的,发给 Agent 的也是它
+    const writing = { id: "r9", date: "2026-10-09", settled: true, ai: "x", started_at: "2026-10-10T11:00:00.000Z", finished_at: null, done: false, outcome: "running", saved_id: null, save_error: null,
+      stages: [stage("sentiment", { text: "新写的一段。" }), stage("capital", { status: "running", text: "" })], gaps: [], conditions: [], conditions_note: "" };
+    assert.equal(reviewSummary({ ...base, versions: [SAVED, old], runs: [writing] }, "v1"),
+      "2026-10-09 的 AI 复盘正在写(10-10 19:00 开始),页面上是写到一半的这一版:\n【情绪】新写的一段。\n【资金】在写…");
     assert.match(s, /【题材】没写成\n【龙虎榜】跳过/);
     assert.match(reviewSummary({ ...base, versions: [{ ...SAVED, imported: true }] }), /^2026-10-09 的 AI 复盘\(10-10 18:46 写完;从旧版导入,原文照搬,数字没按新版规则核对\):/);
   });

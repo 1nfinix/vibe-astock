@@ -23,7 +23,7 @@ import { ServiceError, ledgerCheck, ledgerInsertMany, ledgerRemove, ledgerSnapsh
 import { SCHEDULE_TZ } from "../schedule.ts";
 import { replayTrades, tradeOf, tradeProblem, type Trade } from "../holdings.ts";
 import { DEFAULT_RULES, PLAYBOOKS, RULE_KEYS, RULE_LABELS, ruleProblem, type Rules } from "./defs.ts";
-import { A_SHARE, buildEpisodes, type Episode, type EpisodeIssue } from "./episodes.ts";
+import { JOURNAL_ONLY_STOCKS, buildEpisodes, isJournalSymbol, type Episode, type EpisodeIssue } from "./episodes.ts";
 import { DEFAULT_FEES, FEE_KEYS, FEE_LABELS, feeProblem, type FeeConfig } from "./fees.ts";
 import { cachedExcursions, computeExcursions } from "./excursion.ts";
 import { buildInbox, type ExcursionLite } from "./inbox.ts";
@@ -239,13 +239,13 @@ function actTag(ctx: ServiceContext, body: Record<string, unknown>, now: Date): 
   const d = loadJournalData(ctx);
   const { episodes } = computeJournal(d, d.settings.fees ?? DEFAULT_FEES);
   const ep = episodes.find((e) => e.trade_ids.includes(tradeId));
-  if (!ep) bad("找不到这笔交易:对应的流水可能删了、不参与计算,或不是 A 股");
+  if (!ep) bad("找不到这笔交易:对应的流水可能删了、不参与计算,或不是 A 股股票");
   return saveTag(ctx, d, ep!, tagFields(body, { manual: false }), now);
 }
 
 function actManual(ctx: ServiceContext, body: Record<string, unknown>): LedgerRecord {
   const symbol = typeof body.symbol === "string" ? body.symbol.trim() : "";
-  if (!A_SHARE.test(symbol)) bad("交易日志只管 A 股:代码要是 6 位数字");
+  if (!isJournalSymbol(symbol)) bad(JOURNAL_ONLY_STOCKS);
   const date = typeof body.date === "string" ? body.date.trim() : "";
   if (!realDay(date)) bad("补记要写有效日期");
   const rec: Record<string, unknown> = { symbol, date, ...tagFields(body, { manual: true }) };
@@ -267,7 +267,7 @@ function actManual(ctx: ServiceContext, body: Record<string, unknown>): LedgerRe
 export const RECORD_MAX_FILLS = 50;
 function actRecord(ctx: ServiceContext, body: Record<string, unknown>, now: Date): { trade_ids: string[]; tag: LedgerRecord | null } {
   const symbol = typeof body.symbol === "string" ? body.symbol.trim() : "";
-  if (!A_SHARE.test(symbol)) bad("交易日志只管 A 股:代码要是 6 位数字");
+  if (!isJournalSymbol(symbol)) bad(JOURNAL_ONLY_STOCKS);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const fills = body.fills;
   if (!Array.isArray(fills) || !fills.length) bad("至少要有一笔成交");

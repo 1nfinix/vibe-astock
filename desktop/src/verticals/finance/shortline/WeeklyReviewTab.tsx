@@ -128,13 +128,22 @@ export function WeeklyBody({ v }: { v: Shown }) {
 const fromRun = (x: ReviewRun, days: string[]): Shown => ({ ...x, days, when: `${clock(x.started_at)} 开始` });
 const fromSaved = (x: SavedWeekly): Shown => ({ ...x, stages: safeArray<ReviewStage>(x.sections), days: safeArray<string>(x.days), when: `${clock(x.finished_at || x.created_at)} 写完` });
 
-export function WeeklyReviewView({ r, onChanged, myWeek }: { r: WeeklyReviewResult; onChanged: () => void; myWeek?: React.ReactNode }) {
+/** 页面显示哪一份(见 ReviewTab.shownReview):Agent 面板的上下文用同一个函数取 */
+export function shownWeekly(r: WeeklyReviewResult, pick: string | null): { running: ReviewRun | null; saved: SavedWeekly | null; index: number } {
+  const running = safeArray<ReviewRun>(r.runs).find((x) => !x.done) ?? null;
+  const versions = safeArray<SavedWeekly>(r.versions);
+  const i = Math.max(0, versions.findIndex((x) => x.id === pick));
+  return { running, saved: versions[i] ?? null, index: i };
+}
+
+export function WeeklyReviewView({ r, onChanged, myWeek, pick: pickProp, onPick }: { r: WeeklyReviewResult; onChanged: () => void; myWeek?: React.ReactNode; pick?: string | null; onPick?: (id: string | null) => void }) {
   const runs = safeArray<ReviewRun>(r.runs);
   const versions = safeArray<SavedWeekly>(r.versions);
-  const running = runs.find((x) => !x.done) ?? null;
   const lastUnsaved = runs.filter((x) => x.done).map(unsavedNote).find((x) => x !== null) ?? null;
-  const [pick, setPick] = useState<string | null>(null);
-  const shown = versions.find((x) => x.id === pick) ?? versions[0] ?? null;
+  const [ownPick, setOwnPick] = useState<string | null>(null);
+  const pick = pickProp !== undefined ? pickProp : ownPick;
+  const setPick = onPick ?? setOwnPick;
+  const { running, saved: shown } = shownWeekly(r, pick);
   const [needConfig, setNeedConfig] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -212,17 +221,24 @@ export function WeeklyReviewView({ r, onChanged, myWeek }: { r: WeeklyReviewResu
   );
 }
 
-/** 给右下角 Agent 面板的页面上下文:只有周报正文(市场数据);「本周我的交易」不放进来 */
-export function weeklySummary(r: WeeklyReviewResult): string {
-  const v = safeArray<SavedWeekly>(r.versions)[0];
+const stageLines = (stages: ReviewStage[]) => stages.map((s) => `【${s.label}】${s.status === "done" ? s.text : STATUS_TEXT[s.status] || "没写成"}`);
+
+/** 给右下角 Agent 面板的页面上下文:页面上正显示的那一份周报正文(市场数据);「本周我的交易」不放进来 */
+export function weeklySummary(r: WeeklyReviewResult, pick: string | null = null): string {
+  const { running, saved: v, index } = shownWeekly(r, pick);
+  if (running) return [`${r.week_start} 起这一周的 AI 周报正在写(${clock(running.started_at)} 开始),页面上是写到一半的这一版:`, ...stageLines(safeArray<ReviewStage>(running.stages))].join("\n");
   if (!v) return `${r.week_start} 起这一周还没写过 AI 周报。`;
-  return [`${r.week_start} 起这一周的 AI 周报(截至 ${v.date},${clock(v.finished_at || v.created_at)} 写完):`,
-    ...safeArray<ReviewStage>(v.sections).map((s) => `【${s.label}】${s.status === "done" ? s.text : STATUS_TEXT[s.status] || "没写成"}`)].join("\n");
+  const n = safeArray<SavedWeekly>(r.versions).length;
+  const which = n > 1 ? `;这一周写过 ${n} 版,这是${index === 0 ? "最新一版" : "用户选的较早一版,不是最新"}` : "";
+  return [`${r.week_start} 起这一周的 AI 周报(截至 ${v.date},${clock(v.finished_at || v.created_at)} 写完${which}):`,
+    ...stageLines(safeArray<ReviewStage>(v.sections))].join("\n");
 }
 
 export function WeeklyReviewTab({ day, refreshNonce, onBusy }: ViewTabProps) {
   const [st, reload] = useShortlineView<WeeklyReviewResult>("shortline_weekly_review", day, undefined, refreshNonce, onBusy);
   const r = st.state === "done" ? st.data : null;
+  const [pick, setPick] = useState<string | null>(null);
+  useEffect(() => { setPick(null); }, [day]);
   const running = !!r && safeArray<ReviewRun>(r.runs).some((x) => !x.done);
   const journal = useJournalOnce();
   const { on: hide } = usePrivacyMode();
@@ -235,12 +251,12 @@ export function WeeklyReviewTab({ day, refreshNonce, onBusy }: ViewTabProps) {
   useAiPage(r ? {
     key: `shortline:weekly-review:${r.week_start}`,
     title: `AI 周报 ${r.week_start} 起`,
-    context: weeklySummary(r),
+    context: weeklySummary(r, pick),
     suggestions: ["这份周报里哪几句证据最弱", "情绪走势和题材轮动两段有没有矛盾", "下周要看的几条条件合不合理"],
   } : null);
   return (
     <ViewSlot st={st} label="AI 周报">
-      {(d) => <WeeklyReviewView r={d} onChanged={reload} myWeek={<MyWeekCard view={journal} from={d.week_start} to={d.date} hide={hide} />} />}
+      {(d) => <WeeklyReviewView r={d} onChanged={reload} pick={pick} onPick={setPick} myWeek={<MyWeekCard view={journal} from={d.week_start} to={d.date} hide={hide} />} />}
     </ViewSlot>
   );
 }

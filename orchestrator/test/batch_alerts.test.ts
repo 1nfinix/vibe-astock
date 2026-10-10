@@ -153,7 +153,26 @@ test("HTTP 变化提醒沿用当前数据根且只读，不读取或覆盖默认
   assert.ok(!fs.existsSync(path.join(repo, ".local", "alerts")));
   assert.ok(!fs.existsSync(path.join(isolated, "alerts")), "GET 不应写入比较归档");
   assert.throws(() => evidenceAlerts(ctx, { symbol: "300308", base: "../outside", next: "a2" }), /非法 run-id/);
-  fs.unlinkSync(path.join(isolated, "runs", "a2", "evidence.json"));
+  // 🔴 证据文件坏了 / 没了 / 结构不对:明确报错,不当空集(否则前一次的事实全成「消失」,两份都坏就成「无变化」)
+  const ev2 = path.join(isolated, "runs", "a2", "evidence.json");
+  const alertsFailed = (re: RegExp) => (e: unknown) => e instanceof ServiceError && e.code === "alerts_failed" && re.test(e.message);
+  fs.writeFileSync(ev2, '[{"id":"ev-x","field":"price","val');
+  assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/a2 的 evidence\.json 读不出来/));
+  fs.writeFileSync(path.join(isolated, "runs", "a1", "evidence.json"), "{");
+  assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/读不出来/), "两份都坏也不能说「无变化」");
+  fs.copyFileSync(path.join(repo, ".local", "runs", "a1", "evidence.json"), path.join(isolated, "runs", "a1", "evidence.json"));
+  for (const bad of [{ items: [] }, { evidence: "x" }, [{ value: 1 }], [null], "[]"]) {
+    writeJson(ev2, bad);
+    assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/a2 的 evidence\.json 结构不对/), JSON.stringify(bad));
+  }
+  fs.unlinkSync(ev2);
+  assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/a2 的 evidence\.json 不存在/));
+  // 合法的空数组 = 这次确实没有事实:照常比较,前一次的事实列为消失
+  writeJson(ev2, []);
+  assert.ok(evidenceAlerts(ctx, { symbol: "300308" }).diffs.every((d) => d.kind === "removed"));
+  writeJson(ev2, { evidence: [] });
+  assert.ok(evidenceAlerts(ctx, { symbol: "300308" }).diffs.length > 0);
+  fs.unlinkSync(ev2);
   fs.symlinkSync(path.join(repo, ".local", "runs", "a2", "evidence.json"), path.join(isolated, "runs", "a2", "evidence.json"));
   assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), /符号链接/);
   fs.unlinkSync(path.join(isolated, "runs", "a2", "manifest.json"));

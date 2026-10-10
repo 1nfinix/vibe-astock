@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import "../src/finance/register.ts"; // 测试文件也是入口:插件要先注册
-import { ENVELOPE_KEYS, LedgerError, checkRecord, insertRecords, kinds, listAll, listAllIssues, listRecords, listRecordsChecked, removeRecord, upsertRecord } from "../src/ledger.ts";
+import { ENVELOPE_KEYS, LedgerError, checkRecord, insertRecords, kinds, listAll, listAllIssues, listRecords, listRecordsChecked, removeRecord, replaceRecords, upsertRecord } from "../src/ledger.ts";
 import { assertKnownFormats } from "../src/formats.ts";
 import { PLUGIN_SCHEMA } from "../src/plugin.ts";
 
@@ -106,6 +106,42 @@ test("🔴 整批写入后回读复核:落盘后被别人改掉、哪怕只少�
     (fs as unknown as { renameSync: typeof fs.renameSync }).renameSync = orig;
   }
   assert.equal(insertRecords(root, k, [one]).length, 1, "钩子撤掉后照常");
+});
+
+test("🔴 整组替换:组内改 / 删 / 加一次写完,正文没变的原样留下,组外不动;有一条不对或 id 不在组里就一条不写", () => {
+  const root = tmpRoot();
+  const kind = anyKind();
+  const rec = buildMinimal(kind);
+  const [a, b, other] = insertRecords(root, kind, [rec, rec, rec]);
+  const inGroup = (r: { id: string }) => r.id === a!.id || r.id === b!.id;
+  const file = path.join(root, "ledger", fs.readdirSync(path.join(root, "ledger")).find((f) => f.endsWith(".json"))!);
+  const raw = () => fs.readFileSync(file, "utf8");
+
+  // 正文没变(连信封一起交回、字段先后打乱也算没变):原样,不写盘
+  const shuffled = Object.fromEntries(Object.entries(a!).reverse());
+  const before = raw();
+  const same = replaceRecords(root, kind, inGroup, [shuffled, b!]);
+  assert.deepEqual(same.saved, []);
+  assert.deepEqual(same.removed, []);
+  assert.equal(raw(), before);
+
+  // 留 a(不变)、删 b、加一条
+  const out = replaceRecords(root, kind, inGroup, [a!, rec]);
+  assert.deepEqual(out.removed, [b!.id]);
+  assert.equal(out.saved.length, 1);
+  assert.deepEqual(out.records[0], a, "没变的那条连 updated_at 都不动");
+  const ids = listRecords(root, kind).map((r) => r.id);
+  assert.deepEqual(ids, [a!.id, other!.id, out.saved[0]!.id], "组外原位不动,新增接在末尾");
+
+  const bad = (inputs: Record<string, unknown>[], code: string) => {
+    const snap = raw();
+    assert.throws(() => replaceRecords(root, kind, (r) => r.id === a!.id, inputs), (e: unknown) => e instanceof LedgerError && e.code === code);
+    assert.equal(raw(), snap, "一条都没写");
+  };
+  bad([rec, { ...rec, 不认识的字段: 1 }], "bad_record");
+  bad([{ id: other!.id, ...rec }], "not_found"); // 组外的 id 不许借道改
+  bad([a!, a!], "bad_record");
+  bad([{ id: "", ...rec }], "bad_id");
 });
 
 test("只校验不写:能存返回 null、不能存返回原因,磁盘上什么都不产生", () => {

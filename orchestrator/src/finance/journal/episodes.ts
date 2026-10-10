@@ -16,7 +16,7 @@
  *    - 一轮在 VA 里是用户自己圈的一条记录,可以包含几轮进出;这里每回到空仓就是新的一笔。
  *    - 期初持仓也算一轮的开始(成本当买入价、费用 0),标出来:那天不是真实买入日。
  *    - 送转按比例改股数、总成本不变(同持仓页);现金分红单独记,不进盈亏(同持仓页)。
- * 只管 A 股(六位代码):费率、印花税、T+1 都是 A 股规则。港美股的流水不进交易日志,只报个数。
+ * 只管 A 股股票(六位代码,不含 ETF、基金、债券、回购):费率、印花税、T+1 都是 A 股股票规则。其余流水不进交易日志,只报代码。
  *
  * 纯函数:不读文件、不取行情。
  */
@@ -25,6 +25,15 @@ import { estimateFee, type FeeConfig } from "./fees.ts";
 import { daysBetween, pyRound, sum } from "./num.ts";
 
 export const A_SHARE = /^\d{6}$/;
+/**
+ * 六位代码里不是股票的:1、5 开头的基金 / ETF / LOF / 债券 / 可转债 / 深市回购,沪市 01、02 开头的国债,204 开头的沪市国债逆回购。
+ * 🔴 交易日志只算 A 股股票:ETF、债券混进来会算进股票的胜率和纪律统计,还会按股票扣印花税(审计 2026-10-11 Codex 范围 2 第 7 条)。
+ *    持仓页照常算它们(那是资产),只是不进交易日志。B 股另由持仓页的规则提示。
+ */
+export const CN_NOT_STOCK = /^(?:[15]\d{5}|0[12]\d{4}|204\d{3})$/;
+/** 能进交易日志的代码:A 股股票(六位代码、不是基金债券回购) */
+export const isJournalSymbol = (symbol: string): boolean => A_SHARE.test(symbol) && !CN_NOT_STOCK.test(symbol);
+export const JOURNAL_ONLY_STOCKS = "交易日志只管 A 股股票:代码要是 6 位数字,ETF、基金、债券、可转债、回购不记";
 const EPS = 1e-8;
 export const T0_WARNING = "部分卖出没证明有足够的隔夜底仓,不认定为可执行的 A 股做 T";
 
@@ -153,7 +162,7 @@ export function buildEpisodes(trades: readonly Trade[], cfg: FeeConfig, ledgerIs
   for (const t of trades) {
     const why = bad.get(t.id);
     if (why !== undefined) { issues.push({ id: t.id, symbol: t.symbol, date: t.date, type: t.type, why: `不合台账规则:${why}` }); continue; }
-    if (!A_SHARE.test(t.symbol)) { if (t.symbol) nonA.add(t.symbol); continue; }
+    if (!isJournalSymbol(t.symbol)) { if (t.symbol) nonA.add(t.symbol); continue; }
     valid.push(t);
   }
   // 持仓页跳过哪几笔,这里就跳过哪几笔:被跳过的流水不改任何状态,所以先剔掉再走一遍,状态序列和持仓页完全相同

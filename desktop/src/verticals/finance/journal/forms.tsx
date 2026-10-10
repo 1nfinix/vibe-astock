@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { hideIf } from "@/lib/privacy";
+import { hideIf, maskPrivateText } from "@/lib/privacy";
 import {
   fillsPayload, parseNum, ruleValueText, sharesText,
   type FeeKey, type FillDraft, type JournalRow, type JournalSettings, type RuleKey,
@@ -40,10 +40,17 @@ function useSubmit() {
   return { busy, msg, setMsg, run };
 }
 
-function MsgLine({ m }: { m: Msg }) {
+function MsgLine({ m, hide = false }: { m: Msg; hide?: boolean }) {
   if (!m) return null;
-  return <p role="status" className={cn("text-[12px]", m.ok ? "text-muted-foreground" : "text-destructive")}>{m.text}</p>;
+  // 后端的报错会带上股数(「卖出 300 股超过…」),隐私模式下按措辞遮
+  return <p role="status" className={cn("text-[12px]", m.ok ? "text-muted-foreground" : "text-destructive")}>{hide ? maskPrivateText(m.text) : m.text}</p>;
 }
+
+/**
+ * 自己的成交价、股数、费用、计划价位的输入框:隐私模式下换成密码样式,录屏时不露原值
+ * (照常能输入,存的还是原值)。切换隐私模式时跟着变。
+ */
+const secret = (hide: boolean) => ({ type: hide ? "password" : "text", autoComplete: "off" }) as const;
 
 function SubmitBtn({ busy, children, onClick }: { busy: boolean; children: ReactNode; onClick: () => void }) {
   return (
@@ -81,7 +88,7 @@ function PlaybookSelect({ value, onChange, playbooks, label = "打法" }: { valu
 
 const emptyFill = (type: "buy" | "sell", date: string): FillDraft => ({ type, date, price: "", shares: "", fee: "" });
 
-function FillRows({ fills, onChange }: { fills: FillDraft[]; onChange: (f: FillDraft[]) => void }) {
+function FillRows({ fills, hide, onChange }: { fills: FillDraft[]; hide: boolean; onChange: (f: FillDraft[]) => void }) {
   const set = (i: number, patch: Partial<FillDraft>) => onChange(fills.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   return (
     <div className="space-y-1.5">
@@ -91,9 +98,9 @@ function FillRows({ fills, onChange }: { fills: FillDraft[]; onChange: (f: FillD
             {f.type === "buy" ? "买" : "卖"}
           </span>
           <input type="date" aria-label={`第 ${i + 1} 笔成交日期`} value={f.date} onChange={(e) => set(i, { date: e.target.value })} className={cn(INPUT, "py-1 text-[12px]")} />
-          <input inputMode="decimal" aria-label={`第 ${i + 1} 笔成交价`} placeholder="成交价" value={f.price} onChange={(e) => set(i, { price: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
-          <input inputMode="numeric" aria-label={`第 ${i + 1} 笔股数`} placeholder="股数" value={f.shares} onChange={(e) => set(i, { shares: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
-          <input inputMode="decimal" aria-label={`第 ${i + 1} 笔费用`} placeholder="费用(不填按费率估)" value={f.fee} onChange={(e) => set(i, { fee: e.target.value })} className={cn(INPUT, "w-36 py-1 text-[12px]")} />
+          <input {...secret(hide)} inputMode="decimal" aria-label={`第 ${i + 1} 笔成交价`} placeholder="成交价" value={f.price} onChange={(e) => set(i, { price: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
+          <input {...secret(hide)} inputMode="numeric" aria-label={`第 ${i + 1} 笔股数`} placeholder="股数" value={f.shares} onChange={(e) => set(i, { shares: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
+          <input {...secret(hide)} inputMode="decimal" aria-label={`第 ${i + 1} 笔费用`} placeholder="费用(不填按费率估)" value={f.fee} onChange={(e) => set(i, { fee: e.target.value })} className={cn(INPUT, "w-36 py-1 text-[12px]")} />
           <button type="button" aria-label={`删掉第 ${i + 1} 笔`} onClick={() => onChange(fills.filter((_, j) => j !== i))} className="p-1 text-muted-foreground/60 hover:text-destructive">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -194,12 +201,12 @@ export function RecordForm({ today, playbooks, openShares, hide, act }: {
             <span className="text-[11px] text-muted-foreground">下单时就想好的价位(在险资金按计划止损算;事后补的会标出来)</span>
             <label className="flex items-center gap-1.5">
               <span className="text-muted-foreground">亏到</span>
-              <input inputMode="decimal" aria-label="计划止损价" value={stop} onChange={(e) => setStop(e.target.value)} placeholder="止损价" className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
+              <input {...secret(hide)} inputMode="decimal" aria-label="计划止损价" value={stop} onChange={(e) => setStop(e.target.value)} placeholder="止损价" className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
               <span className="text-muted-foreground">就走</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className="text-muted-foreground">赚到</span>
-              <input inputMode="decimal" aria-label="计划目标价" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="目标价(可选)" className={cn(INPUT, "w-28 py-1 text-right text-[12px]")} />
+              <input {...secret(hide)} inputMode="decimal" aria-label="计划目标价" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="目标价(可选)" className={cn(INPUT, "w-28 py-1 text-right text-[12px]")} />
               <span className="text-muted-foreground">就走</span>
             </label>
           </div>
@@ -210,20 +217,20 @@ export function RecordForm({ today, playbooks, openShares, hide, act }: {
               <button type="button" onClick={() => setFills([...fills, emptyFill("buy", today)])} className="rounded border border-danger/40 px-2 py-0.5 text-[11px] text-danger hover:bg-danger/10">+ 买入</button>
               <button type="button" onClick={() => setFills([...fills, emptyFill("sell", today)])} className="rounded border border-success/40 px-2 py-0.5 text-[11px] text-success hover:bg-success/10">+ 卖出</button>
             </div>
-            <FillRows fills={fills} onChange={setFills} />
+            <FillRows fills={fills} hide={hide} onChange={setFills} />
           </div>
         </>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <SubmitBtn busy={busy} onClick={submit}>记录</SubmitBtn>
-        <MsgLine m={msg} />
+        <MsgLine m={msg} hide={hide} />
       </div>
     </div>
   );
 }
 
 /** 改有成交明细那一笔的标注:打法、按计划、备注、计划止损 / 目标(整条换掉) */
-export function TagEditor({ row, playbooks, act, onDone }: { row: JournalRow; playbooks: readonly string[]; act: Act; onDone: () => void }) {
+export function TagEditor({ row, playbooks, hide, act, onDone }: { row: JournalRow; playbooks: readonly string[]; hide: boolean; act: Act; onDone: () => void }) {
   const [playbook, setPlaybook] = useState(row.playbook ?? "");
   const [planned, setPlanned] = useState<boolean | null>(row.as_planned);
   const [note, setNote] = useState(row.note);
@@ -249,11 +256,11 @@ export function TagEditor({ row, playbooks, act, onDone }: { row: JournalRow; pl
         <PlannedToggle value={planned} onChange={setPlanned} />
         <label className="flex items-center gap-1.5 text-[12px]">
           <span className="text-muted-foreground">止损</span>
-          <input inputMode="decimal" aria-label="计划止损价" value={stop} onChange={(e) => setStop(e.target.value)} className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
+          <input {...secret(hide)} inputMode="decimal" aria-label="计划止损价" value={stop} onChange={(e) => setStop(e.target.value)} className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
         </label>
         <label className="flex items-center gap-1.5 text-[12px]">
           <span className="text-muted-foreground">目标</span>
-          <input inputMode="decimal" aria-label="计划目标价" value={target} onChange={(e) => setTarget(e.target.value)} className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
+          <input {...secret(hide)} inputMode="decimal" aria-label="计划目标价" value={target} onChange={(e) => setTarget(e.target.value)} className={cn(INPUT, "w-24 py-1 text-right text-[12px]")} />
         </label>
       </div>
       <input aria-label="备注" value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注" className={cn(INPUT, "w-full")} />
@@ -261,7 +268,7 @@ export function TagEditor({ row, playbooks, act, onDone }: { row: JournalRow; pl
       <div className="flex flex-wrap items-center gap-3">
         <SubmitBtn busy={busy} onClick={submit}>保存</SubmitBtn>
         <button type="button" onClick={onDone} className={BTN_GHOST}>取消</button>
-        <MsgLine m={msg} />
+        <MsgLine m={msg} hide={hide} />
       </div>
     </div>
   );
@@ -329,16 +336,16 @@ export function AppendFill({ row, today, hide, act, onDone }: { row: JournalRow;
         ))}
       </div>
       <input type="date" aria-label="成交日期" value={fill.date} onChange={(e) => setFill({ ...fill, date: e.target.value })} className={cn(INPUT, "py-1 text-[12px]")} />
-      <input inputMode="decimal" aria-label="成交价" placeholder="成交价" value={fill.price} onChange={(e) => setFill({ ...fill, price: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
-      <input inputMode="numeric" aria-label="股数" placeholder="股数" value={fill.shares} onChange={(e) => setFill({ ...fill, shares: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
+      <input {...secret(hide)} inputMode="decimal" aria-label="成交价" placeholder="成交价" value={fill.price} onChange={(e) => setFill({ ...fill, price: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
+      <input {...secret(hide)} inputMode="numeric" aria-label="股数" placeholder="股数" value={fill.shares} onChange={(e) => setFill({ ...fill, shares: e.target.value })} className={cn(INPUT, "w-24 py-1 text-[12px]")} />
       {fill.type === "sell" && open > 0 && (
         <button type="button" onClick={() => setFill({ ...fill, shares: String(open) })} className="text-[11px] text-primary hover:underline">全部</button>
       )}
-      <input inputMode="decimal" aria-label="费用" placeholder="费用(可不填)" value={fill.fee} onChange={(e) => setFill({ ...fill, fee: e.target.value })} className={cn(INPUT, "w-28 py-1 text-[12px]")} />
+      <input {...secret(hide)} inputMode="decimal" aria-label="费用" placeholder="费用(可不填)" value={fill.fee} onChange={(e) => setFill({ ...fill, fee: e.target.value })} className={cn(INPUT, "w-28 py-1 text-[12px]")} />
       <SubmitBtn busy={busy} onClick={submit}>保存</SubmitBtn>
       <button type="button" onClick={onDone} className={BTN_GHOST}>取消</button>
       <span className="text-[11px] text-muted-foreground/70">建仓日期和下单时写的计划止损都原样保留</span>
-      <MsgLine m={msg} />
+      <MsgLine m={msg} hide={hide} />
     </div>
   );
 }
@@ -461,11 +468,10 @@ export function EquityBaseEditor({ value, hide, hint, act }: { value: number | n
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5 text-[12px]">
       <span className="text-muted-foreground">账户规模(元)</span>
-      {/* 隐私模式下输入框换成密码样式,录屏时不露本金 */}
-      <input type={hide ? "password" : "text"} inputMode="decimal" aria-label="账户规模" value={draft} onChange={(e) => setDraft(e.target.value)}
+      <input {...secret(hide)} inputMode="decimal" aria-label="账户规模" value={draft} onChange={(e) => setDraft(e.target.value)}
         placeholder="填了才有占比" className={cn(INPUT, "w-32 py-1 text-right text-[12px]")} />
       <SubmitBtn busy={busy} onClick={save}>保存</SubmitBtn>
-      <MsgLine m={msg} />
+      <MsgLine m={msg} hide={hide} />
       {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
     </div>
   );

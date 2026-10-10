@@ -26,7 +26,7 @@ import { DirectTransportError, chatCompletion } from "./engines/direct_transport
 import { REQUEST_LLM_META_VAR, RUNTIME_KEY_VAR, assertExecutionMode, defaultLlm, requestLlmMeta, resolveDirectProvider, resolveRuntimeProvider, resolveSelectedRuntime, runtimeSourceFingerprint, RuntimeProviderError, templateMatrix, type LlmOverride, type DefaultSourceOptions } from "./runtime_provider.ts";
 import { DebateError, MAX_DEBATE_MESSAGE, DEBATE_TURN_TIMEOUT_MS, advanceDebate, startDebate, type DebateState } from "./debate.ts";
 import { IngestError, MAX_TOTAL_BYTES, ingestFiles as ingestFilesCore, type IngestFileInput, type IngestResult } from "./ingest.ts";
-import { LedgerError, checkRecord as checkLedgerRecord, insertRecords as insertLedgerRecords, kinds as ledgerKindDefs, labels as ledgerLabelDefs, listRecordsChecked, listRecords as listRecordsOf, removeRecord as removeLedgerRecord, upsertRecord as upsertLedgerRecord, type LedgerIssue, type LedgerRecord } from "./ledger.ts";
+import { LedgerError, checkRecord as checkLedgerRecord, insertRecords as insertLedgerRecords, kinds as ledgerKindDefs, labels as ledgerLabelDefs, listRecordsChecked, listRecords as listRecordsOf, removeRecord as removeLedgerRecord, replaceRecords as replaceLedgerRecords, upsertRecord as upsertLedgerRecord, type LedgerIssue, type LedgerRecord } from "./ledger.ts";
 import { recallKnowledge, type KnowledgeRecall } from "./knowledge.ts";
 import { loadProductConfig } from "./productConfig.ts";
 import { apiCapabilityOf, apiVerificationOf, loadProviderProfile, withOutputSchema } from "./providers.ts";
@@ -1348,12 +1348,20 @@ export function agentTurnFor(ctx: ServiceContext, req: { llm?: unknown; executio
   if (mode === "direct") throw new ServiceError("agent_required", "这一步要调用 AI：请先接入 AI；接口调用时 executionMode 要用 agent");
   const llm = checkLlmShape(req.llm);
   assertAgentRuntime(ctx, llm);
+  const fingerprint = sourceFingerprintOf(ctx, llm);
   return {
-    fingerprint: sourceFingerprintOf(ctx, llm),
-    turn: async (message, session, signal) => (await chatSendCore(
-      { repoRoot: ctx.repoRoot, dataRoot: ctx.dataRoot, python: ctx.python, persistent: false, maxMessage: MAX_DEBATE_MESSAGE, timeoutMs: DEBATE_TURN_TIMEOUT_MS, signal },
-      { message, session, llm },
-    )).reply,
+    fingerprint,
+    turn: async (message, session, signal) => {
+      // 🔴 每一轮都会按 llm 重新解析来源:没指定 llm 时用的是「后台默认」,多段任务进行中默认被改成别家,
+      //    后面几段就换了模型写(模型 API 还会另行计费)。和开工时记下的来源对不上就停,不混着写
+      if (sourceFingerprintOf(ctx, llm) !== fingerprint) {
+        throw new ServiceError("ai_source_changed", "开工以后 AI 来源改了(后台默认换了别家,或换了模型 / key);这次就停在这里,没写完的请重新开始");
+      }
+      return (await chatSendCore(
+        { repoRoot: ctx.repoRoot, dataRoot: ctx.dataRoot, python: ctx.python, persistent: false, maxMessage: MAX_DEBATE_MESSAGE, timeoutMs: DEBATE_TURN_TIMEOUT_MS, signal },
+        { message, session, llm },
+      )).reply;
+    },
   };
 }
 
@@ -1412,6 +1420,23 @@ export function thermoSeries(ctx: ServiceContext, endpoint: string): {
   return { endpoint, observations: r.observations, exists: r.exists, unreadable: r.unreadable, dropped: r.dropped };
 }
 
+/**
+ * 给模型看的台账:去掉垂类标了 `hiddenFromAssistant` 的种类(只在页面里给用户本人看的记录)。
+ * 🔴 聊天助手只能走这一条读台账;MCP 桥(assistant_tools_mcp)复用同一组工具,所以本机 CLI 也一样。
+ */
+export function assistantLedgerSnapshot(ctx: ServiceContext): ReturnType<typeof ledgerSnapshot> & { withheld: string[] } {
+  const defs = ledgerKindDefs();
+  const snap = ledgerSnapshot(ctx);
+  const keep = <T>(m: Record<string, T>): Record<string, T> => {
+    const out = Object.create(null) as Record<string, T>;
+    for (const [k, v] of Object.entries(m)) if (defs[k] && defs[k]!.hiddenFromAssistant !== true) out[k] = v;
+    return out;
+  };
+  // 告诉模型哪些种类没给它:用户问起时照实说「这部分不提供给 AI,请在页面查看」,而不是当成「没有记录」
+  const withheld = Object.entries(defs).filter(([, d]) => d.hiddenFromAssistant === true).map(([, d]) => d.label);
+  return { records: keep(snap.records), issues: keep(snap.issues), withheld };
+}
+
 export function ledgerSnapshot(ctx: ServiceContext): {
   records: Record<string, LedgerRecord[]>;
   issues: Record<string, LedgerIssue[]>;
@@ -1452,6 +1477,18 @@ export function ledgerInsertMany(ctx: ServiceContext, req: { kind: string; recor
   try { added = insertLedgerRecords(ctx.dataRoot, k, req.records); } catch (e) { asServiceError(e); }
   auditQuietly(ctx, added.map((r) => ledgerSeal(k, r)));
   return added;
+}
+
+/** 整组替换,只落一次盘(见 ledger.replaceRecords);返回替换后的这一组 */
+export function ledgerReplace(ctx: ServiceContext, req: { kind: string; match: (r: LedgerRecord) => boolean; records: readonly Record<string, unknown>[] }): LedgerRecord[] {
+  const k = ledgerGuard(ctx, req.kind);
+  if (!Array.isArray(req.records)) throw new ServiceError("bad_record", "records 必须是数组");
+  let out: ReturnType<typeof replaceLedgerRecords>;
+  try { out = replaceLedgerRecords(ctx.dataRoot, k, req.match, req.records); } catch (e) { asServiceError(e); }
+  const seals: AuditInput[] = out.saved.map((r) => ledgerSeal(k, r));
+  for (const id of out.removed) seals.push({ subject: "ledger", ref: `${k}/${id}`, action: "remove", content: null });
+  auditQuietly(ctx, seals);
+  return out.records;
 }
 
 export function ledgerRemove(ctx: ServiceContext, req: { kind: string; id: string }): { removed: boolean } {
@@ -1659,7 +1696,7 @@ export function assistantTools(ctx: ServiceContext, llm?: LlmOverride, proposals
       (a, r) => ({ label: "研究证据", target: a.run_id, ...(r ? { count: list(obj(r).items).length } : {}) })),
     tool("knowledge_recall", "读取与当前问题相关的主体知识档案，注意 fresh/stale。", z.object({ symbol: id, market: id }).strict(), (a) => knowledgeRecall(ctx, a.symbol, a.market),
       (a) => ({ label: "研究记忆", target: a.symbol })),
-    tool("read_ledger", "用户询问自己的台账时，读取本产品台账。不要用于无关问候或公开网页搜索。", empty, () => ledgerSnapshot(ctx),
+    tool("read_ledger", "用户询问自己的台账时，读取本产品台账。不要用于无关问候或公开网页搜索。withheld 列出的种类按产品设置不提供给你，不等于没有记录；用户问到时说明请在页面查看。", empty, () => assistantLedgerSnapshot(ctx),
       () => ({ label: "你的台账" })),
     tool("list_tools", "发现本产品计算和分析工具。calc 先以 {catalog:true} 查询；backtest 先以 {action:'catalog'} 查询。", empty, () => listTools()),
     tool("run_tool", "执行产品工具，先查目录确认参数。calc 的 input 为 {fn:函数名,args:参数对象}，不是 function/inputs/name。输出中的 ok/error/status 是业务结果，必须如实检查。", z.object({ name: id, input: z.record(z.string(), z.unknown()) }).strict(), (a, signal) => runTool(ctx, a.name, a.input, signal),
