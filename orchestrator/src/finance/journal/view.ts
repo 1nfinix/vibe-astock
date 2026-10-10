@@ -9,7 +9,10 @@
  *   - `manual`:没有成交明细的补记(日期 + 盈亏 %),新建或修改;
  *   - `record`:记一笔交易 —— 几笔买卖成交一次写进交易流水(要么全写、要么全不写),再写标注;
  *   - `delete_tag`:删一条标注(补记就是删掉这条补记);
- *   - `settings`:改费率 / 规矩 / 账户规模。
+ *   - `settings`:改费率 / 规矩 / 账户规模;
+ *   - `mode_save` / `mode_delete`:模式卡(modes.ts)。改了打法内容就开新版本、从次日生效,旧版本不动。
+ * 最大浮盈浮亏要逐笔取行情、归因要读复盘条件,各自单独一个视图(excursion.ts / attribution.ts),
+ * 这里的复查清单只用已缓存的行情,一次网络请求都不发。
  *
  * 🔴 个人交易数据不进 AI:这一页不往 AI 提问上下文里放任何东西(VA 合规口径),MCP 也不给交易日志工具。
  * 🔴 成交只在 `trade` 里:改数量、价格、删成交去「我的股票」,这里不另存一份。
@@ -22,7 +25,9 @@ import { replayTrades, tradeOf, tradeProblem, type Trade } from "../holdings.ts"
 import { DEFAULT_RULES, PLAYBOOKS, RULE_KEYS, RULE_LABELS, ruleProblem, type Rules } from "./defs.ts";
 import { A_SHARE, buildEpisodes, type Episode, type EpisodeIssue } from "./episodes.ts";
 import { DEFAULT_FEES, FEE_KEYS, FEE_LABELS, feeProblem, type FeeConfig } from "./fees.ts";
-import { buildInbox } from "./inbox.ts";
+import { cachedExcursions, computeExcursions } from "./excursion.ts";
+import { buildInbox, type ExcursionLite } from "./inbox.ts";
+import { MODE_CHANGES_MAX, MODE_KIND, MODE_NAME_MAX, MODE_TEXT_FIELDS, MODE_TEXT_LABELS, MODE_TEXT_MAX, MODE_VERSIONS_MAX, cardOf, isPlaybook, modeChanged, modesPerformance, type ModeCard, type ModeTextField, type ModeVersion } from "./modes.ts";
 import { realDay } from "./num.ts";
 import { atRisk, discipline, equityCurve, rolling, violations } from "./risk.ts";
 import { buildRows, tagOf, type JournalRow, type Tag, type TagProblem } from "./rows.ts";
@@ -84,6 +89,9 @@ export interface JournalData {
   tradeIssues: readonly LedgerIssue[];
   tags: Tag[];
   settings: JournalSettings;
+  /** 模式卡(建卡顺序);不合台账规则的不用,只计数 */
+  cards: ModeCard[];
+  invalid_cards: number;
 }
 
 export function loadJournalData(ctx: ServiceContext): JournalData {
@@ -95,7 +103,15 @@ export function loadJournalData(ctx: ServiceContext): JournalData {
     // 字段不合规则的标注不用(台账页会列出来),和流水同一个处理
     tags: (snap.records.journal_tag ?? []).filter((r) => !tagIssues.has(r.id)).map(tagOf),
     settings: settingsOf(snap.records.journal_settings ?? [], snap.issues.journal_settings ?? []),
+    ...cardsOf(snap.records[MODE_KIND] ?? [], snap.issues[MODE_KIND] ?? []),
   };
+}
+
+function cardsOf(recs: readonly LedgerRecord[], issues: readonly LedgerIssue[]): { cards: ModeCard[]; invalid_cards: number } {
+  const bad = new Set(issues.map((i) => i.id));
+  const ok = recs.filter((r) => !bad.has(r.id)).map(cardOf)
+    .sort((a, b) => (a.created_at !== b.created_at ? (a.created_at < b.created_at ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return { cards: ok, invalid_cards: recs.length - ok.length };
 }
 
 export interface JournalComputed {
@@ -115,8 +131,11 @@ export function computeJournal(d: JournalData, fees: FeeConfig): JournalComputed
   return { episodes: ep.episodes, rows: rows.rows, issues: ep.issues, orphans: rows.orphans, conflicts: rows.conflicts, skipped_non_a: ep.skipped_non_a, orphan_dividends: ep.orphan_dividends };
 }
 
-/** 风险与纪律、在险资金、复查清单:都只对照用户自己的规矩和历史 */
-export function journalRisk(rows: readonly JournalRow[], s: JournalSettings) {
+/**
+ * 风险与纪律、在险资金、复查清单:都只对照用户自己的规矩和历史。
+ * @param excursions 复查清单用的、已缓存行情算出的最大浮盈浮亏;null = 这一类判定不做
+ */
+export function journalRisk(rows: readonly JournalRow[], s: JournalSettings, excursions: { map: ReadonlyMap<string, ExcursionLite>; skipped: number } | null = null) {
   return {
     risk: {
       equity: equityCurve(rows),
@@ -125,27 +144,40 @@ export function journalRisk(rows: readonly JournalRow[], s: JournalSettings) {
       violations: violations(rows, s.rules, s.rules_default, s.equity_base),
     },
     at_risk: atRisk(rows, s.rules, s.rules_default, s.equity_base),
-    inbox: buildInbox(rows, s.rules, s.rules_default),
+    inbox: buildInbox(rows, s.rules, s.rules_default, excursions?.map ?? null, excursions?.skipped ?? 0),
   };
 }
 export type JournalRisk = ReturnType<typeof journalRisk>;
+export type JournalModes = { modes: ReturnType<typeof modesPerformance>; invalid_cards: number };
 
 export type JournalView =
   | { available: false; reason: string; settings: JournalSettings; playbooks: readonly string[]; today: string }
-  | ({ available: true; settings: JournalSettings; stats: JournalStats; playbooks: readonly string[]; today: string } & JournalComputed & JournalRisk);
+  | ({ available: true; settings: JournalSettings; stats: JournalStats; playbooks: readonly string[]; today: string } & JournalComputed & JournalRisk & JournalModes);
 
 const today = (now: Date) => localClock(now, SCHEDULE_TZ).day;
 
-export function buildJournalView(ctx: ServiceContext, now = new Date()): JournalView {
+export async function buildJournalView(ctx: ServiceContext, now = new Date()): Promise<JournalView> {
   const d = loadJournalData(ctx);
   const common = { settings: d.settings, playbooks: PLAYBOOKS, today: today(now) };
   if (!d.settings.fees) return { available: false, reason: d.settings.problem ?? "交易日志设置有问题", ...common };
   const c = computeJournal(d, d.settings.fees);
-  return { available: true, ...common, ...c, stats: journalStats(c.rows), ...journalRisk(c.rows, d.settings) };
+  // 复查清单只看最近 500 笔(INBOX_LIMIT),只读缓存
+  const ex = await cachedExcursions(ctx, c.rows.slice(0, 500));
+  return {
+    available: true, ...common, ...c, stats: journalStats(c.rows), ...journalRisk(c.rows, d.settings, ex),
+    modes: modesPerformance(d.cards, c.rows), invalid_cards: d.invalid_cards,
+  };
 }
 
 export async function journalView(ctx: ServiceContext, _query: Record<string, string>, _signal?: AbortSignal, now = new Date()): Promise<JournalView> {
   return buildJournalView(ctx, now);
+}
+
+/** `GET /view/journal_excursion` —— 「复查」页的最大浮盈浮亏:逐笔取行情(取到就永久缓存) */
+export async function journalExcursion(ctx: ServiceContext, _query: Record<string, string>, signal: AbortSignal, now = new Date()) {
+  const d = loadJournalData(ctx);
+  if (!d.settings.fees) return { available: false as const, reason: d.settings.problem ?? "交易日志设置有问题" };
+  return computeExcursions(ctx, computeJournal(d, d.settings.fees).rows, signal, now);
 }
 
 /* ---------------- 写 ---------------- */
@@ -334,6 +366,72 @@ function actSettings(ctx: ServiceContext, body: Record<string, unknown>): Ledger
   return ledgerUpsert(ctx, { kind: "journal_settings", record: cur.record_id ? { ...rec, id: cur.record_id } : rec });
 }
 
+/* ---------------- 模式卡 ---------------- */
+
+const addDay = (day: string) => {
+  const t = new Date(`${day}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 1);
+  return t.toISOString().slice(0, 10);
+};
+const textOf = (body: Record<string, unknown>, key: string, label: string, max: number): string => {
+  const v = body[key];
+  if (v !== undefined && v !== null && typeof v !== "string") bad(`「${label}」要是文字`);
+  const t = typeof v === "string" ? v.trim() : "";
+  if (t.length > max) bad(`「${label}」最多 ${max} 字(现在 ${t.length} 字)`);
+  return t;
+};
+
+/**
+ * 新建或修改模式卡。带 `card_id` 是修改:打法或五段文字有变化就开新版本(次日生效),旧版本原样保留;
+ * 只改名字不开新版本。🔴 VA 超长会悄悄截断,这里直接拒收(截断等于替用户改了规则)。
+ */
+function actModeSave(ctx: ServiceContext, body: Record<string, unknown>, now: Date): { card: LedgerRecord; created: boolean; new_version: boolean } {
+  const name = textOf(body, "name", "名字", MODE_NAME_MAX);
+  if (!name) bad("模式卡要有名字");
+  const playbook = typeof body.playbook === "string" ? body.playbook.trim() : "";
+  if (!isPlaybook(playbook)) bad(`打法只能是 ${PLAYBOOKS.join(" / ")}`);
+  const text = Object.fromEntries(MODE_TEXT_FIELDS.map((k) => [k, textOf(body, k, MODE_TEXT_LABELS[k], MODE_TEXT_MAX)])) as Record<ModeTextField, string>;
+  const changes = textOf(body, "changes", "改了什么", MODE_CHANGES_MAX);
+  const day = today(now), stamp = now.toISOString();
+  const id = typeof body.card_id === "string" && body.card_id ? body.card_id : null;
+  const write = (rec: Record<string, unknown>) => {
+    const why = ledgerCheck(ctx, MODE_KIND, rec);
+    if (why) bad(`模式卡写不进去:${why}`);
+    return ledgerUpsert(ctx, { kind: MODE_KIND, record: rec });
+  };
+  if (!id) {
+    // 第一版从今天生效,不回溯到更早
+    const v1: ModeVersion = { version: 1, since: day, changes: "初版", playbook, ...text, saved_at: stamp };
+    return { card: write({ name, playbook, versions: [v1] }), created: true, new_version: false };
+  }
+  const snap = ledgerSnapshot(ctx);
+  const prev = (snap.records[MODE_KIND] ?? []).find((r) => r.id === id);
+  if (!prev) bad("没找到这张模式卡,可能已经删了;请刷新后重试");
+  if ((snap.issues[MODE_KIND] ?? []).some((i) => i.id === id)) bad("这张模式卡不合台账规则(可能在台账页被改过),先在台账页修好再改");
+  const card = cardOf(prev!);
+  // 老版本没存打法的,读出来时已用卡片层的打法回填,再比较 —— 否则「没改」会被当成「改了」,每存一次开一个新版本
+  const last = card.versions.at(-1) ?? null;
+  const changed = modeChanged(last, { ...text, playbook });
+  let versions: ModeVersion[];
+  if (changed) {
+    versions = [...card.versions, { version: (last?.version ?? 0) + 1, since: addDay(day), changes: changes || "(没写改了什么)", playbook, ...text, saved_at: stamp }];
+    if (versions.length > MODE_VERSIONS_MAX) bad(`一张卡最多 ${MODE_VERSIONS_MAX} 个版本;换了一套打法就新建一张卡`);
+  } else {
+    versions = [...card.versions.slice(0, -1), { ...last!, saved_at: stamp }];
+  }
+  const rec: Record<string, unknown> = { id, name, playbook, versions };
+  if (card.migrated_from) rec.migrated_from = card.migrated_from;
+  return { card: write(rec), created: false, new_version: changed };
+}
+
+function actModeDelete(ctx: ServiceContext, body: Record<string, unknown>): { removed: boolean } {
+  const id = typeof body.card_id === "string" ? body.card_id : "";
+  if (!id) bad("要给出模式卡的 id");
+  const r = ledgerRemove(ctx, { kind: MODE_KIND, id });
+  if (!r.removed) bad("没找到这张模式卡,可能已经删了");
+  return r;
+}
+
 export async function journalAct(ctx: ServiceContext, body: Record<string, unknown>, _signal?: AbortSignal, now = new Date()): Promise<{ result: unknown; view: JournalView }> {
   const a = body.action;
   const result = a === "tag" ? actTag(ctx, body, now)
@@ -341,6 +439,8 @@ export async function journalAct(ctx: ServiceContext, body: Record<string, unkno
     : a === "record" ? actRecord(ctx, body, now)
     : a === "delete_tag" ? actDeleteTag(ctx, body)
     : a === "settings" ? actSettings(ctx, body)
-    : bad(`不认识的动作 ${JSON.stringify(a)}(只有 tag / manual / record / delete_tag / settings)`);
-  return { result, view: buildJournalView(ctx, now) };
+    : a === "mode_save" ? actModeSave(ctx, body, now)
+    : a === "mode_delete" ? actModeDelete(ctx, body)
+    : bad(`不认识的动作 ${JSON.stringify(a)}(只有 tag / manual / record / delete_tag / settings / mode_save / mode_delete)`);
+  return { result, view: await buildJournalView(ctx, now) };
 }

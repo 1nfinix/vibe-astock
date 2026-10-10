@@ -17,7 +17,7 @@ function tmpRoot(): string {
 type Prop = { type?: string; enum?: unknown[]; format?: string; minItems?: number; items?: Prop; required?: string[]; properties?: Record<string, Prop> };
 function minimalValue(name: string, p: Prop | undefined): unknown {
   if (p?.enum) return p.enum[0];
-  if (p?.type === "number") return 1;
+  if (p?.type === "number" || p?.type === "integer") return 1;
   // 列表字段按 minItems 造够条数,每条再按自己的 required 造(AI 复盘的 sections 至少 1 段)
   if (p?.type === "array") return Array.from({ length: p.minItems ?? 0 }, () => minimalValue("", p.items));
   if (p?.type === "object") return minimalObject(p.required ?? [], p.properties ?? {});

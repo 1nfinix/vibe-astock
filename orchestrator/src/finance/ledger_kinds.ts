@@ -14,6 +14,7 @@ import { CITED_MAX, MAX_CONDITIONS, REVIEW_SECTIONS, REVIEW_SECTION_IDS, REVIEW_
 import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, VERIFY_METRIC_KEYS } from "./shortline/verify_metrics.ts";
 import { DEFAULT_RULES, PLAYBOOKS, isFractionRule, type RuleKey } from "./journal/defs.ts";
 import { MAX_RATE } from "./journal/fees.ts";
+import { MODE_CHANGES_MAX, MODE_NAME_MAX, MODE_TEXT_FIELDS, MODE_TEXT_MAX, MODE_VERSIONS_MAX } from "./journal/modes.ts";
 
 /**
  * 主体代码的台账规范形:
@@ -89,6 +90,8 @@ export const FINANCE_FIELD_LABELS: Record<string, string> = {
   commission_rate: "佣金费率", commission_min: "单笔佣金最低", stamp_tax_rate: "印花税", transfer_fee_rate: "过户费",
   max_loss_per_trade_pct: "单笔最大亏损 %", max_loss_per_day_pct: "单日最大亏损 %", max_positions: "最多同时持仓",
   max_trades_per_day: "单日最多开仓", pause_after_losses: "连亏几笔后停手", max_unplanned_ratio: "计划外占比上限", equity_base: "账户规模",
+  versions: "版本", version: "版本号", since: "生效日", changes: "改了什么", saved_at: "保存时间",
+  setup: "什么情况下做", entry: "怎么进", exit: "怎么出", sizing: "仓位", phase: "适用的情绪阶段",
 };
 
 export const FINANCE_ENUM_LABELS: Record<string, string> = {
@@ -356,6 +359,34 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       equity_base: { type: "number", exclusiveMinimum: 0 },
     },
     required: [],
+  },
+
+  /**
+   * 模式卡:自己写下的打法,带版本。一张卡一条,版本只追加不覆盖(交易日志页的「模式卡」负责开新版本)。
+   * 卡片文字全由用户写,系统只存、不校验内容;打法也进版本(决定哪些交易归这张卡)。
+   */
+  mode_card: {
+    label: "模式卡",
+    properties: {
+      name: NONEMPTY(MODE_NAME_MAX),
+      playbook: { type: "string", enum: PLAYBOOKS },
+      versions: {
+        type: "array", minItems: 1, maxItems: MODE_VERSIONS_MAX,
+        items: {
+          type: "object", additionalProperties: false, required: ["version", "since", "playbook"],
+          properties: {
+            version: { type: "integer", minimum: 1 },
+            since: { type: "string", format: "date" },
+            changes: TEXT(MODE_CHANGES_MAX),
+            playbook: { type: "string", enum: PLAYBOOKS },
+            ...Object.fromEntries(MODE_TEXT_FIELDS.map((k) => [k, TEXT(MODE_TEXT_MAX)])),
+            saved_at: TEXT(40),
+          },
+        },
+      },
+      migrated_from: TEXT(80),
+    },
+    required: ["name", "playbook", "versions"],
   },
 
   /** 行动:待办。可由判据到期生成,也可以自己写 */
