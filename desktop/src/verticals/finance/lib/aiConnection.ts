@@ -8,10 +8,15 @@ const SOURCE_LABELS: Record<string, string> = {
   glm: "智谱 GLM API", kimi: "Kimi API", qwen: "通义千问 API",
 };
 
+/** 接的是哪家(给人看的名字);认不出的一律叫「自定义 API」 */
+export function aiSourceName(provider: string): string {
+  return SOURCE_LABELS[provider] ?? "自定义 API";
+}
+
 /** Saved connection identity, not a claim that the remote subscription never expires. */
 export function aiConnectionLabel(runtime: AiRuntimeRead): string {
   if (runtime.status !== "ok" || !runtime.config) return "未接入AI，请设置";
-  return `已接入AI：${SOURCE_LABELS[runtime.config.source.provider] ?? "自定义 API"}`;
+  return `已接入AI：${aiSourceName(runtime.config.source.provider)}`;
 }
 
 export function subscriptionConfig(provider: string): LlmConfig {

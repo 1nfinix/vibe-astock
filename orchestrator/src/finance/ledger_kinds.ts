@@ -10,6 +10,7 @@
  *    界面只做两件事:把他写的原样呈现出来,以及把"哪条到期了"算出来。
  */
 import type { LedgerKindDef } from "../plugin.ts";
+import { CITED_MAX, MAX_CONDITIONS, REVIEW_SECTIONS, REVIEW_SECTION_IDS, REVIEW_SECTION_STATUSES, SECTION_TEXT_MAX } from "./shortline/review_defs.ts";
 import { DIRECTIONS, DIRECTION_LABELS, VERIFY_METRICS, VERIFY_METRIC_KEYS } from "./shortline/verify_metrics.ts";
 
 /**
@@ -31,6 +32,37 @@ const REQUIRED_SYMBOL = { type: "string", pattern: `^${SYMBOL_VALUE}$` };
 const DATE = { type: "string", anyOf: [{ maxLength: 0 }, { format: "date" }] };
 const TEXT = (max = 500) => ({ type: "string", maxLength: max });
 const NONEMPTY = (max = 500) => ({ type: "string", minLength: 1, maxLength: max, pattern: "\\S" });
+const COUNT = { type: "integer", minimum: 0 };
+
+/** AI 复盘的一段:正文 + 数字核对(三档分开)+ 引到的证据行(「查看依据」) */
+const REVIEW_SECTION = {
+  type: "object", additionalProperties: false, required: ["id", "label", "status"],
+  properties: {
+    id: { type: "string", enum: REVIEW_SECTION_IDS },
+    label: TEXT(20),
+    status: { type: "string", enum: REVIEW_SECTION_STATUSES },
+    text: TEXT(SECTION_TEXT_MAX),
+    error: TEXT(500),
+    /** 这一段的资料包里有多少条证据 */
+    evidence_count: COUNT,
+    audit: {
+      type: "object", additionalProperties: false, required: ["total", "bound", "derived", "loose", "bad_math"],
+      properties: {
+        total: COUNT, bound: COUNT, derived: COUNT, loose: COUNT,
+        bad_math: {
+          type: "array", maxItems: 20,
+          items: { type: "object", additionalProperties: false, required: ["raw", "stated", "recomputed"], properties: { raw: TEXT(200), stated: { type: "number" }, recomputed: { type: "number" }, percent: { type: "boolean" } } },
+        },
+      },
+    },
+    cited: {
+      type: "array", maxItems: CITED_MAX,
+      items: { type: "object", additionalProperties: false, required: ["id", "line"], properties: { id: { type: "string", pattern: "^ev-[0-9a-f]{6,}$" }, line: TEXT(600) } },
+    },
+    /** 引了、但资料包里没有的编号 */
+    unknown_cites: { type: "array", maxItems: 40, items: TEXT(60) },
+  },
+};
 
 /**
  * 字段键 / 枚举值的**中文显示名**。
@@ -238,6 +270,36 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
       note: TEXT(500),
     },
     required: ["date", "title"],
+  },
+
+  /**
+   * AI 复盘(五段式,移植自 VA):每次生成存一版,不覆盖旧版。
+   * 正文、数字核对结果和引到的证据行一起存:回头翻能看到当时依据了什么(资料包本身不存,太长)。
+   * 由「情绪复盘 · AI 复盘」写入(shortline/review.ts)。`conditions` 只是 AI 的建议,用户点了才写进 `verification`。
+   */
+  shortline_review: {
+    label: "AI 复盘",
+    properties: {
+      date: { type: "string", format: "date" },
+      /** 写的时候那一天收盘了没有;false = 盘中写的,数字后来还会变 */
+      settled: { type: "boolean" },
+      /** 用的哪个 AI(界面显示名) */
+      ai: TEXT(80),
+      started_at: TEXT(40),
+      finished_at: TEXT(40),
+      sections: { type: "array", minItems: 1, maxItems: REVIEW_SECTIONS.length, items: REVIEW_SECTION },
+      gaps: { type: "array", maxItems: 80, items: TEXT(400) },
+      conditions: {
+        type: "array", maxItems: MAX_CONDITIONS,
+        items: {
+          type: "object", additionalProperties: false, required: ["metric", "direction"],
+          properties: { metric: { type: "string", enum: VERIFY_METRIC_KEYS }, direction: { type: "string", enum: DIRECTIONS }, reason: TEXT(200) },
+        },
+      },
+      /** 建议没采用的原因(格式不对、读数不在清单里……) */
+      conditions_note: TEXT(300),
+    },
+    required: ["date", "sections"],
   },
 
   /** 行动:待办。可由判据到期生成,也可以自己写 */

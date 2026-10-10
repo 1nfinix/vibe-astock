@@ -14,18 +14,23 @@ function tmpRoot(): string {
 }
 
 /** 按种类的 required 造一条最小合法记录(不硬编码字段名 —— 那样加字段时这里会假绿) */
+type Prop = { type?: string; enum?: unknown[]; format?: string; minItems?: number; items?: Prop; required?: string[]; properties?: Record<string, Prop> };
+function minimalValue(name: string, p: Prop | undefined): unknown {
+  if (p?.enum) return p.enum[0];
+  if (p?.type === "number") return 1;
+  // 列表字段按 minItems 造够条数,每条再按自己的 required 造(AI 复盘的 sections 至少 1 段)
+  if (p?.type === "array") return Array.from({ length: p.minItems ?? 0 }, () => minimalValue("", p.items));
+  if (p?.type === "object") return minimalObject(p.required ?? [], p.properties ?? {});
+  if (name === "symbol") return "300308";
+  if (p?.format === "date") return "2026-09-01";
+  return "x";
+}
+function minimalObject(required: readonly string[], properties: Record<string, Prop>): Record<string, unknown> {
+  return Object.fromEntries(required.map((r) => [r, minimalValue(r, properties[r])]));
+}
 function buildMinimal(kind: string): Record<string, unknown> {
   const def = kinds()[kind]!;
-  const out: Record<string, unknown> = {};
-  for (const r of def.required) {
-    const p = def.properties[r] as { type?: string; enum?: unknown[]; pattern?: string } | undefined;
-    if (p?.enum) out[r] = p.enum[0];
-    else if (p?.type === "number") out[r] = 1;
-    else if (r === "symbol") out[r] = "300308";
-    else if ((p as { format?: string })?.format === "date") out[r] = "2026-09-01";
-    else out[r] = "x";
-  }
-  return out;
+  return minimalObject(def.required, def.properties as Record<string, Prop>);
 }
 
 const anyKind = (): string => Object.keys(kinds())[0]!;

@@ -1334,6 +1334,29 @@ export async function debateAdvance(ctx: ServiceContext, req: { id: string; llm?
   }
 }
 
+/**
+ * 垂类视图里要调 AI(一轮、全新会话、不留记忆)时用:来源检查、来源指纹、单条上限和超时都和多空辩论同一套。
+ * 在取数之前调 —— 没接 AI 就别白取一遍数。
+ */
+export function agentTurnFor(ctx: ServiceContext, req: { llm?: unknown; executionMode?: unknown }): {
+  fingerprint: string;
+  turn: (message: string, session: string, signal?: AbortSignal) => Promise<string>;
+} {
+  let mode: "agent" | "direct";
+  try { mode = assertExecutionMode(req.executionMode); }
+  catch (error) { throw new ServiceError(error instanceof RuntimeProviderError ? error.code : "bad_execution_mode", error instanceof Error ? error.message : String(error)); }
+  if (mode === "direct") throw new ServiceError("agent_required", "这一步要调用 AI：请先接入 AI；接口调用时 executionMode 要用 agent");
+  const llm = checkLlmShape(req.llm);
+  assertAgentRuntime(ctx, llm);
+  return {
+    fingerprint: sourceFingerprintOf(ctx, llm),
+    turn: async (message, session, signal) => (await chatSendCore(
+      { repoRoot: ctx.repoRoot, dataRoot: ctx.dataRoot, python: ctx.python, persistent: false, maxMessage: MAX_DEBATE_MESSAGE, timeoutMs: DEBATE_TURN_TIMEOUT_MS, signal },
+      { message, session, llm },
+    )).reply,
+  };
+}
+
 function asServiceError(e: unknown): never {
   if (e instanceof LedgerError) throw new ServiceError(e.code, e.message);
   throw e;

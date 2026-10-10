@@ -12,6 +12,7 @@
  *    随请求发给本机后端、用完即弃(见 llmStore.ts 与「接入 AI」页)。
  */
 import { readAiRuntime, type ExecutionMode, type LlmConfig } from "./llmStore.ts";
+import { aiSourceName } from "./aiConnection.ts";
 import type { ImportResult } from "./importPositions.ts";
 import type { NotifyOverview } from "./notify.ts";
 import type { CalendarResult } from "./calendar.ts";
@@ -57,6 +58,8 @@ const SAFE_AGENT_MESSAGE_CODES = new Set([
   "agent_bad_output", "agent_failed", "agent_empty_output", "agent_cancelled", "agent_start_failed",
   "tool_context_too_large", "bad_agent_output", "guided_output_blocked", "bad_tool_args", "bad_tool",
   "bad_agent_state", "not_found", "tool_failed", "debate_source_changed", "debate_exists", "debate_busy",
+  // 情绪复盘 · AI 复盘:同一天正在写 / 同时在写的太多 / 这天情绪数据没取到,文案是产品自己写的
+  "review_busy", "capacity_full", "no_data",
   "invalid_task_request", "invalid_task", "invalid_material_resolution", "material_resolution_failed",
   "operation_not_available", "quick_not_eligible", "quick_provider_unsupported", "route_changed", "cancelled",
   "ai_not_configured", "agent_required", "agent_runtime_unsupported", "direct_provider_unsupported", "bad_execution_mode",
@@ -95,7 +98,9 @@ export function friendlyAgentError(error: unknown): string {
 
 const isAgentPath = (path: string): boolean =>
   path === "/chat" || path.startsWith("/chat/") || path.startsWith("/tasks") || path === "/research" || path.startsWith("/debate") ||
-  path === "/import" || path === "/llm-probe" || path === "/translate-headlines" || path.startsWith("/guided-tool/");
+  path === "/import" || path === "/llm-probe" || path === "/translate-headlines" || path.startsWith("/guided-tool/") ||
+  // 情绪复盘 · AI 复盘的开工 / 停止(只认 POST 那个不带查询串的地址;按日期查进度的 GET 是普通视图)
+  path === "/view/shortline_review";
 
 export type TaskMode = "auto" | "quick" | "deep";
 export type TaskRouteTarget = "deterministic" | "quick" | "deep";
@@ -266,7 +271,7 @@ async function ensureSelectedLocalAgentReady(llm: unknown, signal?: AbortSignal)
   throw new ApiError(message, 409, code);
 }
 
-export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly";
+export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly" | "shortline_review";
 
 export const backend = {
   importPositions: (files: { name: string; content_base64: string }[], signal?: AbortSignal) => {
@@ -402,6 +407,21 @@ export const backend = {
   /** 明日验证:整晚的条件一起替换(没变的条目不重写) */
   shortlineVerifySave: (date: string, items: { metric: string; direction: string; reason: string }[]) =>
     call<{ date: string; items: unknown[] }>("/view/shortline_verify", { method: "POST", body: JSON.stringify({ action: "save", date, items }) }),
+  /**
+   * AI 复盘:开工后在后台一段段写(切走页面不打断),进度按日期查 `shortlineView("shortline_review")`。
+   * 返回的是这次复盘当时的状态(类型见 shortline/viewTypes.ts 的 ReviewRun)。
+   */
+  shortlineReviewStart: async <T>(date: string, signal?: AbortSignal) => {
+    const runtime = requestRuntime();
+    await ensureSelectedLocalAgentReady(runtime.llm, signal);
+    signal?.throwIfAborted();
+    return await call<T>("/view/shortline_review", {
+      method: "POST", signal,
+      body: JSON.stringify({ action: "start", date, ai: aiSourceName(String((runtime.llm as { provider?: unknown } | null)?.provider ?? "")), llm: runtime.llm, executionMode: runtime.executionMode }),
+    });
+  },
+  shortlineReviewCancel: <T>(id: string) =>
+    call<T>("/view/shortline_review", { method: "POST", body: JSON.stringify({ action: "cancel", id }) }),
 
   reviewTiers: (opts: { date: string; refresh?: boolean }) =>
     call<ReviewTiersResult>(`/view/review_tiers?date=${encodeURIComponent(opts.date)}${opts.refresh ? "&refresh=1" : ""}`),

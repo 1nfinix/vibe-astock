@@ -159,3 +159,46 @@ test("🔴 加减要同一种量:金额加 / 减百分比不认,也就不能给�
   assert.equal(one("35% − 20% = 15%").ok, true);
   assert.equal(one("35 − 20 = 15%").ok, true, "两边都没单位的老写法照认");
 });
+
+// 下面三组用例来自 VA 短线复盘的一次实跑(2026-10-10):三条对的算式全被判成「重算应为 0.00」
+test("🔴 数量级只写在结果上是省略写法:运算数按结果的数量级读;只有一边写了说不清,不认", () => {
+  const one = (s: string) => { const r = checkStatedArithmetic(s); assert.equal(r.length, 1, s); return r[0]!; };
+  assert.equal(one("19005.40-16821.09=2184.31 亿元").ok, true, "实跑原文");
+  assert.equal(one("25741.60-26390.98=-649.38 亿元").ok, true, "实跑原文");
+  assert.equal(one("19005.40-16821.09=2184.31 万元").ok, true);
+  assert.equal(one("19005.40-16821.09=2000 亿元").ok, false, "省略写法照样要算对");
+  assert.equal(one("100 ÷ 8 = 12.5 亿").ok, true);
+  assert.equal(one("4 × 10 = 40 亿元").ok, true);
+  assert.equal(one("35% × 200 = 70 亿").ok, true);
+  assert.equal(one("35% × 200 = 7000 亿").ok, false);
+  for (const s of ["2 亿 + 3 = 5 亿", "2 + 3 亿 = 5 亿", "35% + 20% = 55 亿"]) assert.equal(checkStatedArithmetic(s).length, 0, s);
+  assert.equal(one("2 亿 + 3 万 = 5 亿元").ok, false, "两边都写了数量级的仍按各自数量级算");
+});
+
+test("🔴 多项加减整条重算;更长算式的尾巴不单独认(只拿最后两项会把对的合计判成错)", () => {
+  const one = (s: string) => { const r = checkStatedArithmetic(s); assert.equal(r.length, 1, s); return r[0]!; };
+  const top10 = "成交额前十合计 210.92+160.28+149.79+146.19+128.33+108.64+107.56+94.17+86.77+84.89=1277.54 亿元";
+  const r = one(top10);
+  assert.equal(r.ok, true, "实跑原文:以前只认出「+86.77+84.89=1277.54」");
+  assert.ok(r.raw.startsWith("210.92"), r.raw);
+  assert.equal(one("210.92+160.28+149.79=500 亿元").ok, false, "合计写错要抓到");
+  assert.equal(one("-174.43-261.76-392.32=-828.51 亿元").ok, true, "第一项是负数");
+  assert.equal(one("2 亿 + 3 万 + 1 万 = 2.0004 亿").ok, true);
+  assert.equal(one("2 亿 + 3 万 + 1 万 = 6 亿").ok, false);
+  assert.equal(one("1 + 2 + 3 = 6").ok, true);
+  for (const s of ["1+2×3=7", "1×2+3=5", "2 亿 + 3 + 1 = 6 亿", "1 元 + 2 股 + 3 元 = 6 元"]) assert.equal(checkStatedArithmetic(s).length, 0, s);
+  // 合计里的每一项都算「有交代」,不会被当成没出处
+  const a = auditNumbers(top10, [], (line) => [...line.matchAll(/\d+(?:\.\d+)?/g)].map((m) => ({ n: Number(m[0]), raw: m[0] })), (n, pool) => pool.includes(n));
+  assert.equal(a.loose.length, 0, JSON.stringify(a.loose));
+  assert.equal(a.badMath.length, 0);
+});
+
+test("约等号照认;中文破折号不是负号", () => {
+  const one = (s: string) => { const r = checkStatedArithmetic(s); assert.equal(r.length, 1, s); return r[0]!; };
+  assert.equal(one("午后首封占 40÷69≈58.0%").ok, true, "实跑原文");
+  assert.equal(one("40÷69≈68.0%").ok, false);
+  assert.equal(one("1+2+3≈6").ok, true);
+  const d = one("结论——19005.40-16821.09=2184.31 亿元");
+  assert.equal(d.ok, true, "「——19005.40」读成负数就会判错");
+  assert.equal(one("19005.40 — 16821.09 = 2184.31").ok, true, "单个破折号夹在两数之间仍是减号");
+});

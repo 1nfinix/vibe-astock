@@ -164,3 +164,33 @@ export interface LineageItem {
   peak_cum_ret: number | null; drawdown_from_peak: number | null; is_current_top: boolean;
 }
 export interface WeeklyResult { date: string; days: WeeklyDay[]; lineage: LineageItem[]; generated_at: string; gaps: string[]; source: string }
+
+// ── AI 复盘(orchestrator/src/finance/shortline/review.ts) ──
+export type ReviewSectionId = "sentiment" | "capital" | "theme" | "dragon_tiger" | "leader" | "summary";
+export type ReviewStageStatus = "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
+export interface ReviewAudit { total: number; bound: number; derived: number; loose: number; bad_math: { raw: string; stated: number; recomputed: number; percent: boolean }[] }
+export interface ReviewStage {
+  id: ReviewSectionId; label: string; desc: string; status: ReviewStageStatus;
+  text: string; error?: string; evidence_count: number;
+  audit?: ReviewAudit; cited?: { id: string; line: string }[]; unknown_cites?: string[];
+}
+export interface ReviewCondition { metric: string; direction: Direction; reason: string }
+export interface ReviewRun {
+  id: string; date: string; settled: boolean | null; ai: string; started_at: string; finished_at: string | null;
+  stages: ReviewStage[]; gaps: string[]; conditions: ReviewCondition[]; conditions_note: string;
+  done: boolean; outcome: "running" | "completed" | "completed_with_errors" | "failed" | "cancelled";
+  saved_id: string | null; save_error: string | null;
+}
+export interface SavedReview {
+  id: string; date: string; settled: boolean | null; ai: string; started_at: string; finished_at: string; created_at: string;
+  sections: ReviewStage[]; gaps: string[]; conditions: ReviewCondition[]; conditions_note: string;
+}
+export interface ReviewResult {
+  date: string;
+  sections: { id: ReviewSectionId; label: string; desc: string }[];
+  metrics: { key: string; label: string; unit: string; kind: ReadingKind; eps: number }[];
+  directions: { key: Direction; label: string }[];
+  versions: SavedReview[];
+  dates: { date: string; count: number }[];
+  runs: ReviewRun[];
+}
