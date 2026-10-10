@@ -1,0 +1,7 @@
+# 换行符按文件类型固定，不随检出电脑的 core.autocrlf 变：
+# Windows 批处理用 CRLF（LF 的 .cmd 在 cmd.exe 里会解析出错），macOS / Linux 的 shell 脚本用 LF（CRLF 会让 sh 报错）
+*.cmd text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf
+scripts/start text eol=lf
+scripts/setup text eol=lf
