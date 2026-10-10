@@ -114,3 +114,12 @@ export function ladderRows(lg: LadderGap): { board: number; count: number | null
 export function tierOrder(t: string): number {
   return t === "首板" ? 1 : t === "昨日炸板" ? Number.MAX_SAFE_INTEGER : (parseInt(t, 10) || Number.MAX_SAFE_INTEGER - 1);
 }
+
+/** 按读数类型写数:家数 / 板数带单位,比例写成百分数,涨跌幅带正负号 */
+export function reading(v: number | null | undefined, kind: "count" | "rate" | "pct" | "share", unit = ""): string {
+  const n = finite(v);
+  if (n == null) return "—";
+  if (kind === "rate" || kind === "share") return rate(n);
+  if (kind === "pct") return signed(n);
+  return `${Number.isInteger(n) ? n : n.toFixed(1)}${unit}`;
+}

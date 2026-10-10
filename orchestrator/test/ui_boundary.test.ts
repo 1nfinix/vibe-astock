@@ -231,7 +231,9 @@ test("全局 AI 来源在品牌区、对话面板与模型页三处口径一致�
   const dockSrc = fs.readFileSync(path.join(FINANCE, "components", "ui", "FinanceAiDock.tsx"), "utf8");
   const settingsSrc = fs.readFileSync(path.join(FINANCE, "pages", "Settings.tsx"), "utf8");
 
-  assert.match(layoutSrc, /A股、美股、港股的投研工作台/);
+  // 侧栏小字从 brand.ts 取(VA 与上游 VR 只在 brand.ts 不同)
+  assert.match(layoutSrc, /\{PRODUCT_TAGLINE\}/);
+  assert.match(fs.readFileSync(path.join(FINANCE, "lib", "brand.ts"), "utf8"), /PRODUCT_TAGLINE = "A 股短线复盘与跟踪工作台"/);
   assert.match(layoutSrc, /aiConnectionLabel\(aiRuntime\)/);
   const connectionSrc = fs.readFileSync(path.join(FINANCE, "lib", "aiConnection.ts"), "utf8");
   assert.match(connectionSrc, /Claude订阅/);

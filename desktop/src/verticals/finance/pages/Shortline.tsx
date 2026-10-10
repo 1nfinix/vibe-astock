@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarDays, Flame, RefreshCw, RotateCcw } from "lucide-react";
+import { CalendarDays, CalendarRange, ClipboardCheck, Flame, History, RefreshCw, RotateCcw, Shuffle, Sigma } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageTabs, type PageTab } from "@/components/ui/PageTabs";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { cn } from "@/lib/utils";
 import { LOADING, badDayReason, loadBlocks, loadEmotion, type DayHead, type Panel } from "@/shortline/api";
 import { TodayTab, type TodayPanels } from "@/shortline/TodayTab";
+import { WeeklyTab } from "@/shortline/WeeklyTab";
+import { HistoryTab } from "@/shortline/HistoryTab";
+import { VerifyTab } from "@/shortline/VerifyTab";
+import { SamplesTab } from "@/shortline/SamplesTab";
+import { StructureTab } from "@/shortline/StructureTab";
 import type { EmotionResult } from "@/shortline/types";
 
-type Tab = "today";
+type Tab = "today" | "weekly" | "history" | "verify" | "samples" | "structure";
 const TABS: PageTab<Tab>[] = [
   { key: "today", label: "今日情绪", icon: Flame },
+  { key: "weekly", label: "近 5 天", icon: CalendarRange },
+  { key: "history", label: "情绪历史", icon: History },
+  { key: "verify", label: "明日验证", icon: ClipboardCheck },
+  { key: "samples", label: "涨停样本", icon: Sigma },
+  { key: "structure", label: "结构变化", icon: Shuffle },
 ];
 const isTab = (v: string | undefined): v is Tab => TABS.some((t) => t.key === v);
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,40 +54,68 @@ export function Shortline() {
   const [head, setHead] = useState<DayHead | null>(null);
   const [defaultDay, setDefaultDay] = useState<string | null>(null);
   const [panels, setPanels] = useState<TodayPanels>(ALL_LOADING);
-  const [busy, setBusy] = useState(false);
+  const [headBusy, setHeadBusy] = useState(false);
+  const [blocksBusy, setBlocksBusy] = useState(false);
+  const [tabBusy, setTabBusy] = useState(false);
+  // 其余分页的「刷新」:只让当前分页带 refresh=1 重取
+  const [refreshNonce, setRefreshNonce] = useState(0);
   // 换日期 / 刷新时旧请求可能晚回来:只认最后一次
-  const seq = useRef(0);
+  const headSeq = useRef(0);
+  const blockSeq = useRef(0);
+  // 今日情绪的另外四块只在打开「今日情绪」时取,且同一次表头只取一次
+  const blocksFor = useRef<DayHead | null>(null);
+  const refreshBlocks = useRef(false);
 
-  const load = useCallback(async (refresh: boolean) => {
-    const my = ++seq.current;
-    setBusy(true);
+  const loadHead = useCallback(async (refresh: boolean) => {
+    const my = ++headSeq.current;
+    ++blockSeq.current;
+    blocksFor.current = null;
+    setHeadBusy(true);
+    setBlocksBusy(false);
     setPanels(ALL_LOADING);
     const r = await loadEmotion({ date, refresh });
-    if (my !== seq.current) return;
-    setHead(r.head);
+    if (my !== headSeq.current) return;
     if (r.defaultDay) setDefaultDay(r.defaultDay);
     setPanels((p) => ({ ...p, emotion: r.emotion as Panel<EmotionResult> }));
-    const day = r.head.day;
-    const bad = badDayReason(r.emotion);
-    if (!day || bad) {
-      const why = bad ?? r.head.contextError ?? "没拿到业务日";
-      const none = { state: "done", status: "missing", result: null, why, settled: null, cached: false, fetched_at: null } as const;
+    setHead(r.head);
+    setHeadBusy(false);
+  }, [date]);
+
+  useEffect(() => { void loadHead(false); }, [loadHead]);
+
+  const day = head?.day ?? null;
+  // 这天不能复盘(不是交易日 / 还没到)或没拿到复盘日:整页一句话,其余分页也不去取
+  const bad = headBusy ? null : badDayReason(panels.emotion);
+  const noDay = head && !headBusy && !bad && !day ? head.contextError ?? "没拿到复盘日" : null;
+  const blocked = bad ?? noDay;
+
+  useEffect(() => {
+    if (tab !== "today" || !head || headBusy || blocksFor.current === head) return;
+    blocksFor.current = head;
+    const refresh = refreshBlocks.current;
+    refreshBlocks.current = false;
+    if (blocked || !day) {
+      const none = { state: "done", status: "missing", result: null, why: blocked ?? "没拿到复盘日", settled: null, cached: false, fetched_at: null } as const;
       setPanels((p) => ({ ...p, facts: none, themes: none, firstboard: none, cycle: none }));
-      setBusy(false);
       return;
     }
+    const my = ++blockSeq.current;
+    setBlocksBusy(true);
     const put = (got: Record<string, Panel<unknown>>) => {
-      if (my === seq.current) setPanels((p) => ({ ...p, ...got } as TodayPanels));
+      if (my === blockSeq.current) setPanels((p) => ({ ...p, ...got } as TodayPanels));
     };
-    await Promise.all([
+    void Promise.all([
       loadBlocks("shortline_facts", ["facts"], day, refresh).then(put),
       loadBlocks("shortline_themes", ["themes", "firstboard"], day, refresh).then(put),
       loadBlocks("shortline_cycle", ["cycle"], day, refresh).then(put),
-    ]);
-    if (my === seq.current) setBusy(false);
-  }, [date]);
+    ]).then(() => { if (my === blockSeq.current) setBlocksBusy(false); });
+  }, [tab, head, headBusy, blocked, day]);
 
-  useEffect(() => { void load(false); }, [load]);
+  const busy = headBusy || (tab === "today" ? blocksBusy : tabBusy);
+  const refresh = () => {
+    if (tab === "today") { refreshBlocks.current = true; void loadHead(true); }
+    else setRefreshNonce((n) => n + 1);
+  };
 
   const setDate = (d: string | null) => setParams((prev) => {
     const next = new URLSearchParams(prev);
@@ -86,8 +124,8 @@ export function Shortline() {
   });
   const pickTab = (t: Tab) => navigate({ pathname: t === "today" ? "/shortline" : `/shortline/${t}`, search: params.toString() ? `?${params}` : "" });
 
-  const day = head?.day ?? null;
   const ctx = head?.context;
+  const viewProps = day && !headBusy ? { day, refreshNonce, onBusy: setTabBusy } : null;
 
   return (
     <div>
@@ -110,9 +148,9 @@ export function Shortline() {
                 <RotateCcw className="h-3.5 w-3.5" /> 回到默认
               </button>
             )}
-            <button type="button" onClick={() => load(true)} disabled={busy}
+            <button type="button" onClick={refresh} disabled={busy}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-              title="不用缓存,重新取这一屏">
+              title="不用缓存,重新取当前分页">
               <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} /> 刷新
             </button>
           </>
@@ -130,9 +168,15 @@ export function Shortline() {
 
       <PageTabs label="情绪复盘的分页" value={tab} onChange={pickTab} options={TABS} />
 
-      {tab === "today" && (badDayReason(panels.emotion)
-        ? <BadDay why={badDayReason(panels.emotion)!} onReset={date ? () => setDate(null) : null} />
-        : <TodayTab day={day} panels={panels} />)}
+      {bad ? <BadDay why={bad} onReset={date ? () => setDate(null) : null} />
+        : noDay ? <p role="status" className="glass p-6 text-sm text-muted-foreground">没拿到复盘日({noDay}),先不取数。选一个日期再看,或点右上角刷新重试。</p>
+        : tab === "today" ? <TodayTab day={day} panels={panels} />
+        : !viewProps ? <p role="status" className="glass p-6 text-sm text-muted-foreground">正在确定复盘日…</p>
+        : tab === "weekly" ? <WeeklyTab key={day} {...viewProps} />
+        : tab === "history" ? <HistoryTab key={day} {...viewProps} />
+        : tab === "verify" ? <VerifyTab key={day} {...viewProps} />
+        : tab === "samples" ? <SamplesTab key={day} {...viewProps} />
+        : <StructureTab key={day} {...viewProps} />}
 
       <Disclaimer />
     </div>

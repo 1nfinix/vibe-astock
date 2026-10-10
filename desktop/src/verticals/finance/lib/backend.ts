@@ -266,6 +266,8 @@ async function ensureSelectedLocalAgentReady(llm: unknown, signal?: AbortSignal)
   throw new ApiError(message, 409, code);
 }
 
+export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly";
+
 export const backend = {
   importPositions: (files: { name: string; content_base64: string }[], signal?: AbortSignal) => {
     const runtime = requestRuntime();
@@ -387,6 +389,20 @@ export const backend = {
   /** 异动接近度:后端读台账里的自选,按交易所规则推算;refresh=true 不用缓存 */
   abnormal: (opts: { refresh?: boolean } = {}) => call<AbnormalResult>(`/view/abnormal${opts.refresh ? "?refresh=1" : ""}`),
   /** 涨停分档:复盘那天(业务日)的涨停股按行业分档;refresh=true 当天的池不用缓存 */
+  /**
+   * 短线(Vibe AStock)的五个视图:情绪历史 / 明日验证 / 涨停样本统计 / 结构变化 / 近 5 天。
+   * 结果的类型在 `shortline/viewTypes.ts`;后端见 orchestrator/src/finance/shortline/。
+   */
+  shortlineView: <T>(id: ShortlineViewId, query: { date: string; days?: number; refresh?: boolean }, signal?: AbortSignal) => {
+    const qs = new URLSearchParams({ date: query.date });
+    if (query.days !== undefined) qs.set("days", String(query.days));
+    if (query.refresh) qs.set("refresh", "1");
+    return call<T>(`/view/${id}?${qs}`, { signal });
+  },
+  /** 明日验证:整晚的条件一起替换(没变的条目不重写) */
+  shortlineVerifySave: (date: string, items: { metric: string; direction: string; reason: string }[]) =>
+    call<{ date: string; items: unknown[] }>("/view/shortline_verify", { method: "POST", body: JSON.stringify({ action: "save", date, items }) }),
+
   reviewTiers: (opts: { date: string; refresh?: boolean }) =>
     call<ReviewTiersResult>(`/view/review_tiers?date=${encodeURIComponent(opts.date)}${opts.refresh ? "&refresh=1" : ""}`),
   /** 财报前瞻与复盘:A 股 6 位代码 / 港股 / 美股代码;refresh=true 全部重取 */
