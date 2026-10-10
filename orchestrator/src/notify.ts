@@ -77,6 +77,12 @@ export interface ScheduleDef {
   /** 今天开不开门。必须自己处理超时 / 取消;拿不准就返回 unavailable,不要猜 */
   gate(g: { ctx: ServiceContext; day: string; now: Date; signal: AbortSignal }): Promise<GateResult>;
   jobs: readonly ScheduledJobDef[];
+  /**
+   * 每一拍(约每分钟)都调一次的钩子,给「一天在几个固定时点各做一次」的事用(比如盘中快照)。
+   * 在调度锁里运行、有超时;这一拍要不要干活由它自己判断,不干活时别联网。
+   * `gate()` 是同一份当日开门判断(按天缓存),要用时再调。返回的一句话和出错都只进本拍报告,不影响定时任务。
+   */
+  beat?(b: { ctx: ServiceContext; day: string; hm: string; now: Date; signal: AbortSignal; gate: () => Promise<GateResult> }): Promise<string | void>;
 }
 
 const JOB_ID = /^[a-z][a-z0-9_]{0,39}$/;
@@ -98,6 +104,7 @@ export function currentSchedule(): ScheduleDef | null {
 export function validateSchedule(def: ScheduleDef): void {
   try { new Intl.DateTimeFormat("en-US", { timeZone: def.timeZone }); } catch { throw new Error(`定时任务的时区不认识:${def.timeZone}`); }
   if (typeof def.gate !== "function") throw new Error("定时任务缺少 gate 判定");
+  if (def.beat !== undefined && typeof def.beat !== "function") throw new Error("定时任务的每拍钩子不是函数");
   const seen = new Set<string>();
   for (const j of def.jobs) {
     if (!JOB_ID.test(j.id)) throw new Error(`定时任务 id 不合法:${j.id}`);
@@ -490,6 +497,7 @@ async function pushAll(settings: Settings, m: NotifyMessage, deps: Deps): Promis
 const JOB_TIMEOUT_MS = 5 * 60_000;
 const GATE_TIMEOUT_MS = 90_000;
 const GATE_RETRY_MS = 15 * 60_000;
+const BEAT_TIMEOUT_MS = 60_000;
 const RETRY_AFTER_MS = 10 * 60_000;
 const MAX_ATTEMPTS = 3;
 const DEDUPE_MS = 24 * 3600_000;
@@ -643,7 +651,7 @@ function tryLock(dataRoot: string, now: Date): { unlock: () => void; touch: () =
   return null;
 }
 
-export interface TickReport { day: string; hm: string; due: string[]; gate?: GateResult; ran: { id: string; status: string; note?: string }[]; skipped?: string }
+export interface TickReport { day: string; hm: string; due: string[]; gate?: GateResult; ran: { id: string; status: string; note?: string }[]; skipped?: string; beat?: string }
 
 /** 调度一拍:把到点且今天还没跑的任务跑掉。可测 —— 传入 now 和 def 即可,不碰真时钟 */
 export async function tick(ctx: ServiceContext, opts: { now?: Date; def?: ScheduleDef | null; deps?: Deps } = {}): Promise<TickReport> {
@@ -658,6 +666,15 @@ export async function tick(ctx: ServiceContext, opts: { now?: Date; def?: Schedu
   try {
     lock = tryLock(ctx.dataRoot, now);
     if (!lock) return { ...report, skipped: "另一个后台进程正在调度" };
+    if (def.beat) {
+      try {
+        const note = await withTimeout(BEAT_TIMEOUT_MS, (signal) => def.beat!({ ctx, day, hm, now, signal, gate: () => gateFor(ctx, def, day, now) }), "每拍钩子");
+        if (note) report.beat = note;
+      } catch (e) {
+        report.beat = `出错:${e instanceof Error ? e.message : String(e)}`;
+      }
+      lock.touch();
+    }
     const settings = loadSettings(ctx.dataRoot);
     const state = loadState(ctx.dataRoot);
     const due = def.jobs.filter((j) => {
@@ -712,6 +729,7 @@ export function startScheduler(ctx: ServiceContext, opts: { intervalMs?: number;
   const beat = () => {
     tick(ctx).then((r) => {
       if (r.ran.length) log(`[notify] ${r.day} ${r.hm} ${r.ran.map((x) => `${x.id}=${x.status}`).join(" ")}`);
+      if (r.beat) log(`[notify] ${r.day} ${r.hm} ${scrubSecrets(r.beat)}`);
     }).catch((e) => log(`[notify] 调度出错:${scrubSecrets(e instanceof Error ? e.message : String(e))}`));
   };
   const first = setTimeout(beat, 5_000);

@@ -11,6 +11,9 @@ test("当前页归属：本身和子路径都算它，首页只认 /，认不出
   assert.equal(navPageOf("/")?.page.label, "首页");
   assert.equal(navPageOf("/intel/news")?.page.label, "资讯雷达");
   assert.equal(navPageOf("/intel/news")?.section.label, "产业资讯");
+  assert.equal(navPageOf("/watch")?.page.label, "实时动态");
+  assert.equal(navPageOf("/watch/intraday")?.page.label, "竞价与盘中", "盯盘的第二页不算成实时动态的子路径");
+  assert.equal(navPageOf("/watch/intraday")?.section.label, "盯盘");
   // 没接板块名单时，板块页算产业研究总览；接上后算它自己
   assert.equal(navPageOf("/sectors/humanoid")?.page.label, "产业研究");
   assert.equal(navPageOf("/sectors/humanoid", FULL)?.page.label, "人形机器人");
@@ -40,7 +43,7 @@ test("顶栏标题跟着当前页；认不出的显示「工作空间」", () =>
 test("每个页面只出现一次；只有一页的一级直接是链接，几页的才是组", () => {
   const tos = NAV_SECTIONS.flatMap((s) => s.pages.map((p) => p.to));
   assert.equal(new Set(tos).size, tos.length);
-  assert.deepEqual(NAV_SECTIONS.filter(isGroup).map((s) => s.label), ["复盘", "产业资讯", "产业研究", "研究工具", "我的股票", "资料库"]);
+  assert.deepEqual(NAV_SECTIONS.filter(isGroup).map((s) => s.label), ["盯盘", "复盘", "产业资讯", "产业研究", "研究工具", "我的股票", "资料库"]);
   for (const s of NAV_SECTIONS.filter((x) => !isGroup(x))) assert.equal(s.pages[0]!.label, s.label, "单页一级的名字和页面一致");
 });
 

@@ -29,7 +29,7 @@
 
 Vibe Research is a research workbench for China A-shares, US stocks, and Hong Kong stocks. Open it to see the indices, your watchlist, and your holdings P&L first, then review the market, follow the news, research industries and companies, and test ideas, all in one page, and your research records and documents stay on your own computer.
 
-- **8 primary sections**: Home, Review, Industry news, Industry research, Research tools, My stocks, Library, and Connect AI. Home opens with China and global indices, then your watchlist and holdings (with holdings P&L and today's P&L, prices refreshing on their own while markets are open), and the chat below them. Sections with several pages fold them into a second level: Review holds Sentiment review and Daily review, Research tools holds Company deep dive, Bull/bear debate, Backtesting, and Candidate pool, and Industry research lists each sector directly.
+- **9 primary sections**: Home, Watch, Review, Industry news, Industry research, Research tools, My stocks, Library, and Connect AI. Home opens with China and global indices, then your watchlist and holdings (with holdings P&L and today's P&L, prices refreshing on their own while markets are open), and the chat below them. Sections with several pages fold them into a second level: Watch holds Live moves and Auction & intraday, Review holds Sentiment review and Daily review, Research tools holds Company deep dive, Bull/bear debate, Backtesting, and Candidate pool, and Industry research lists each sector directly.
 - **180 data endpoints** (35 layers) across CN, US, and HK: quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, Southbound flows and A/H premiums, top-10 shareholders, revenue breakdowns, US and HK company profiles, dividends, and earnings release dates, options, index constituents and valuation, futures and commodities, earnings previews / institutional visits / insider trades / buybacks / share pledges / dragon-tiger list / lock-up expiries, convertible bonds, SEC / FINRA / CBOE, news, macro data, industry thermometers, hiring, and more.
 - **Six-stage company research (A-shares, Hong Kong, US)**: company profile → financials → earnings expectations → valuation → risk → report. Raw data keeps its source; derived figures keep their calculations.
 - **Document library**: import PDFs, Word files, and more; search them, ask questions, and follow citations back to the source text.
@@ -52,7 +52,7 @@ The product UI is in Chinese.
 
 </details>
 
-The home page opens with indices, your watchlist, and holdings, then the AI chat, then links into each feature grouped by six primary sections. The sidebar stays expanded by default and can be collapsed.
+The home page opens with indices, your watchlist, and holdings, then the AI chat, then links into each feature grouped by seven primary sections. The sidebar stays expanded by default and can be collapsed.
 
 <table>
 <tr>
@@ -81,11 +81,13 @@ Captured on October 10, 2026 from the development build (market closed), in a se
 
 ## Features
 
-The sidebar has 8 primary sections; those with several pages fold them into a second level (click the arrow next to a section to expand it; with the sidebar collapsed to icons, clicking an icon opens its pages beside it):
+The sidebar has 9 primary sections; those with several pages fold them into a second level (click the arrow next to a section to expand it; with the sidebar collapsed to icons, clicking an icon opens its pages beside it):
 
 | Section | Page | What it does |
 |---|---|---|
 | Home | — | China and global indices, your watchlist, and your holdings (market value, holdings P&L, today's P&L, prices refreshing on their own while markets are open) first; chat with AI below, and open features from the grouped directory |
+| Watch | Live moves | During the session: your holdings and watchlist (price, today's change, unrealized P&L %), yesterday's limit-up ladder (how each name is doing today and whether it is sealed again), the top ten movers among stocks above 50 billion yuan in market cap, and yesterday's top ten by turnover; a move of 1.5% or more within 3 minutes is logged as a surge or drop, and touching or leaving the limit-up price as sealed or opened, with filters by size and scope. Refreshes on its own while the page is open and stops when you switch away |
+| Watch | Auction & intraday | How yesterday's limit-up names opened in the 09:25 auction (median, share opening higher, by board level, the highest streak), the sentiment path across six snapshots (09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00: the median move of yesterday's limit-ups plus market-wide limit-ups, failed seals, and limit-downs at that moment), and last night's next-day checks against intraday readings. Snapshots are saved automatically at each time; a missed one cannot be filled in later |
 | Review | Sentiment review | How hot short-term sentiment is: the money-making effect, promotion rates, the streak premium, gaps in the board ladder, how yesterday's strong names did today, seal quality, the theme tree, and first-board names; an AI review written in five parts (sentiment, money, themes, the dragon-tiger list, leading names) plus a summary, with every number and citation checked by the app, the cited evidence one click away, and suggested conditions you can add to next-day checks in one click; plus the last 5 days, sentiment history, next-day checks (write conditions the night before, checked automatically after the next close), limit-up sample stats, and structural shifts |
 | Review | Daily review | Where the market stands at a glance: breadth, turnover, short-term sentiment (limit-ups / limit-downs / failed seals, how yesterday's limit-ups did today, promotion rates, limit-up streaks), where the indices sit over the longer term, margin balance, equity vs. bond yields, sector fund flows, and the Dragon-Tiger list; limit-up stocks grouped by industry and compared with the previous two trading days |
 | Industry news | Intelligence radar | News, company filings, and event leads that warrant further checking |
@@ -215,6 +217,8 @@ While the app is running, three messages are put together after each A-share tra
 - **Close summary** (15:40 by default): major index moves, limit-up / failed-limit-up / limit-down counts, the longest limit-up streak, the top three industries by main-fund net inflow and outflow, and how many stocks made the Dragon-Tiger list.
 - **Watchlist changes** (16:15 by default): each watchlist stock's change for the day (US and HK stocks show their quote date), titles of new filings for A-share watchlist stocks since the last run (up to 30 stocks), and A-share watchlist stocks at least 70% of the way to an abnormal-volatility threshold (estimated from the rules; exchange announcements are authoritative).
 - **Criteria due** (16:30 by default): verdict criteria and falsifiers in your ledger that have reached their date, with titles of company filings since you wrote them (A-shares), as a reminder to come back and mark them. Criteria due on a weekend are reminded on the next trading day, and each one only once.
+
+Two more jobs run in the background without sending a message: **Short-term close fetch** (15:35 by default) saves the day's final sentiment readings, how yesterday's limit-up names did today, the limit-up structure, and the fact tables on your computer, so sentiment history and next-day checks open without waiting, and the history keeps growing even though Eastmoney only keeps about a month; **intraday snapshots** are saved on trading days at 09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00 for Watch · Auction & intraday, and a missed one cannot be filled in later.
 
 Facts only, no buy or sell suggestions; a block that could not be fetched says so instead of showing 0. Times are Beijing time and can be changed or turned off. Weekends and holidays are skipped; if the trading calendar cannot be fetched, nothing runs that day and the inbox says why. Nothing runs while the computer is off or the app is closed; when you open it later the same day, any task past its time runs once.
 

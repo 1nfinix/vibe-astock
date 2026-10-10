@@ -422,6 +422,18 @@ export const backend = {
   },
   shortlineReviewCancel: <T>(id: string) =>
     call<T>("/view/shortline_review", { method: "POST", body: JSON.stringify({ action: "cancel", id }) }),
+  /**
+   * 盯盘 · 实时动态:页面开着时每隔几秒问一次,后台取行情、判断异动(几个窗口共用一份,不会重复报)。
+   * 下一次隔多久听后端回的 `poll_ms`。类型见 shortline/watchTypes.ts。
+   */
+  shortlineWatchPoll: <T>(signal?: AbortSignal) =>
+    call<T>("/view/shortline_watch", { method: "POST", signal, body: JSON.stringify({ action: "poll" }) }),
+  /** 盯盘 · 竞价与盘中路径:某天的时点快照、09:25 竞价、昨晚验证条件的盘中读数(不给日期 = 今天) */
+  shortlineIntraday: <T>(date: string | null, signal?: AbortSignal) =>
+    call<T>(`/view/shortline_intraday${date ? `?date=${encodeURIComponent(date)}` : ""}`, { signal }),
+  /** 在时点窗口里手动存一张快照(窗口外后端会说哪几个时间能存) */
+  shortlineIntradayCapture: <T>() =>
+    call<T>("/view/shortline_intraday", { method: "POST", body: JSON.stringify({ action: "capture" }) }),
 
   reviewTiers: (opts: { date: string; refresh?: boolean }) =>
     call<ReviewTiersResult>(`/view/review_tiers?date=${encodeURIComponent(opts.date)}${opts.refresh ? "&refresh=1" : ""}`),

@@ -18,6 +18,9 @@ export const router = createBrowserRouter([
     hydrateFallbackElement: <p role="status" className="p-6 text-sm text-muted-foreground">正在打开研究工作台…</p>,
     children: [
       { path: "/", element: <Home /> },
+      { path: "/watch", lazy: async () => ({ Component: (await import("@/pages/Watch")).Watch }) },
+      // 竞价与盘中在侧栏里是单独一项,地址写死(不用 :tab),侧栏和首页目录都认得出它
+      { path: "/watch/intraday", lazy: async () => ({ Component: (await import("@/pages/Watch")).Watch }) },
       { path: "/shortline", lazy: async () => ({ Component: (await import("@/pages/Shortline")).Shortline }) },
       { path: "/shortline/:tab", lazy: async () => ({ Component: (await import("@/pages/Shortline")).Shortline }) },
       { path: "/daily-review", lazy: async () => ({ Component: (await import("@/pages/DailyReview")).DailyReview }) },

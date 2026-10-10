@@ -4,10 +4,12 @@
  */
 import { registerView } from "../../views.ts";
 import { shortlineHistory } from "./history.ts";
+import { shortlineIntraday, shortlineIntradayAct } from "./intraday.ts";
 import { shortlineReview, shortlineReviewAct } from "./review.ts";
 import { shortlineSamples } from "./samples.ts";
 import { shortlineStructure } from "./structure.ts";
 import { shortlineVerify, shortlineVerifyAct } from "./verification.ts";
+import { shortlineWatchAct, shortlineWatchAlerts } from "./watch.ts";
 import { shortlineWeekly } from "./weekly.ts";
 
 registerView({ id: "shortline_history", label: "情绪历史", run: shortlineHistory });
@@ -16,3 +18,5 @@ registerView({ id: "shortline_samples", label: "涨停样本统计", run: shortl
 registerView({ id: "shortline_structure", label: "结构变化", run: shortlineStructure });
 registerView({ id: "shortline_review", label: "AI 复盘", run: shortlineReview, act: shortlineReviewAct });
 registerView({ id: "shortline_weekly", label: "近 5 天热度与龙头谱系", run: shortlineWeekly });
+registerView({ id: "shortline_intraday", label: "竞价与盘中路径", run: shortlineIntraday, act: (ctx, body, signal) => shortlineIntradayAct(ctx, body, signal) });
+registerView({ id: "shortline_watch", label: "盯盘 · 实时动态", run: shortlineWatchAlerts, act: (ctx, body, signal) => shortlineWatchAct(ctx, body, signal) });

@@ -478,3 +478,34 @@ test("🔴 JSON 能解析、里面某一条坏了:同样报损坏,改开关 / �
     assert.equal(fs.readFileSync(inboxFile, "utf8"), text);
   } finally { clean(ctx); }
 });
+
+test("每拍钩子:每拍都调(没到点的任务也一样),门判断共用按天缓存;钩子出错不耽误定时任务", async () => {
+  const ctx = tmpCtx();
+  try {
+    const h = harness("15:40");
+    const seen: string[] = [];
+    let fail = false;
+    const def: ScheduleDef = {
+      ...h.def,
+      beat: async (b) => {
+        seen.push(b.hm);
+        if (fail) throw new Error("取数超时");
+        if (b.hm === "09:25") { const g = await b.gate(); return `门 ${g.status}`; }
+      },
+    };
+    validateSchedule(def);
+    let r = await tick(ctx, { now: sh("2026-10-08T09:24"), def });
+    assert.equal(r.beat, undefined);
+    assert.equal(h.gateCalls, 0, "钩子没要门判断时不查门");
+    r = await tick(ctx, { now: sh("2026-10-08T09:25"), def });
+    assert.equal(r.beat, "门 open");
+    assert.equal(h.gateCalls, 1);
+    fail = true;
+    r = await tick(ctx, { now: sh("2026-10-08T15:40"), def });
+    assert.match(r.beat ?? "", /^出错:取数超时/);
+    assert.deepEqual(r.ran.map((x) => x.status), ["ok"], "钩子出错,到点的任务照跑");
+    assert.equal(h.gateCalls, 1, "任务和钩子共用当天的门判断");
+    assert.deepEqual(seen, ["09:24", "09:25", "15:40"]);
+    assert.throws(() => validateSchedule({ ...h.def, beat: "x" as never }), /每拍钩子/);
+  } finally { clean(ctx); }
+});

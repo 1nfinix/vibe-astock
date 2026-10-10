@@ -301,7 +301,15 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
   timeZone: SCHEDULE_TZ,
   gateNote: "按北京时间,只在 A 股交易日运行(周末、节假日不跑);交易日历取不到时当天不运行,并在收件箱说明。",
   gate: financeGate,
+  // 短线的盘中快照:每一拍看一次是否到了快照时点(09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00)。
+  // 动态导入:intraday.ts 反过来要用本文件的 pool / rowsOf,静态互相导入容易在加载顺序上出事
+  beat: async (b) => (await import("./shortline/intraday.ts")).intradayBeat(b),
   jobs: [
+    {
+      id: "shortline_close_fetch", label: "短线收盘取数", at: "15:35", defaultEnabled: true,
+      description: "A 股收盘后把当天定稿的每日情绪读数、昨日涨停股今日表现、涨停结构和事实表先取好存在本机:以后打开情绪历史、明日验证、涨停样本不用等,东财只留约一个月的数据也能一直攒下去。不推送消息。",
+      run: async (j) => (await import("./shortline/close_fetch.ts")).shortlineCloseFetch(j),
+    },
     {
       id: "close_digest", label: "收盘摘要", at: "15:40", defaultEnabled: true,
       description: "A 股收盘后:主要指数涨跌、涨停 / 炸板 / 跌停家数、最高连板、主力资金净流入和净流出前三的行业、龙虎榜上榜数。只列事实。",

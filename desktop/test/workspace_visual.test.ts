@@ -8,10 +8,10 @@ test("侧栏两级：一级栏目固定顺序、二级收进组里、接入 AI �
   const layout = read("verticals/finance/components/layout/Layout.tsx");
   // 2026-10 Simon：左侧栏目太多要合并成两级（方案与 Codex gpt-6-astra 讨论定稿）；
   // 10-09 Simon 重排：先看自己的股票（首页）→ 复盘 → 产业资讯 → 产业研究 → 研究工具（候选池放最后）
-  // 10-10 Vibe AStock 偏短线：复盘一组，情绪复盘排第一
-  assert.deepEqual(NAV_SECTIONS.map((s) => s.label), ["首页", "复盘", "产业资讯", "产业研究", "研究工具", "我的股票", "资料库", "接入 AI"]);
+  // 10-10 Vibe AStock 偏短线：复盘一组，情绪复盘排第一；首页和复盘之间加盯盘一组
+  assert.deepEqual(NAV_SECTIONS.map((s) => s.label), ["首页", "盯盘", "复盘", "产业资讯", "产业研究", "研究工具", "我的股票", "资料库", "接入 AI"]);
   assert.deepEqual(NAV_SECTIONS.map((s) => s.pages.map((p) => p.label)), [
-    ["首页"], ["情绪复盘", "每日复盘"], ["资讯雷达", "产业信号"], [], ["个股深挖", "多空辩论", "回测", "候选池"],
+    ["首页"], ["实时动态", "竞价与盘中"], ["情绪复盘", "每日复盘"], ["资讯雷达", "产业信号"], [], ["个股深挖", "多空辩论", "回测", "候选池"],
     ["自选与持仓", "事件日历", "提醒"], ["我的研报", "研究记录"], ["接入 AI"],
   ]);
   assert.deepEqual(NAV_SECTIONS.filter((s) => s.pinned).map((s) => s.label), ["接入 AI"]);
