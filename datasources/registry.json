@@ -3737,6 +3737,31 @@
       "computed": true,
       "libs": [],
       "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_settled",
+      "title": "短线昨日涨停股当日表现明细(前一交易日收盘涨停的每只票在当天的涨跌幅、前一天连板数、最后封板时间、行业、是否再涨停;涨停样本统计的原料)",
+      "layer": "8 打板",
+      "module": "shortline_emotion",
+      "function": "build_settled",
+      "mapper": "shortline_settled_map",
+      "endpoint_label": "push2ex 昨日涨停池 → settled_rows",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0 duanxian/backtest.py 的取数部分;逐只证据以代码作 record_key。1 次东财请求。东财只留最近一个月左右:已收盘的日子结果不变、长期缓存,历史靠缓存越积越长;没收盘的那一天一律 partial(不缓存)。⚠️ 样本只含前一天收盘留在涨停池里的票(冲板没封住的不在内);封板时间是前一天的最后封板时间,不是首封。界面视图「涨停样本统计」按日扇出调用它,再按策略分组算胜率、期望和分环境表现"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
       "id": "cn_shortline_live",
       "title": "短线盘中情绪(今天此刻:涨停 / 炸板 / 跌停家数、最高板、连板数、封板率 / 炸板率、昨日涨停今又封住的比例、1进2、昨日涨停股此刻中位涨幅)",
       "layer": "10 情绪",

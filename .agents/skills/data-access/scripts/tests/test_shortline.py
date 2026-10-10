@@ -1,4 +1,4 @@
-"""短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily)。全程不联网。
+"""短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily / cn_shortline_settled)。全程不联网。
 
 行为沿用 Vibe AStock v2.0.0 的测试(test_core_logic.py 里情绪指标 / 盘面事实那几组),改成本仓库的行形状;
 另加三处本仓库的修正:主板 ST 按 2026-07-06 起 10%、分制度表不漏没有涨停的制度、炸板池取不到整天不算。
@@ -453,6 +453,62 @@ class TestDaily:
         assert r["status"] == "failed" and not r["evidence"] and len(r["missing"]) == 3
 
 
+class TestSettled:
+    """昨日涨停股当日表现明细(涨停样本统计的原料)。"""
+
+    def _rows(self):
+        return _settled_rows() + [
+            # 价格缺失:按制度推定(20cm 涨 19.9% 算涨停);涨跌幅也缺的行 settled_pool 已经丢掉
+            {"code": "300750", "name": "丁", "board": "20cm", "ret": 19.9, "prev_boards": 1, "seal_time": "143500", "sector": ""},
+        ]
+
+    def test_rows_and_limit_up_by_own_rule(self, daily, monkeypatch):
+        monkeypatch.setattr(S, "settled_pool", lambda d: self._rows())
+        r = E.build_settled("2026-10-09")
+        assert r["available"] and r["sample"] == 4 and (r["date"], r["prev_date"], r["settled"]) == ("2026-10-09", "2026-10-08", True)
+        by = {x["code"]: x for x in r["rows"]}
+        assert [by[c]["limit_up"] for c in ("000001", "000002", "000003", "300750")] == [False, False, True, True]
+        assert by["000001"]["seal_time"] == "" and by["300750"]["seal_time"] == "143500"
+        assert by["000002"]["prev_boards"] == 2 and by["000001"]["sector"] == "甲行业"
+
+    def test_limit_up_uses_that_days_rule(self, daily, monkeypatch):
+        """主板 ST 7 月 6 日起才是 10%:7 月 3 日涨 5% 就是涨停(VA 按现行制度判,会判成没涨停)。"""
+        monkeypatch.setattr(S, "review_day", lambda d: d)
+        monkeypatch.setattr(S, "settled_pool", lambda d: [{"code": "600001", "name": "ST甲", "ret": 5.0, "prev_boards": 1}])
+        assert E.build_settled("2026-07-03")["rows"][0]["limit_up"] is True
+        assert E.build_settled("2026-10-09")["rows"][0]["limit_up"] is False
+
+    def test_unknown_limit_up_stays_none(self, daily, monkeypatch):
+        monkeypatch.setattr(S, "settled_pool", lambda d: [{"code": "600000", "name": "戊", "ret": 2.0, "prev_boards": 1}])
+        monkeypatch.setattr(S, "is_limit_up_row", lambda row, day=None: None)
+        r = E.build_settled("2026-10-09")
+        assert r["rows"][0]["limit_up"] is None
+        m = M.shortline_settled_map(r, _mctx("cn_shortline_settled"))
+        assert not [e for e in m["evidence"] if e["field"] == "settled_limit_up"], "判不了就不写,不能写成「否」"
+
+    def test_mapper_evidence_per_code(self, daily, monkeypatch):
+        monkeypatch.setattr(S, "settled_pool", lambda d: self._rows())
+        m = M.shortline_settled_map(E.build_settled("2026-10-09"), _mctx("cn_shortline_settled"))
+        assert m.get("status") is None and not m["missing"]
+        got = {(e["field"], e.get("record_key")): e["value"] for e in m["evidence"]}
+        assert got[("settled_sample", None)] == 4
+        assert got[("settled_ret", "000002")] == -6.5 and got[("settled_prev_boards", "000003")] == 3
+        assert got[("settled_limit_up", "000003")] == "是" and got[("settled_limit_up", "000001")] == "否"
+        assert got[("settled_seal_time", "300750")] == "143500" and ("settled_seal_time", "000001") not in got
+        assert ("settled_sector", "300750") not in got, "行业空就不写"
+        assert m["extra"]["settled"] is True and m["extra"]["result"]["sample"] == 4
+        t = m["extra"]["text"]
+        assert "首板 2 只" in t and "连板 2 只" in t and "最后封板时间" in t
+
+    def test_unsettled_is_partial_and_missing_is_failed(self, daily, monkeypatch):
+        monkeypatch.setattr(S, "is_settled", lambda d: False)
+        m = M.shortline_settled_map(E.build_settled("2026-10-09"), _mctx("cn_shortline_settled"))
+        assert m["status"] == "partial" and "不缓存" in m["degraded"]
+        monkeypatch.setattr(S, "settled_pool", lambda d: None)
+        m = M.shortline_settled_map(E.build_settled("2026-10-09"), _mctx("cn_shortline_settled"))
+        assert m["status"] == "failed" and not m["evidence"] and m["missing"][0]["field"] == "settled_pool"
+
+
 # ================================================================ 映射成证据
 def _metrics(**over) -> dict:
     m = {"date": "2026-10-09", "prev_date": "2026-10-08", "settled": True,
@@ -534,7 +590,7 @@ def test_registry_entries_resolve():
     reg = json.load(open(REGISTRY, encoding="utf-8"))
     by_id = {e["id"]: e for e in reg["endpoints"]}
     import importlib
-    for ep_id, args in (("cn_shortline_emotion", {"date"}), ("cn_shortline_cycle", {"date", "lookback"}), ("cn_shortline_facts", {"date"}), ("cn_shortline_daily", {"date"}),
+    for ep_id, args in (("cn_shortline_emotion", {"date"}), ("cn_shortline_cycle", {"date", "lookback"}), ("cn_shortline_facts", {"date"}), ("cn_shortline_daily", {"date"}), ("cn_shortline_settled", {"date"}),
                          ("cn_shortline_themes", {"date", "top"}), ("cn_shortline_firstboard", {"date"})):
         e = by_id[ep_id]
         assert e["symbol_kind"] == "none" and e["computed"] is True and set(e["args"]) == args

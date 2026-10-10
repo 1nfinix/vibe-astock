@@ -4,7 +4,9 @@
  */
 import { registerView } from "../../views.ts";
 import { shortlineHistory } from "./history.ts";
+import { shortlineSamples } from "./samples.ts";
 import { shortlineVerify, shortlineVerifyAct } from "./verification.ts";
 
 registerView({ id: "shortline_history", label: "情绪历史", run: shortlineHistory });
 registerView({ id: "shortline_verify", label: "明日验证", run: shortlineVerify, act: shortlineVerifyAct });
+registerView({ id: "shortline_samples", label: "涨停样本统计", run: shortlineSamples });

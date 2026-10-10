@@ -116,7 +116,7 @@ export function percentile(value: number | null, hist: (number | null)[]): numbe
   return roundTo(vals.filter((v) => v <= value).length / vals.length, 3);
 }
 
-function median(vals: number[]): number {
+export function median(vals: number[]): number {
   const s = [...vals].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;

@@ -1,6 +1,6 @@
 """映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
-cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder / cn_shortline_turnover_top /
-cn_shortline_bigcaps)。约定同 mappers.py。
+cn_shortline_settled / cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder /
+cn_shortline_turnover_top / cn_shortline_bigcaps)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
 - 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources.mappers import empty, ev, out  # noqa: E402
-from sources.shortline_emotion import render_cycle, render_daily, render_metrics  # noqa: E402
+from sources.shortline_emotion import render_cycle, render_daily, render_metrics, render_settled  # noqa: E402
 from sources.shortline_facts import render_facts  # noqa: E402
 from sources.shortline_live import render_live  # noqa: E402
 from sources.shortline_themes import render_firstboard, render_themes  # noqa: E402
@@ -150,6 +150,29 @@ def shortline_daily_map(result: dict, ctx: dict) -> dict:
     extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_daily(result), "result": result,
              "computation": _computation("shortline_emotion.build_daily", {"date": day})}
     return a.finish(bool(result.get("settled")), extra, "每日情绪读数一项都没算出来")
+
+
+# ---------------------------------------------------------------- 昨日涨停股当日表现明细
+def shortline_settled_map(result: dict, ctx: dict) -> dict:
+    """逐只证据以代码作 record_key。是否再涨停写成「是 / 否」文字(布尔不进数字证据);判不了就不写。"""
+    if not result:
+        return empty("昨日涨停股当日表现为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+    if a.block("settled_pool", result):
+        a.num("settled_sample", result.get("sample"), "只", note=f"{prev} 收盘涨停、在 {day} 有表现记录的只数；定稿记录（东财昨日涨停池当日表现）")
+        for r in result.get("rows") or []:
+            k = r["code"]
+            a.text("settled_name", r.get("name"), key=k)
+            a.num("settled_ret", r.get("ret"), "%", key=k, note=f"{day} 涨跌幅")
+            a.num("settled_prev_boards", r.get("prev_boards"), "板", key=k, note=f"{prev} 的连板数")
+            a.text("settled_seal_time", r.get("seal_time"), key=k, note=f"{prev} 的最后封板时间（HHMMSS），不是首封")
+            a.text("settled_sector", r.get("sector"), key=k, note="东财行业（不是题材）")
+            if r.get("limit_up") is not None:
+                a.text("settled_limit_up", "是" if r["limit_up"] else "否", key=k, note=f"{day} 收盘是否在涨停价（按这只票自己的涨跌幅制度）")
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_settled(result), "result": result,
+             "computation": _computation("shortline_emotion.build_settled", {"date": day}, "取东财昨日涨停池")}
+    return a.finish(bool(result.get("settled")), extra, "昨日涨停股当日表现没取到")
 
 
 # ---------------------------------------------------------------- 情绪周期

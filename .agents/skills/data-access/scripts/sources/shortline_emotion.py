@@ -298,6 +298,26 @@ def build_daily(date: Optional[str] = None) -> dict:
     return {"date": d, "prev_date": S.prev_trade_date(d), "settled": S.is_settled(d), "readings": daily_readings(d)}
 
 
+# ---------------------------------------------------------------- 昨日涨停股当日表现明细(涨停样本统计原料)
+def build_settled(date: Optional[str] = None) -> dict:
+    """端点 `cn_shortline_settled` 的入口:前一交易日收盘涨停的每只票在 `date` 当天的表现。
+
+    界面视图「涨停样本统计」按日扇出调用它,分组统计在编排层算(移植自 Vibe AStock v2.0.0 duanxian/backtest.py 的取数部分)。
+    ⚠️ `seal_time` 是前一天的**最后**封板时间,不是首封(VA 2026-07-24 实测对照当天涨停池,116 只全部等于最后封板时间)。
+    ⚠️ 样本只有前一天收盘留在涨停池里的票:冲板没封住的不在里面。
+    是否再涨停按这只票自己在那天的涨跌幅制度判(`is_limit_up_row`);判不了给 None,不猜。
+    """
+    d = S.review_day(date)
+    base = {"date": d, "prev_date": S.prev_trade_date(d), "settled": S.is_settled(d)}
+    rows = S.settled_pool(d)
+    if not rows:
+        return {**base, "available": False, "reason": "东财昨日涨停池没取到(或当天为空)", "rows": []}
+    out = [{"code": r["code"], "name": r.get("name") or "", "ret": r["ret"], "prev_boards": r.get("prev_boards") or 1,
+            "seal_time": r.get("seal_time") or "", "sector": r.get("sector") or "", "limit_up": S.is_limit_up_row(r, d)}
+           for r in rows]
+    return {**base, "available": True, "sample": len(out), "rows": out}
+
+
 def build_metrics(date: Optional[str] = None) -> dict:
     """当天四项一起算(共用同一个前一交易日和池子)。端点 `cn_shortline_emotion` 的入口。"""
     d = S.review_day(date)
@@ -385,6 +405,25 @@ def render_daily(d: dict) -> str:
            f"1进2 {f(r.get('promotion_1to2'), 'rate')}")
     miss = "；".join((r.get("reasons") or {}).values())
     return f"[每日情绪读数 {d.get('date', '')}] {seg}" + (f"（未取到：{miss}）" if miss else "")
+
+
+def render_settled(d: dict) -> str:
+    """一行概览:首板 / 连板各多少只、中位涨跌幅、再涨停几只。逐只明细在证据里。"""
+    day, prev = d.get("date", ""), d.get("prev_date") or "前一交易日"
+    if not d.get("available"):
+        return f"[昨日涨停股当日表现 {day}] 不可用（{d.get('reason', '未知')}）"
+
+    def seg(label: str, rs: list[dict]) -> str:
+        if not rs:
+            return f"{label} 0 只"
+        again = sum(1 for r in rs if r.get("limit_up") is True)
+        return f"{label} {len(rs)} 只、中位 {median(r['ret'] for r in rs):+.2f}%、再涨停 {again} 只"
+
+    rows = d.get("rows") or []
+    first = [r for r in rows if r.get("prev_boards") == 1]
+    consec = [r for r in rows if (r.get("prev_boards") or 0) >= 2]
+    return (f"[昨日涨停股当日表现 {day}｜{prev} 收盘涨停 {len(rows)} 只] {seg('首板', first)}；{seg('连板', consec)}"
+            "（样本只含前一天收盘封住的票，冲板没封住的不在内；封板时间是最后封板时间）")
 
 
 def render_cycle(cy: dict) -> str:
