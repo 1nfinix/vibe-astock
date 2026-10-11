@@ -25,6 +25,7 @@ import { FINANCE_PLUGIN } from "../src/finance/plugin.ts";
 import { API_COOKIE, PRODUCT_NAME, PRODUCT_SLUG, REPO_SLUG } from "../src/brand.ts";
 
 
+import { DIRECTIONS, VERIFY_METRIC_KEYS } from "../src/finance/shortline/verify_metrics.ts";
 import "../src/finance/register.ts";   // 测试文件也是入口:插件要先注册
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** 解释器:VRA_PYTHON → 仓库 .venv → 上一级 .venv(开发布局)→ PATH 上的 python3;不写死任何机器的绝对路径 */
@@ -984,6 +985,41 @@ test("🔴 /ledger 的 records 与 issues 必须来自同一次读盘(分两次�
   assert.equal(bad.records.thesis?.length, 1, "坏记录仍然返回(不删不改)");
   assert.equal(bad.issues.thesis?.length, 1, "同一份响应里必须同时报出问题");
   assert.equal(bad.issues.thesis?.[0]!.id, rec.id, "issue 指的就是响应里那条");
+});
+
+test("🔴 垂类自管的台账种类(managedWrites)不许经通用接口写或删,读照常;别的种类不受影响", async () => {
+  const ctx = svcCtx();
+  const managed = Object.entries(currentPlugin().ledger?.kinds ?? {}).filter(([, d]) => d.managedWrites === true).map(([k]) => k);
+  // 金融包:明日验证有 09:15 时间锁,AI 复盘 / 周报只由自己的流程写(连同数字核对结果)
+  assert.deepEqual(managed.sort(), ["shortline_review", "shortline_weekly_review", "verification"]);
+  // 内部写入照常(页面自己的写入流程走这些)
+  const seeded = ledgerUpsert(ctx, { kind: "verification", record: { date: "2026-10-09", metric: VERIFY_METRIC_KEYS[0]!, direction: DIRECTIONS[0]! } });
+  const server = createApiServer(ctx, { token: "t-test-token-0123456789" });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  const post = (p: string, body: unknown) => fetch(`http://127.0.0.1:${port}${p}`, {
+    method: "POST", headers: { authorization: "Bearer t-test-token-0123456789", "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  try {
+    for (const k of managed) {
+      const w = await post(`/ledger/${k}`, { date: "2026-10-09", migrated_from: "va:x", written_at: "2026-10-08T20:00:00+08:00" });
+      assert.equal(w.status, 400, `${k} 通用写入必须被拒`);
+      assert.equal(((await w.json()) as { error?: string }).error, "managed_kind");
+      const d = await post(`/ledger/${k}/delete`, { id: seeded.id });
+      assert.equal(d.status, 400, `${k} 通用删除必须被拒`);
+      assert.equal(((await d.json()) as { error?: string }).error, "managed_kind");
+    }
+    assert.equal(ledgerList(ctx, "verification").verification?.length, 1, "被拒的删除没有删掉");
+    const g = await fetch(`http://127.0.0.1:${port}/ledger/verification`, { headers: { authorization: "Bearer t-test-token-0123456789" } });
+    assert.equal(g.status, 200, "读照常");
+    assert.equal(((await g.json()) as { verification?: unknown[] }).verification?.length, 1);
+    const n = await post("/ledger/note", { title: "普通种类照常写" });
+    assert.equal(n.status, 200);
+    const u = await post("/ledger/no_such_kind", {});
+    assert.equal(((await u.json()) as { error?: string }).error, "unknown_kind", "未知种类仍按原来的码报");
+  } finally {
+    server.close();
+  }
 });
 
 test("请求体上限按字节算,不按字符算(一个中文 3 字节却只算 1 个字符)", async () => {

@@ -418,6 +418,19 @@ test("台账种类名:注册期必须挡住路径穿越与原型污染名(实测
   registerPlugin(FINANCE_PLUGIN);
 });
 
+test("台账种类的 managedWrites 标记:只收布尔值;金融包用它注册得上", () => {
+  const kind = (v: unknown) => ({ ...FINANCE_PLUGIN, ledger: { kinds: { k: { label: "x", properties: {}, required: [], managedWrites: v } } } });
+  for (const v of ["true", 1, null]) {
+    resetPlugin();
+    assert.throws(() => registerPlugin(kind(v) as never), `managedWrites=${JSON.stringify(v)} 必须被拒`);
+  }
+  resetPlugin();
+  registerPlugin(kind(true) as never);
+  assert.equal(currentPlugin().ledger?.kinds.k?.managedWrites, true);
+  resetPlugin();
+  registerPlugin(FINANCE_PLUGIN);
+});
+
 test("🔴 stageSchemas 与 ledger 是**同一根因**的两个编译点:未知 format 两边都要拒", () => {
   const st = FINANCE_PLUGIN.stages[0]!;
   // ledger 那处上一轮已修;这次确认兄弟编译点没被漏下(漏一处 = 那一半静默不校验)

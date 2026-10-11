@@ -1491,6 +1491,17 @@ export function ledgerReplace(ctx: ServiceContext, req: { kind: string; match: (
   return out.records;
 }
 
+/**
+ * 通用台账接口(api 的 `POST /ledger/:kind` 和 `/delete`)写之前过这一道:垂类标了 `managedWrites` 的种类只能走它自己的写入流程。
+ * 🔴 那些种类的写入流程里有通用接口不知道的规矩(时间锁、只许整组替换……)。通用接口能直接写字段、删条目,
+ *    规矩就形同虚设。内部写入(ledgerUpsert / ledgerInsertMany / ledgerReplace / ledgerRemove)不经这里。
+ */
+export function assertGenericLedgerWrite(ctx: ServiceContext, kind: unknown): void {
+  const k = ledgerGuard(ctx, kind);
+  const def = ledgerKindDefs()[k]!;
+  if (def.managedWrites === true) throw new ServiceError("managed_kind", `「${def.label}」只能在它自己的页面里改`);
+}
+
 export function ledgerRemove(ctx: ServiceContext, req: { kind: string; id: string }): { removed: boolean } {
   const k = ledgerGuard(ctx, req.kind);
   let removed: boolean;

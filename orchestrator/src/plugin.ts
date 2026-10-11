@@ -608,6 +608,12 @@ export interface LedgerKindDef {
    * 用于只在页面里给用户本人看的记录(是哪几种由垂类决定);没写 = 照常可读。Core 只按标记过滤,不认识具体种类。
    */
   readonly hiddenFromAssistant?: boolean;
+  /**
+   * true = 这一种记录**只能由垂类自己的写入流程增删改**(它在那里有自己的校验或时间锁);
+   * 通用台账接口(`POST /ledger/:kind` 和 `/delete`)一律拒绝,读照常。没写 = 照常可经通用接口写。
+   * Core 只按标记挡,不认识具体种类;垂类内部调 ledgerUpsert / ledgerInsertMany / ledgerReplace 不受影响。
+   */
+  readonly managedWrites?: boolean;
 }
 
 /** Core 拥有的信封键 —— 垂类字段不许与它们重名(注册期校验) */
@@ -700,7 +706,7 @@ const LEDGER = {
       propertyNames: LEDGER_KIND_NAME,
       additionalProperties: {
         type: "object", additionalProperties: false, required: ["label", "properties", "required"],
-        properties: { label: NONBLANK, properties: { type: "object" }, required: strArray({ uniqueItems: true }), hiddenFromAssistant: { type: "boolean" } },
+        properties: { label: NONBLANK, properties: { type: "object" }, required: strArray({ uniqueItems: true }), hiddenFromAssistant: { type: "boolean" }, managedWrites: { type: "boolean" } },
       },
     },
     // 显示名:字段键 / 枚举值 → 人话。放在**种类之外**是因为 status 这类枚举跨种类共用
@@ -1506,7 +1512,7 @@ function register(plugin: Plugin): void {
   if (rawLedger !== undefined) {
     assertNoExtraKeys("ledger", rawLedger, ["kinds", "fieldLabels", "enumLabels"]);
     for (const [k, v] of Object.entries((decl as { ledger?: { kinds: Record<string, unknown> } }).ledger?.kinds ?? {})) {
-      assertNoExtraKeys(`ledger.kinds.${k}`, v, ["label", "properties", "required", "hiddenFromAssistant"]);
+      assertNoExtraKeys(`ledger.kinds.${k}`, v, ["label", "properties", "required", "hiddenFromAssistant", "managedWrites"]);
     }
   }
   for (const [k, v] of Object.entries(rawScripts)) {

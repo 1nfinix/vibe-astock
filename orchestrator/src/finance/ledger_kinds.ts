@@ -268,6 +268,9 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   verification: {
     label: "验证条件",
+    // 只能从「明日验证」页面写(shortline/verification.ts 的 act):那里按 09:15 开盘竞价锁删除、判「事后」;
+    // 通用台账接口能直接写 written_at、删条目,就绕过了这把锁
+    managedWrites: true,
     properties: {
       date: { type: "string", format: "date" },
       metric: { type: "string", enum: VERIFY_METRIC_KEYS },
@@ -306,6 +309,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
    */
   shortline_review: {
     label: "AI 复盘",
+    managedWrites: true, // 只由 AI 复盘自己写(连同数字核对结果),不许经通用接口改
     properties: {
       date: { type: "string", format: "date" },
       /** 写的时候那一天收盘了没有;false = 盘中写的,数字后来还会变 */
@@ -334,6 +338,7 @@ export const FINANCE_LEDGER_KINDS: Record<string, LedgerKindDef> = {
   /** AI 周报:一周(周一起)的情绪走势、题材轮动、明日验证对账回看 + 汇总。只看市场数据,不含个人交易 */
   shortline_weekly_review: {
     label: "AI 周报",
+    managedWrites: true,
     properties: {
       /** 写到哪一天为止(这一周里的最后一个交易日,或写的那天) */
       date: { type: "string", format: "date" },
