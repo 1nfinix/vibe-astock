@@ -3,7 +3,7 @@
 格式遵循 Keep a Changelog，并采用语义化版本。v1.1.3 及更早的条目保留旧版原文。
 底座（Vibe Research）此前的变化见 [Vibe Research 的 CHANGELOG](https://github.com/simonlin1212/Vibe-Research/blob/main/CHANGELOG.md)。
 
-## [2.0.0] - 未发布
+## [2.0.0] - 2026-10-11
 
 整个产品换到 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) v2.1.0 的同一套底座上重做，再把短线功能搬过来、补齐：
 盘中在「盯盘」看持仓、自选和昨日梯队的异动；收盘后在「情绪复盘」看情绪读数，让 AI 分五段写复盘，写下明天要验证的条件，下一个交易日收盘自动对账；
