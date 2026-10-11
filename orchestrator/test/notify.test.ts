@@ -95,6 +95,9 @@ test("推送正文:标题 + 事实行 + 本机链接,超长按字节截断", () 
   assert.equal(messageText({ title: "t", lines: [], link: "/x" }, "https://vr.example.app"), "【t】\n\n打开:https://vr.example.app/x", "远程模式的对外地址不写「在本机」");
   assert.equal(uiBase({ VRA_PUSH_LINK_BASE: "https://vr.example.app/" }), "https://vr.example.app");
   assert.equal(uiBase({}), `http://127.0.0.1:${UI_PORT}`);
+  assert.equal(uiBase({ VRA_UI_PORT: "5931" }), "http://127.0.0.1:5931", "默认端口被占时启动器换了端口,推送链接跟着换");
+  assert.equal(uiBase({ VRA_UI_PORT: "abc" }), `http://127.0.0.1:${UI_PORT}`);
+  assert.equal(uiBase({ VRA_UI_PORT: "5931", VRA_PUSH_LINK_BASE: "https://a.example/" }), "https://a.example", "远程模式仍用对外地址");
   const long = messageText({ title: "长", lines: ["汉".repeat(3000)] }, "http://x");
   assert.ok(Buffer.byteLength(long, "utf8") <= 2000);
   assert.match(long, /完整内容见收件箱/);

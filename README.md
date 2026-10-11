@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-  <a href="CHANGELOG.md"><img alt="源码版本 v2.0.0" src="https://img.shields.io/badge/source-v2.0.0-F35D2B"></a>
+  <a href="CHANGELOG.md"><img alt="源码版本 v2.0.1" src="https://img.shields.io/badge/source-v2.0.1-F35D2B"></a>
   <img alt="A 股短线" src="https://img.shields.io/badge/market-A%20%E8%82%A1-c92a2a">
   <img alt="182 个数据端点" src="https://img.shields.io/badge/data-182%20endpoints-2f9e44">
   <img alt="AI：Claude Code、Codex、WorkBuddy 或模型 API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
@@ -361,7 +361,7 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 
 - **Codex**：`npm install -g @openai/codex`，在终端运行 `codex login`，用 ChatGPT 账号登录；回到「接入 AI」点「重新检测」，显示可用后点「测试并保存」。用 API key 登录的 Codex 不可用，避免订阅悄悄变成按量计费。
 - **Claude Code**：用 claude.ai 订阅登录后，设置页会自动检测；API key、Bedrock、Vertex 登录不算订阅。
-- **WorkBuddy / CodeBuddy**：装好并登录 WorkBuddy 桌面版就能直接识别，不用重复安装或登录；没有桌面版时，运行 `npm install -g @tencent-ai/codebuddy-code`，再运行 `codebuddy` 登录。自动检测找不到时（卡片显示「未安装」），在 WorkBuddy 卡片里填它的位置，或在启动前设环境变量 `CODEBUDDY_BIN`。
+- **WorkBuddy / CodeBuddy**：装好并登录 WorkBuddy 桌面版就能直接识别，不用重复安装或登录；Windows 上装在别的盘或自定义文件夹，也会从「已安装的程序」登记或正在运行的 WorkBuddy 里找到。没有桌面版时，运行 `npm install -g @tencent-ai/codebuddy-code`，再运行 `codebuddy` 登录。仍找不到时（卡片显示「未安装」），先打开 WorkBuddy 再点「重新检测」，或在 WorkBuddy 卡片里填它的安装文件夹，或在启动前设环境变量 `CODEBUDDY_BIN`。
 - **模型 API**：「接入 AI」→「API 接入」，选供应商，填 API 地址、模型名和 key，点「测试并保存」。
 
 本机状态不明确时，运行 `scripts/doctor`（Windows 为 `scripts\doctor.ps1`）查看修复提示。
@@ -428,6 +428,9 @@ scripts/start
 - setup（`scripts/setup` 或 `scripts\setup-windows.cmd`）会创建 `.venv`、安装 Node / Python 依赖、初始化私有数据目录并运行体检。
 - start（`scripts/start` 或 `scripts\start.cmd`）会检查安装状态和端口，同时启动本机 API 与页面，两边都可用后打开 [http://127.0.0.1:5940](http://127.0.0.1:5940)；不需要开两个终端，按 Ctrl+C 同时关闭。
 - 端口和 Vibe Research（5930）错开，两个可以同时开，接入 AI 的设置、对话记录和登录状态也不会两边混用。环境变量沿用 Vibe Research 的 `VRA_` 前缀：在系统里全局设过 `VRA_DATA_ROOT` 的话两个产品会用同一个数据目录，只在单条命令前设置就不会。
+- 端口：页面默认 5940、本机 API 默认 8770。默认端口被别的程序占用、或被系统保留（Windows 上 Hyper-V / WSL 常整段预留端口）时，会自动换一个空闲端口并在终端说明，浏览器打开的就是实际地址；已经开着一个 Vibe AStock 时，会提示直接打开它。
+  - 换了端口后，「接入 AI」里的模型 API 设置和对话记录要在新地址重新设置：它们存在浏览器里，按地址分开。同样的占用情况每次换到同一个端口；默认端口空出来后重启，就回到原来的地址和设置。
+  - 想固定端口：`scripts/start --port 6940 --api-port 9770`（Windows：`scripts\start.cmd -Port 6940 -ApiPort 9770`），或设环境变量 `VRA_UI_PORT` / `VRA_API_PORT`。自己指定的端口不能用时直接报错，不会擅自换。
 - macOS / Linux 不想自动打开浏览器时，运行 `scripts/start --no-open`。
 - Vite 只在本机代理 `/api/*`，并在服务端补上鉴权信息。若设置了 `VRA_DATA_ROOT`，两个进程必须使用同一个值。
 - 盯盘的自动刷新、收盘取数和盘中快照都要程序开着；电脑关机或程序没开时不会运行，盘中快照过了时点补不回来。
@@ -444,7 +447,7 @@ scripts/start
 | Apple 芯片 Mac | macOS 14 及以上 | `VibeAStock-<版本>-mac-arm64.zip` |
 | Intel Mac | macOS 14 及以上 | `VibeAStock-<版本>-mac-x64.zip` |
 
-1. 解压到任意文件夹，双击里面的 `Start-VibeAStock.cmd`（Windows）或 `Start-VibeAStock.command`（macOS）。会开一个命令行 / 终端窗口，浏览器自动打开 [http://127.0.0.1:5940](http://127.0.0.1:5940)；关掉那个窗口就退出。
+1. 解压到任意文件夹，双击里面的 `Start-VibeAStock.cmd`（Windows）或 `Start-VibeAStock.command`（macOS）。会开一个命令行 / 终端窗口，浏览器自动打开 [http://127.0.0.1:5940](http://127.0.0.1:5940)（5940 被占用时自动换一个端口，以窗口里显示的地址为准）；关掉那个窗口就退出。
 2. 包没有代码签名，第一次打开会被系统拦：Windows 弹出「Windows 已保护你的电脑」时点「更多信息」→「仍要运行」；macOS 提示无法验证开发者时，在终端运行 `xattr -dr com.apple.quarantine <解压出来的文件夹>`，再双击启动。
 3. 交易记录、复盘、研究记录和设置都存在这个文件夹的 `.local` 里（macOS 的访达默认不显示以点开头的文件夹，按 Command+Shift+. 就能看到）。升级时把新版本解压到新文件夹，把旧文件夹里的 `.local` 整个复制过去，再从新文件夹启动；确认没问题再删旧文件夹。
 4. 接入 AI 和源码版一样：沿用电脑上已登录的 Claude Code / Codex / WorkBuddy，或在「接入 AI」填模型 API。
@@ -457,7 +460,7 @@ scripts/start
 
 ```bash
 scripts/setup
-scripts/start --remote --no-open --public-url https://<平台给 5940 端口分配的公网地址>
+scripts/start --remote --no-open --public-url https://<平台给页面端口（默认 5940）分配的公网地址>
 ```
 
 启动后终端会打印一条带访问口令的链接（`https://…/?access=…`），用浏览器打开就能用；之后 30 天内直接打开公网地址即可。不需要 SSH，也不用连回本地电脑。后台运行、更换口令等完整步骤见 [AGENTS.md](AGENTS.md) §3。
@@ -466,6 +469,7 @@ scripts/start --remote --no-open --public-url https://<平台给 5940 端口分�
 - **只用 https 公网地址**，否则页面里填的 API key 会明文传输。页面只能挂在根地址，不支持子路径。
 - 拿到链接的人能用这台电脑上的全部功能，包括你的交易日志和持仓，链接只给自己用；启动日志里也有访问口令，别外传。
 - 云端电脑上通常没有你的订阅登录，在页面里用模型 API 接入即可。
+- 远程模式的页面端口不会自动换（云平台映射的是固定端口）：5940 被占用时先停掉占用它的程序，或用 `--port` 换成平台开放的端口。
 - 程序一直开着的云端电脑适合跑收盘取数和盘中快照，不会因为本机关机漏存。
 
 ### 从旧版（v1.x）升级

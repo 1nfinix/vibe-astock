@@ -397,9 +397,13 @@ export function messageText(m: Pick<NotifyMessage, "title" | "lines" | "link">, 
   return clipBytes(`【${m.title}】\n${m.lines.join("\n")}${link}`);
 }
 
-/** 推送里的链接:本机模式只在这台电脑上能打开;远程模式用对外地址(启动器经 VRA_PUSH_LINK_BASE 传给 API) */
+/**
+ * 推送里的链接:本机模式只在这台电脑上能打开;远程模式用对外地址(启动器经 VRA_PUSH_LINK_BASE 传给 API)。
+ * 本机页面端口默认见 brand.ts;被占用时启动器换了端口,经 VRA_UI_PORT 告诉 API。
+ */
 export function uiBase(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.VRA_PUSH_LINK_BASE || env.VRA_PUBLIC_URL || `http://127.0.0.1:${UI_PORT}`).replace(/\/+$/, "");
+  const port = /^\d{1,5}$/.test(env.VRA_UI_PORT ?? "") ? env.VRA_UI_PORT : String(UI_PORT);
+  return (env.VRA_PUSH_LINK_BASE || env.VRA_PUBLIC_URL || `http://127.0.0.1:${port}`).replace(/\/+$/, "");
 }
 
 export interface Deps {

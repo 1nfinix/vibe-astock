@@ -9,7 +9,7 @@ import test from "node:test";
 import { preview, resolveConfig } from "vite";
 
 import { ACCESS_COOKIE, createAccessGate, createRemoteOriginGuard, requestIsHttps, type Middleware } from "../remote-access.ts";
-import { UI_PORT } from "../src/verticals/finance/lib/brand.ts";
+import { API_PORT, UI_PORT } from "../src/verticals/finance/lib/brand.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const TOKEN = "remote-access-test-token-0123456789abcdef";
@@ -287,5 +287,35 @@ test("远程访问:没口令什么都拿不到;分享链接换 HttpOnly cookie �
     await new Promise<void>((resolve, reject) => target.close((err) => err ? reject(err) : resolve()));
     fs.rmSync(outDir, { recursive: true, force: true });
     restore();
+  }
+});
+
+test("端口:启动器选好的端口经 VRA_UI_PORT / VRA_API_PORT 传进来,开发服务器、preview、/api 转发都跟着用;没给是 brand.ts 的默认端口;乱填直接报错", async () => {
+  let restore = withEnv({ VRA_REMOTE: undefined, VRA_ACCESS_TOKEN: undefined, VRA_LAN: undefined, VRA_UI_PORT: "5931", VRA_API_PORT: "8766" });
+  try {
+    for (const command of ["serve", "build"] as const) {
+      const config = await resolveConfig({ root: ROOT, logLevel: "silent" }, command, "development", "development", command === "build");
+      assert.equal(config.server.port, 5931);
+      assert.equal(config.preview.port, 5931);
+      assert.equal(config.server.strictPort, true, "启动器打开的就是这个端口:被抢了要明确失败,不能静默漂走");
+      const proxy = config.server.proxy?.["/api"];
+      assert.ok(proxy && typeof proxy === "object");
+      assert.equal(proxy.target, "http://127.0.0.1:8766");
+    }
+  } finally { restore(); }
+  restore = withEnv({ VRA_REMOTE: undefined, VRA_ACCESS_TOKEN: undefined, VRA_UI_PORT: undefined, VRA_API_PORT: undefined });
+  try {
+    const config = await resolveConfig({ root: ROOT, logLevel: "silent" }, "serve", "development", "development", false);
+    assert.equal(config.server.port, UI_PORT);
+    const proxy = config.server.proxy?.["/api"];
+    assert.ok(proxy && typeof proxy === "object");
+    assert.equal(proxy.target, `http://127.0.0.1:${API_PORT}`);
+  } finally { restore(); }
+  for (const bad of ["0", "70000", "59x"]) {
+    restore = withEnv({ VRA_REMOTE: undefined, VRA_ACCESS_TOKEN: undefined, VRA_UI_PORT: bad, VRA_API_PORT: undefined });
+    try {
+      await assert.rejects(resolveConfig({ root: ROOT, logLevel: "silent" }, "serve", "development", "development", false),
+        /VRA_UI_PORT 要填 1–65535/, bad);
+    } finally { restore(); }
   }
 });
