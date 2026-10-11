@@ -131,7 +131,9 @@ function sumResult(terms: { t: Term; sign: 1 | -1 }[], r: Term & { explicit: boo
 const LABEL = String.raw`(?:\s*[^\d=＝≈+\-−—–*×/÷()（）,，;；]{0,8})?`;
 const DIV = String.raw`[/÷]`;
 // 结果是四舍五入的,模型常写「≈」(「40 ÷ 69 ≈ 58.0%」);不认的话这类算式整条识别不出来
-const EQ = String.raw`[=＝≈]`;
+/** 算式里认的等号(调用方判断「− 1 =」这类写法时用同一组,别各写一份) */
+export const EQ_CHARS = "=＝≈";
+const EQ = `[${EQ_CHARS}]`;
 const MINUS = String.raw`[-−—–]`;
 const MUL = String.raw`[*×]`;
 
@@ -165,9 +167,24 @@ export interface StatedCalc {
  * 所以按**结果量级**给一个宽度，而不是要求逐位相等。
  * ⚠️ 宽度只到能容下四舍五入 —— 再宽就会把「+0.2% vs −2.04%」这种真错也放过去。
  */
-function closeEnough(stated: number, recomputed: number): boolean {
-  const tol = Math.max(Math.abs(recomputed) * 5e-3, 0.011);
+function closeEnough(stated: number, recomputed: number, approxTol = 0): boolean {
+  const tol = Math.max(Math.abs(recomputed) * 5e-3, 0.011, approxTol);
   return Math.abs(stated - recomputed) <= tol;
+}
+
+/**
+ * 「≈」后面的数只承诺写出来的那几位:「≈ 2200」是按百位取整,「≈ 58.0%」是按 0.1 取整。
+ * 容差给到最后一位有效数字的半格,和「=」一样严的话,两位有效数字的近似会被标成算错(v2.2.0 审计 Opus 第 6 条)。
+ * 半格再封顶到结果的 5%(不低于个位的半格 0.5):「≈ 100%」「≈ 20%」末尾的 0 不一定是取整位,只按半格算,
+ * 「30 ÷ 49 ≈ 100%」(实为 61%)也会判对(v2.1.0 合并审计 Opus 第 1 条);「10 ÷ 3 ≈ 3 倍」照旧算对(复核第 1 条)。
+ */
+function approxTolerance(stated: string): number {
+  const s = stated.replace(/[,\s]/g, "").replace(/^[-+−]/, "");
+  const dec = /\.(\d+)$/.exec(s)?.[1]?.length;
+  if (dec !== undefined) return 0.5 * 10 ** -dec;
+  if (/^0+$/.test(s)) return 0.5;
+  const half = 0.5 * 10 ** (/0*$/.exec(s)?.[0].length ?? 0);
+  return Math.min(half, Math.max(Math.abs(toNum(stated) ?? 0) * 0.05, 0.5));
 }
 
 /**
@@ -191,7 +208,7 @@ export function checkStatedArithmetic(rawLine: string): StatedCalc[] {
   const push = (raw: string, stated: string, recomputed: number, percent: boolean) => {
     const st = toNum(stated);
     if (st === null || !Number.isFinite(recomputed)) return;
-    out.push({ raw: raw.trim(), stated: st, recomputed, percent, ok: closeEnough(st, recomputed) });
+    out.push({ raw: raw.trim(), stated: st, recomputed, percent, ok: closeEnough(st, recomputed, /≈/.test(raw) ? approxTolerance(stated) : 0) });
   };
 
   // A ÷ B − 1 = R（R 可带 %；带 % 时重算值要 ×100）。两数各按自己的数量级归一后再相除

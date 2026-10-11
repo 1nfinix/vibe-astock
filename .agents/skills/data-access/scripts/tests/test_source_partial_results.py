@@ -75,3 +75,29 @@ def test_missing_flow_and_margin_fields_are_not_zero(monkeypatch):
     assert r[0]["rzye"] is None
     m = mappers.em_margin(r, _ctx(symbol="600000", market="CN", source="eastmoney", ep={"id": "em_margin_trading"}))
     assert not [e for e in m["evidence"] if e["field"].startswith("margin_financing_balance")  and e["unit"] == "元"]
+
+
+def test_missing_core_fields_mark_the_result_partial(monkeypatch):
+    """源没给的核心字段要记进 missing:只省略证据的话,剩下的条数 / 买入额证据会让结果被判成完整(v2.2.0 审计 Codex 第 5 条)。
+    户均持股、分红的转增 / 送股源里本来就常是空的(10-11 实测),不算缺。"""
+    from sources import mappers_global
+    monkeypatch.setattr(eastmoney, "resolve_global_secid", lambda s, m: ("105", "NVDA"))
+    klines = [f"2026-10-0{d},1,2,3,4,5,0.5" for d in range(1, 7)] + ["2026-10-09,-,-,-,-,-,-"]
+    monkeypatch.setattr(eastmoney, "_push2his_json", lambda *a, **k: {"data": {"klines": klines}})
+    rows = eastmoney.fund_flow_daily_global("NVDA", "US")
+    m = mappers_global.em_fund_flow_global_map(rows, _ctx(symbol="NVDA", market="US", source="eastmoney", ep={"id": "em_fund_flow_global"}))
+    assert len(rows) >= 5 and m.get("status") is None, "行数够,不靠短序列那条规则"
+    assert {x["field"] for x in m["missing"]} == {"main_net_inflow_daily_latest", "main_net_inflow_pct_latest"}
+
+    monkeypatch.setattr(eastmoney, "eastmoney_datacenter", lambda *a, **k: [{"DATE": "2026-10-09 00:00:00", "RZMRE": 5.0}])
+    m = mappers.em_margin(eastmoney.margin_trading("600000"), _ctx(symbol="600000", market="CN", source="eastmoney", ep={"id": "em_margin_trading"}))
+    assert m["evidence"] and {x["field"] for x in m["missing"]} == {"margin_financing_balance", "margin_short_balance"}
+
+    monkeypatch.setattr(eastmoney, "eastmoney_datacenter", lambda *a, **k: [
+        {"END_DATE": "2026-06-30 00:00:00", "HOLDER_NUM_RATIO": 1.5}, {"END_DATE": "2026-03-31 00:00:00", "HOLDER_NUM": 1000, "HOLDER_NUM_RATIO": 2.0}])
+    m = mappers.em_holder_num(eastmoney.holder_num_change("600000"), _ctx(symbol="600000", market="CN", source="eastmoney", ep={"id": "em_holder_num"}))
+    assert [(x["field"], x["period"]) for x in m["missing"]] == [("shareholder_count", "2026-06-30")], "户均持股空着不算缺"
+
+    monkeypatch.setattr(eastmoney, "eastmoney_datacenter", lambda *a, **k: [{"EX_DIVIDEND_DATE": "2026-06-20 00:00:00", "PRETAX_BONUS_RMB": 280.0}])
+    m = mappers.em_dividend(eastmoney.dividend_history("600000"), _ctx(symbol="600000", market="CN", source="eastmoney", ep={"id": "em_dividend"}))
+    assert not m["missing"], "只派现、没转增送股是常态,不算缺"

@@ -2,7 +2,7 @@
  * 本机 Agent CLI 适配层。
  *
  * 来源与边界：参考 nexu-io/open-design 0.21.0 的 runtime registry / detection，
- * 但这里只收下金融工作台当前能安全证明的最小能力：Claude Code、CodeBuddy 与 Codex CLI 的订阅登录。
+ * 但这里只收下本工作台当前能安全证明的最小能力：Claude Code、CodeBuddy 与 Codex CLI 的订阅登录。
  * 三家都用用户自己在本机完成的登录；产品不代管登录、不复制登录凭据。
  * 普通 Agent 对话与 Deep 研究使用各自的产品 MCP；连接探针等内部任务不挂载工具。
  * 所有路径都关闭会话落盘与用户配置；没有等价隔离参数的 CLI 不能把按钮点亮。
@@ -264,8 +264,8 @@ const WORKBUDDY_DISCOVERY_SCRIPT = [
   "foreach ($p in @(Get-Process -Name 'WorkBuddy' | Where-Object { $_.SessionId -eq $session })) { if ($p.Path) { $out.Add('Process' + [char]9 + $p.Path) } }",
   "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($out -join [string][char]10)))",
 ].join("\n");
-/** 冷启动加杀毒软件扫描时 PowerShell 可能要好几秒 */
-const WORKBUDDY_DISCOVERY_TIMEOUT_MS = 15_000;
+/** 冷启动加杀毒软件扫描时 PowerShell 可能要好几秒;GitHub 的 Windows 机器在并行跑测试时实测超过过 15 秒 */
+const WORKBUDDY_DISCOVERY_TIMEOUT_MS = 30_000;
 
 /**
  * 跑上面的只读脚本,返回「类别<TAB>值」每行一条。用系统自带 PowerShell 的绝对路径,不经 PATH。
@@ -359,7 +359,7 @@ export function resetWorkBuddyDiscoveryForTest(): void {
 
 /**
  * 找 CodeBuddy CLI:先按 findExecutable 的固定顺序;Windows 上都没有、又没用环境变量锁定时,再问系统 WorkBuddy 装在哪。
- * 问系统要起一次 PowerShell(约一两秒),所以结果会记住;同一时间的多次查找只问一次。
+ * 问系统要起一次 PowerShell(通常一两秒,冷启动可能更久),所以结果会记住;同一时间的多次查找只问一次。
  * retryMiss:设置页的检测 / 「重新检测」用,不认「刚才没找到」的记忆——用户可能刚装好或刚打开 WorkBuddy。
  */
 export async function locateCodeBuddy(

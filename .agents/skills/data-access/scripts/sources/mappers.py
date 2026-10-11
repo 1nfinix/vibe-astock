@@ -121,6 +121,12 @@ def rows_fields(ctx: dict, rows: list[dict], specs: Iterable[FieldSpec], *, peri
     return evs
 
 
+def none_fields(rows: list[dict], specs: Iterable[tuple[str, str, str]], *, period_of: Callable[[dict], str]) -> list:
+    """源没给的数值字段逐条记成 missing(key, 证据字段名, 原因):只省略证据的话,剩下的证据会让结果被判成完整(ok)。"""
+    return [{"field": field, "period": period_of(r), "reason": what}
+            for r in rows for key, field, what in specs if to_float(r.get(key)) is None]
+
+
 def series_summary(ctx: dict, rows: list[dict], *, field_prefix: str, value_key: str, unit: str, date_key: str, currency: Optional[str] = None,
                    note: Optional[str] = None) -> list:
     """时间序列只给"最新值 + 起止 + 条数"三类证据;全序列在 raw/ 里。"""
@@ -331,7 +337,10 @@ def em_margin(result: list, ctx: dict) -> dict:
     evs += series_summary(ctx, rows, field_prefix="margin_short_balance", value_key="rqye", unit="元", date_key="date", note="融券余额")
     evs += rows_fields(ctx, rows[-10:], [("rzye", "margin_financing_balance", "元"), ("rzmre", "margin_financing_buy", "元"), ("rqye", "margin_short_balance", "元")],
                        period_of=lambda r: r["date"], key_of=lambda r: r["date"])
-    return out(evs)
+    # 两融标的这三项天天有数(10-11 实测三只各 30 天没有空值):空着 = 源这次没给,记进 missing 让结果标 partial(v2.2.0 审计 Codex 第 5 条)
+    missing = none_fields(rows[-10:], [("rzye", "margin_financing_balance", "融资余额没取到"), ("rzmre", "margin_financing_buy", "融资买入额没取到"),
+                                       ("rqye", "margin_short_balance", "融券余额没取到")], period_of=lambda r: r["date"])
+    return out(evs, missing=missing)
 
 
 def em_block_trade(result: list, ctx: dict) -> dict:
@@ -356,7 +365,8 @@ def em_holder_num(result: list, ctx: dict) -> dict:
         return empty("股东户数为空")
     evs = rows_fields(ctx, result, [("holder_num", "shareholder_count", "户"), ("change_ratio", "shareholder_count_change_pct", "%"), ("avg_shares", "shareholder_avg_free_shares", "股")],
                       period_of=lambda r: r["date"], key_of=lambda r: r["date"])
-    return out(evs)
+    # 只有户数本身空着才算缺:户均持股源里经常就是空的(10-11 实测三只都空),环比在首期也可能本来没有
+    return out(evs, missing=none_fields(result, [("holder_num", "shareholder_count", "股东户数没取到")], period_of=lambda r: r["date"]))
 
 
 def em_dividend(result: list, ctx: dict) -> dict:

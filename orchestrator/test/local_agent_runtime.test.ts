@@ -1074,7 +1074,7 @@ test("Windows 查找 WorkBuddy 的系统查询:只读、明文 -Command、去掉
   assert.match(run, /if \(key\.toLowerCase\(\) === "psmodulepath"\) delete childEnv\[key\]/);
   assert.match(run, /env: childEnv,/);
   assert.match(run, /timeout: WORKBUDDY_DISCOVERY_TIMEOUT_MS/);
-  assert.match(source, /const WORKBUDDY_DISCOVERY_TIMEOUT_MS = 15_000;/);
+  assert.match(source, /const WORKBUDDY_DISCOVERY_TIMEOUT_MS = 30_000;/);
   assert.match(script, /Get-Process -Name 'WorkBuddy' \| Where-Object \{ \$_\.SessionId -eq \$session \}/);
   assert.match(script, /\$session = \(Get-Process -Id \$PID\)\.SessionId/);
   assert.match(script, /\(\[string\]\$e\.DisplayName \+ '\|' \+ \[string\]\$e\.InstallLocation \+ '\|' \+ \[string\]\$e\.DisplayIcon\) -match 'WorkBuddy'/);

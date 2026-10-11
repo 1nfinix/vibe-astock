@@ -203,6 +203,26 @@ test("约等号照认;中文破折号不是负号", () => {
   assert.equal(one("午后首封占 40÷69≈58.0%").ok, true, "实跑原文");
   assert.equal(one("40÷69≈68.0%").ok, false);
   assert.equal(one("1+2+3≈6").ok, true);
+  // 「≈」只承诺写出来的那几位:按最后一位有效数字的半格比,「=」照旧严(v2.2.0 审计 Opus 第 6 条)
+  assert.equal(one("19005.40 − 16821.09 ≈ 2200 亿元").ok, true, "2184.31 按百位取整是 2200");
+  assert.equal(one("19005.40 − 16821.09 = 2200 亿元").ok, false, "写「=」就要对到容差内");
+  assert.equal(one("19005.40 − 16821.09 ≈ 2300 亿元").ok, false, "取整也取不到 2300");
+  assert.equal(one("19005.40 − 16821.09 ≈ 2184.3 亿元").ok, true);
+  assert.equal(one("19005.40 − 16821.09 ≈ 2196.3 亿元").ok, false, "写到 0.1 的不按百位放宽,只有「=」原有的容差");
+  assert.equal(one("40÷69≈58%").ok, true);
+  assert.equal(one("40÷69≈59%").ok, false);
+  // 半格封顶到结果的 5%:结果只有一位有效数字时,末尾的 0 不当取整位(v2.1.0 合并审计 Opus 第 1 条)
+  assert.equal(one("30÷49≈100%").ok, false, "实为 61.2%");
+  assert.equal(one("15÷60≈20%").ok, false, "实为 25%");
+  assert.equal(one("52÷4≈10倍").ok, false, "实为 13 倍");
+  assert.equal(one("48.5+48.5≈100").ok, true, "97 在 5% 以内");
+  assert.equal(one("100−197≈−100").ok, true);
+  assert.equal(one("100−161≈−100").ok, false);
+  // 封顶不低于个位的半格:个位整数的正常取整照旧算对(v2.1.0 合并审计复核第 1 条)
+  assert.equal(one("10÷3≈3倍").ok, true, "3.33 取整是 3");
+  assert.equal(one("1.2÷28≈4%").ok, true, "4.29 取整是 4");
+  assert.equal(one("13÷4≈3倍").ok, true);
+  assert.equal(one("10÷2.5≈3倍").ok, false, "实为 4");
   const d = one("结论——19005.40-16821.09=2184.31 亿元");
   assert.equal(d.ok, true, "「——19005.40」读成负数就会判错");
   assert.equal(one("19005.40 — 16821.09 = 2184.31").ok, true, "单个破折号夹在两数之间仍是减号");

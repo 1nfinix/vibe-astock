@@ -161,7 +161,10 @@ test("HTTP 变化提醒沿用当前数据根且只读，不读取或覆盖默认
   fs.writeFileSync(path.join(isolated, "runs", "a1", "evidence.json"), "{");
   assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/读不出来/), "两份都坏也不能说「无变化」");
   fs.copyFileSync(path.join(repo, ".local", "runs", "a1", "evidence.json"), path.join(isolated, "runs", "a1", "evidence.json"));
-  for (const bad of [{ items: [] }, { evidence: "x" }, [{ value: 1 }], [null], "[]"]) {
+  const ok = { id: "ev-x", field: "price", value: 1, unit: "元", period: "2026-10-09", source: "eastmoney" };
+  const drop = (k: string) => [Object.fromEntries(Object.entries(ok).filter(([key]) => key !== k))];
+  // 有 field、缺比较要用的键:两份都这样时原来显示「无变化」(v2.2.0 审计 Codex 第 6 条)
+  for (const bad of [{ items: [] }, { evidence: "x" }, [{ value: 1 }], [null], "[]", [{ field: "price" }], ...["id", "value", "unit", "period", "source"].map(drop), [{ ...ok, unit: 3 }]]) {
     writeJson(ev2, bad);
     assert.throws(() => evidenceAlerts(ctx, { symbol: "300308" }), alertsFailed(/a2 的 evidence\.json 结构不对/), JSON.stringify(bad));
   }

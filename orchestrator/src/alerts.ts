@@ -50,7 +50,14 @@ export function loadRunEvidence(runDir: string): EvidenceLite[] {
   const items = Array.isArray(merged) ? merged
     : merged && typeof merged === "object" && Array.isArray((merged as { evidence?: unknown }).evidence) ? (merged as { evidence: unknown[] }).evidence
     : null;
-  if (!items || !items.every((e) => !!e && typeof e === "object" && typeof (e as { field?: unknown }).field === "string")) {
+  // 对齐和比较要用到的键一样不能少:只查 field 的话,缺了 value 的两份证据两边都是 undefined,照样显示「无变化」(v2.2.0 审计 Codex 第 6 条)。
+  // value 可以是 null(合法的空值),但这个键必须在;本机 5119 条真实证据全部满足
+  const wellFormed = (e: unknown): boolean => {
+    if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+    const o = e as Record<string, unknown>;
+    return ["id", "field", "unit", "period", "source"].every((k) => typeof o[k] === "string") && Object.prototype.hasOwnProperty.call(o, "value");
+  };
+  if (!items || !items.every(wellFormed)) {
     throw new Error(`运行 ${id} 的 evidence.json 结构不对(应是证据数组),没法比较`);
   }
   return items as EvidenceLite[];
