@@ -45,6 +45,8 @@ export interface JobContext {
   state: unknown;
   /** 手动「立即运行」 */
   manual: boolean;
+  /** 这个任务设定的运行时刻 HH:MM(用户改过就是改后的) */
+  at?: string;
 }
 
 export interface JobResult {
@@ -577,7 +579,7 @@ async function runJob(ctx: ServiceContext, def: ScheduleDef, job: ScheduledJobDe
     const prev = loadState(ctx.dataRoot).jobs[job.id] ?? {};
     await mutateState(ctx.dataRoot, (s) => { s.jobs[job.id] = { ...prev, status: "running", note: "正在运行" }; });
     try {
-      const r = checkResult(await withTimeout(JOB_TIMEOUT_MS, (signal) => job.run({ ctx, day, now, signal, state: prev.data, manual }), `「${job.label}」`));
+      const r = checkResult(await withTimeout(JOB_TIMEOUT_MS, (signal) => job.run({ ctx, day, now, signal, state: prev.data, manual, at: jobAt(loadSettings(ctx.dataRoot), job) }), `「${job.label}」`));
       const pushNote = await deliver(ctx, job, r.messages, now, hm, manual, deps);
       const note = [r.note ?? (r.messages.length ? `生成 ${r.messages.length} 条` : "没有要提醒的"), pushNote].filter(Boolean).join(";");
       const next: JobState = {

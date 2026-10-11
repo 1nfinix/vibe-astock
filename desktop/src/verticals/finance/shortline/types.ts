@@ -163,3 +163,50 @@ export interface FirstBoardResult {
   reason_available?: boolean; reason_covered?: number; reason_note?: string;
   stocks?: FirstBoardStock[];
 }
+
+// ---------- 连板天梯(cn_shortline_board_ladder)----------
+export interface LadderStock {
+  code: string; name: string; board: string; boards: number;
+  /** 「4板」或「5天4板」(反包) */
+  label: string; rebound: boolean;
+  first_seal: string; last_seal: string; broken_times: number;
+  seal_fund: number | null; amount: number | null; float_cap: number | null; turnover: number | null;
+  reason: string; tags: string[];
+}
+/** 昨天在这一层下面一层、今天没接上的 */
+export interface LadderFell { code: string; name: string; prev_boards: number; prev_label: string; outcome: "跌停" | "炸板" | "没涨停" | "没取到"; ret: number | null }
+export interface LadderLevel {
+  boards: number; stocks: LadderStock[]; fell: LadderFell[];
+  /** 昨天 boards-1 板的只数;首板层和昨天池子没取到时没有 */
+  base: number | null; promoted: number | null; rate: number | null;
+}
+export interface BoardLadder {
+  available: boolean; reason?: string;
+  levels?: LadderLevel[]; total_limit_up?: number; highest?: number | null; consec_count?: number;
+  prev_available?: boolean; prev_note?: string;
+  reason_available?: boolean; reason_covered?: number; reason_note?: string;
+  /** 原因串取到了、但没有原因的沪深涨停股(北交所同花顺不收录,不算) */
+  reason_missing?: string[];
+}
+export interface BoardLadderResult { date: string; prev_date: string | null; settled?: boolean; ladder: BoardLadder }
+
+// ---------- 题材轮动(cn_shortline_theme_rotation)----------
+/** unknown = 这天没有涨停原因的沪深涨停股只数;>0 时没出现的题材是 null(说不准),出现的只数是下限 */
+export interface RotationDay { date: string; available: boolean; reason?: string; limit_up?: number; covered?: number; top?: string[]; unknown?: number }
+export interface RotationTheme {
+  tag: string;
+  /** 每天的涨停只数,和 dates 一一对应;null = 那天没取到或说不准(不是 0) */
+  series: (number | null)[]; ranks: (number | null)[]; highest: (number | null)[];
+  today: number; total: number; active_days: number; top3_days: number;
+  streak: number; streak_partial: boolean; status: string; first_day: string | null;
+  /** 今天这个题材里板数最高的几只(名字) */
+  members: string[];
+}
+export interface ThemeRotation {
+  available: boolean; reason?: string;
+  dates?: string[]; days?: RotationDay[]; themes?: RotationTheme[];
+  tag_count?: number; missing_days?: string[]; prev_available?: boolean;
+  /** 有沪深涨停股没有涨停原因的日子 */
+  partial_days?: string[];
+}
+export interface ThemeRotationResult { date: string; days: number; settled?: boolean; rotation: ThemeRotation }

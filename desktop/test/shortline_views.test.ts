@@ -3,11 +3,70 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { createElement } from "react";
 import { textOf, withRenderer } from "./helpers/render.ts";
 
 const FX = JSON.parse(readFileSync(new URL("./fixtures/shortline-views-2026-10-09.json", import.meta.url), "utf8"));
 const DIR = "/src/verticals/finance/shortline";
 const noop = () => {};
+
+const DAY = JSON.parse(readFileSync(new URL("./fixtures/shortline-2026-10-09.json", import.meta.url), "utf8"));
+
+test("近 5 天 · 题材轮动:题材 × 日期的只数和名次,状态写连续 / 回流 / 首次出现;某天没取到画「—」不画 0", async () => {
+  await withRenderer(async (r) => {
+    const { WeeklyView } = await r.load(`${DIR}/WeeklyTab.tsx`);
+    const { ThemeRotationSection, rotationSummary } = await r.load(`${DIR}/ThemeRotationPanel.tsx`);
+    const done = (result: unknown, why = "") => ({ state: "done", status: result ? "ok" : "failed", result, why, settled: true, cached: false, fetched_at: null });
+    const rot = DAY.rotation;
+    const t = textOf(r.html(ThemeRotationSection, { p: done(rot) }));
+    assert.match(t, /题材 09-28 涨停 \d+ 09-29 涨停 \d+ 09-30 涨停 \d+ 10-08 涨停 \d+ 10-09 涨停 69 状态/);
+    // 固态电池 [0,7,4,5,4],名次 [-,1,2,1,1]:连续 4 天,4 天进前三
+    assert.match(t, /固态电池 · 7 #1 4 #2 5 #1 4 #1 连续 4 天 4 4 紫竹高科、雄韬股份、丰元股份/);
+    assert.match(t, /AI漫剧 · 1 #14 2 #3 · 4 #1 隔 1 天回流/);
+    assert.match(t, /微短剧 · · · · 3 #3 窗口内首次出现/);
+    assert.match(t, /这几天一共 502 个题材标签,表里只列今天前 12 个。客观公开榜单,非推荐 \/ 非预测/);
+    assert.doesNotMatch(t, /今天退下去了|昨天还有 2 只以上/, "那天没有退下去的题材,不出这一段");
+
+    // 10-08 没取到:那一列「—」、表头写没取到、上面明说按缺数处理;后端会把跨过它的状态改成「说不准」
+    const gap = structuredClone(rot);
+    const i = gap.rotation.dates.indexOf("2026-10-08");
+    gap.rotation.days[i] = { date: "2026-10-08", available: false, reason: "2026-10-08 东财涨停池没取到" };
+    gap.rotation.missing_days = ["2026-10-08"];
+    for (const th of gap.rotation.themes) { th.series[i] = null; th.ranks[i] = null; }
+    // 退下去的一行:昨天(10-09 前一天)有、今天 0
+    gap.rotation.themes.push({ ...gap.rotation.themes[0], tag: "锂矿", series: [0, 0, 3, null, 0], ranks: [null, null, 2, null, null], today: 0, status: "今天没有涨停", members: [] });
+    const t2 = textOf(r.html(ThemeRotationSection, { p: done(gap) }));
+    assert.match(t2, /10-08 没取到/);
+    assert.match(t2, /2026-10-08 没取到:那几列画「—」,按缺数处理\(不是 0\)/);
+    assert.match(t2, /固态电池 · 7 #1 4 #2 — 4 #1/);
+    assert.match(t2, /昨天还有 2 只以上、今天一只都没有的: 锂矿 · · 3 #2 — · 今天退下去了/);
+    const s = rotationSummary(done(gap));
+    assert.match(s, /固态电池:0\/7\/4\/缺\/4/);
+    assert.match(s, /「缺」= 那天没取到或说不准,不是 0/);
+    assert.match(s, /没取到的日子:2026-10-08/);
+
+    // 今天有 2 只沪深涨停股没有原因:表头标「缺原因 2」,上面说清楚没出现的画「—」、出现的是下限
+    const part = structuredClone(rot);
+    part.rotation.days.at(-1).unknown = 2;
+    part.rotation.partial_days = ["2026-10-09"];
+    const t3 = textOf(r.html(ThemeRotationSection, { p: done(part) }));
+    assert.match(t3, /10-09 涨停 69 缺原因 2/);
+    assert.match(t3, /2026-10-09 有沪深涨停股没有涨停原因:那几天没出现的题材画「—」\(可能有\),出现的只数是下限/);
+    assert.doesNotMatch(t, /缺原因|有沪深涨停股没有涨停原因/, "都有原因时不出这两处");
+    assert.match(rotationSummary(done(part)), /有沪深涨停股缺原因的日子\(那天没出现的题材写「缺」,出现的只数是下限\):2026-10-09/);
+
+    // 还在取 / 没取到 / 整块没算出来
+    assert.match(textOf(r.html(ThemeRotationSection, { p: { state: "loading" } })), /题材轮动加载中…/);
+    assert.match(textOf(r.html(ThemeRotationSection, { p: done(null, "同花顺超时") })), /这次没取到:同花顺超时。不代表没有/);
+    assert.match(textOf(r.html(ThemeRotationSection, { p: done({ ...rot, rotation: { available: false, reason: "2026-10-09 涨停原因没取到" } }) })), /题材轮动没算出来:2026-10-09 涨停原因没取到/);
+    assert.equal(rotationSummary({ state: "loading" }), "题材轮动:还在取,先别据此下结论");
+
+    // 摆在热度表和龙头谱系中间
+    const w = textOf(r.html(WeeklyView, { r: FX.weekly, rotation: createElement(ThemeRotationSection, { p: done(rot) }) }));
+    const at = (x: string) => w.indexOf(x);
+    assert.ok(at("近 5 天情绪热度") < at("题材轮动") && at("题材轮动") < at("龙头谱系"), "热度表 → 题材轮动 → 龙头谱系");
+  });
+});
 
 test("近 5 天：五个交易日、并列最高标、龙头谱系在高点；取不到的写「没取到」不写 0", async () => {
   await withRenderer(async (r) => {

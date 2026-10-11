@@ -31,18 +31,21 @@ function fakeFetch(phase: string) {
 const ctx = {} as ServiceContext;
 const emotionArgs = (calls: Call[]) => calls.filter((c) => c.endpoint === "cn_shortline_emotion").map((c) => c.args);
 
-test("情绪复盘拆成四个查询:第一个解析业务日,其余三个只吃页面传来的日期", () => {
+test("情绪复盘拆成几个查询:第一个解析业务日,其余只吃页面传来的日期", () => {
   const qs = currentPlugin().pageQueries ?? {};
   const ends = (q: string) => qs[q]?.blocks.map((b) => b.endpoint);
   assert.deepEqual(ends("shortline"), ["cn_shortline_emotion"]);
   assert.deepEqual(ends("shortline_facts"), ["cn_shortline_facts"]);
   assert.deepEqual(ends("shortline_themes"), ["cn_shortline_themes", "cn_shortline_firstboard"]);
   assert.deepEqual(ends("shortline_cycle"), ["cn_shortline_cycle"]);
+  assert.deepEqual(ends("shortline_ladder"), ["cn_shortline_board_ladder"]);
+  assert.deepEqual(ends("shortline_rotation"), ["cn_shortline_theme_rotation"]);
   assert.equal(qs.shortline!.needsContext, true);
-  for (const q of ["shortline", "shortline_facts", "shortline_themes", "shortline_cycle"]) {
+  const rest = ["shortline_facts", "shortline_themes", "shortline_cycle", "shortline_ladder", "shortline_rotation"];
+  for (const q of ["shortline", ...rest]) {
     for (const b of qs[q]!.blocks) assert.deepEqual([...(b.userArgs ?? [])], ["date"], `${q}/${b.id} 只开放日期`);
   }
-  for (const q of ["shortline_facts", "shortline_themes", "shortline_cycle"]) assert.ok(!qs[q]!.needsContext, `${q} 不再解析一次上下文`);
+  for (const q of rest) assert.ok(!qs[q]!.needsContext, `${q} 不再解析一次上下文`);
   // 原有各页的顺序不变(AI 浏览、测试里取第一个查询的地方都不受影响)
   assert.equal(Object.keys(qs)[0], "today");
 });
@@ -66,11 +69,15 @@ test("用户选了日期就用那天;夹带的其它参数一律丢掉", async (
   assert.deepEqual(r.blocks[0]!.applied_args, { date: "2026-09-30" });
 });
 
-test("后三个查询:页面传来的日期原样交给端点;不传就按端点默认(最近一个已收盘交易日),不偷偷解析上下文", async () => {
+test("后面几个查询:页面传来的日期原样交给端点;不传就按端点默认(最近一个已收盘交易日),不偷偷解析上下文", async () => {
   const a = fakeFetch("trading");
   await pageQuery(ctx, { query: "shortline_themes", blockArgs: { themes: { date: "2026-10-08" }, firstboard: { date: "2026-10-08" } } }, { fetch: a.fetch });
   assert.deepEqual(a.calls.map((c) => [c.endpoint, c.args]).sort(), [["cn_shortline_firstboard", { date: "2026-10-08" }], ["cn_shortline_themes", { date: "2026-10-08" }]]);
   const b = fakeFetch("trading");
   await pageQuery(ctx, { query: "shortline_cycle" }, { fetch: b.fetch });
   assert.deepEqual(b.calls, [{ endpoint: "cn_shortline_cycle", args: {} }]);
+  // 轮动的窗口不开放:页面夹带 days 也丢掉,端点按默认 5 天
+  const c = fakeFetch("trading");
+  await pageQuery(ctx, { query: "shortline_rotation", blockArgs: { rotation: { date: "2026-10-08", days: 10 } } }, { fetch: c.fetch });
+  assert.deepEqual(c.calls, [{ endpoint: "cn_shortline_theme_rotation", args: { date: "2026-10-08" } }]);
 });

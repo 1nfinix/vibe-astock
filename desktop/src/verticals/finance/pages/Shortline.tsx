@@ -40,7 +40,7 @@ function BadDay({ why, onReset }: { why: string; onReset: (() => void) | null })
   );
 }
 
-const ALL_LOADING: TodayPanels = { emotion: LOADING, facts: LOADING, themes: LOADING, firstboard: LOADING, cycle: LOADING };
+const ALL_LOADING: TodayPanels = { emotion: LOADING, facts: LOADING, themes: LOADING, firstboard: LOADING, cycle: LOADING, ladder: LOADING };
 
 /**
  * 情绪复盘:短线情绪的温度、钱亏在哪、钱在哪些题材。
@@ -66,7 +66,7 @@ export function Shortline() {
   // 换日期 / 刷新时旧请求可能晚回来:只认最后一次
   const headSeq = useRef(0);
   const blockSeq = useRef(0);
-  // 今日情绪的另外四块只在打开「今日情绪」时取,且同一次表头只取一次
+  // 今日情绪的其余几块只在打开「今日情绪」时取,且同一次表头只取一次
   const blocksFor = useRef<DayHead | null>(null);
   const refreshBlocks = useRef(false);
 
@@ -100,7 +100,7 @@ export function Shortline() {
     refreshBlocks.current = false;
     if (blocked || !day) {
       const none = { state: "done", status: "missing", result: null, why: blocked ?? "没拿到复盘日", settled: null, cached: false, fetched_at: null } as const;
-      setPanels((p) => ({ ...p, facts: none, themes: none, firstboard: none, cycle: none }));
+      setPanels((p) => ({ ...p, facts: none, themes: none, firstboard: none, cycle: none, ladder: none }));
       return;
     }
     const my = ++blockSeq.current;
@@ -112,6 +112,7 @@ export function Shortline() {
       loadBlocks("shortline_facts", ["facts"], day, refresh).then(put),
       loadBlocks("shortline_themes", ["themes", "firstboard"], day, refresh).then(put),
       loadBlocks("shortline_cycle", ["cycle"], day, refresh).then(put),
+      loadBlocks("shortline_ladder", ["ladder"], day, refresh).then(put),
     ]).then(() => { if (my === blockSeq.current) setBlocksBusy(false); });
   }, [tab, head, headBusy, blocked, day]);
 

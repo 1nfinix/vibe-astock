@@ -89,8 +89,8 @@ scripts/start --remote --no-open --public-url https://<平台给 5940 端口分�
 
 | 想知道 | 去读 |
 |--------|------|
-| 短线读数怎么算(情绪、晋级率、封板质量、题材树、盘中快照) | `datasources/` 里 `cn_shortline_*` 端点,目录见 [`datasources/CATALOG.md`](datasources/CATALOG.md) |
-| 盯盘、情绪复盘、交易日志的页面与服务 | `desktop/src/verticals/finance/shortline/`、`desktop/src/verticals/finance/journal/`、`orchestrator/src/finance/` |
+| 短线读数怎么算(情绪、晋级率、连板天梯、封板质量、题材树、题材轮动、盘中快照) | `datasources/` 里 `cn_shortline_*` 端点,目录见 [`datasources/CATALOG.md`](datasources/CATALOG.md) |
+| 盯盘、情绪复盘、交易日志的页面与服务;定时提醒(盘前提醒、收盘摘要等) | `desktop/src/verticals/finance/shortline/`、`desktop/src/verticals/finance/journal/`、`orchestrator/src/finance/`(定时任务在 `schedule.ts`) |
 | 整体架构、编排器、命令行跑一次研究 | [`orchestrator/README.md`](orchestrator/README.md) |
 | 让你自己的 Agent 直接调取数与研究(MCP 8 个工具、本机 HTTP API) | [`orchestrator/README.md`](orchestrator/README.md)「服务层与接口」 |
 | 模型接入、provider 模板、兼容性测试 | [`docs/model-access.md`](docs/model-access.md)、[`providers/README.md`](providers/README.md) |

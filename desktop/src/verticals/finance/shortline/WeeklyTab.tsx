@@ -1,12 +1,17 @@
 /**
- * 情绪复盘 · 近 5 天:5 个交易日的热度 + 前几天的龙头现在怎么样了。
- * 移植自 Vibe AStock v2.0.0 的「近5天热度」,口径说明原样保留;颜色改成强 = 红、弱 = 绿。
+ * 情绪复盘 · 近 5 天:5 个交易日的热度、题材轮动,和前几天的龙头现在怎么样了。
+ * 热度和龙头谱系移植自 Vibe AStock v2.0.0 的「近5天热度」,口径说明原样保留;颜色改成强 = 红、弱 = 绿。
+ * 题材轮动是另一个查询(`shortline_rotation`),各自回来各自显示,一边没取到不影响另一边。
  */
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarRange, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAiPage } from "../../../core/ai/pageContext";
+import { LOADING, loadBlocks, type Panel } from "./api";
 import { Section } from "./FactsPanels";
 import { finite, pctColor, rate, safeArray, signed } from "./format";
+import { ThemeRotationSection, rotationSummary } from "./ThemeRotationPanel";
+import type { ThemeRotationResult } from "./types";
 import { useShortlineView } from "./useView";
 import type { LineageItem, WeeklyDay, WeeklyResult } from "./viewTypes";
 import { GapsAndSource, ViewSlot } from "./ViewBits";
@@ -70,7 +75,8 @@ export function weeklySummary(r: WeeklyResult): string {
   return out.join("\n");
 }
 
-export function WeeklyView({ r }: { r: WeeklyResult }) {
+/** 题材轮动在热度表下面;近 5 天的视图没取到时,页面把它单独摆在下面 */
+export function WeeklyView({ r, rotation }: { r: WeeklyResult; rotation?: ReactNode }) {
   const days = safeArray<WeeklyDay>(r.days);
   const maxLu = Math.max(1, ...days.map((d) => finite(d.limit_up) ?? 0));
   const lineage = safeArray<LineageItem>(r.lineage);
@@ -117,6 +123,8 @@ export function WeeklyView({ r }: { r: WeeklyResult }) {
         </div>
       </Section>
 
+      {rotation}
+
       <Section icon={GitBranch} title="龙头谱系 · 前几天的龙头现在怎么样了" caliber={LINEAGE_CALIBER}>
         {lineage.length === 0 ? <p className="text-[13px] text-muted-foreground">这几天没有可跟踪的最高标。</p> : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -157,15 +165,34 @@ export function WeeklyView({ r }: { r: WeeklyResult }) {
   );
 }
 
+/** 题材轮动:同一天、同一个「刷新」;换天作废旧请求 */
+function useRotation(day: string, refreshNonce: number): Panel<ThemeRotationResult> {
+  const [p, setP] = useState<Panel<ThemeRotationResult>>(LOADING);
+  const seenNonce = useRef(refreshNonce);
+  useEffect(() => {
+    const refresh = seenNonce.current !== refreshNonce;
+    seenNonce.current = refreshNonce;
+    let live = true;
+    setP(LOADING);
+    void loadBlocks("shortline_rotation", ["rotation"], day, refresh).then((got) => {
+      if (live) setP(got.rotation as Panel<ThemeRotationResult>);
+    });
+    return () => { live = false; };
+  }, [day, refreshNonce]);
+  return p;
+}
+
 export function WeeklyTab({ day, refreshNonce, onBusy }: ViewTabProps) {
   const [st] = useShortlineView<WeeklyResult>("shortline_weekly", day, undefined, refreshNonce, onBusy);
+  const rot = useRotation(day, refreshNonce);
   const r = st.state === "done" ? st.data : null;
   useAiPage(r ? {
     key: `shortline:weekly:${day}`,
     title: `近 5 天情绪 ${day}`,
-    context: weeklySummary(r),
-    suggestions: ["这 5 天情绪是在升温还是退潮?依据是哪几项", "最高标的高度和炸板率走势说明了什么", "前几天的龙头现在离高点多远,对接力意味着什么"],
+    context: `${weeklySummary(r)}\n${rotationSummary(rot)}`,
+    suggestions: ["这 5 天情绪是在升温还是退潮?依据是哪几项", "哪些题材连续在前排、哪些是回流或新出现的", "前几天的龙头现在离高点多远,对接力意味着什么"],
   } : null);
-  return <ViewSlot st={st} label="近 5 天热度">{(d) => <WeeklyView r={d} />}</ViewSlot>;
+  const rotation = <ThemeRotationSection p={rot} />;
+  const body = <ViewSlot st={st} label="近 5 天热度">{(d) => <WeeklyView r={d} rotation={rotation} />}</ViewSlot>;
+  return st.state === "done" ? body : <div className="space-y-4">{body}{rotation}</div>;
 }
-

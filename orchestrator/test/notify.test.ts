@@ -370,6 +370,7 @@ test("关掉的任务不跑;改时刻生效", async () => {
     assert.equal(h.runs.length, 0);
     await tick(ctx, { now: sh("2026-10-08T17:00"), def: h.def });
     assert.equal(h.runs.length, 1);
+    assert.equal(h.runs[0]!.at, "17:00", "任务拿得到改后的时刻");
   } finally { clean(ctx); }
 });
 

@@ -1,6 +1,6 @@
 """映射层:短线情绪的计算型端点(cn_shortline_emotion / cn_shortline_cycle / cn_shortline_facts / cn_shortline_daily /
 cn_shortline_settled / cn_shortline_structure / cn_shortline_themes / cn_shortline_firstboard / cn_shortline_live / cn_shortline_ladder /
-cn_shortline_turnover_top / cn_shortline_bigcaps)。约定同 mappers.py。
+cn_shortline_turnover_top / cn_shortline_bigcaps / cn_shortline_board_ladder / cn_shortline_theme_rotation)。约定同 mappers.py。
 
 - 比例一律按**小数**入证据(unit「小数」),涨跌幅按 **%**:数字闸门对「24%」会同时按比例比,两种写法都对得上。
 - 同一天多条同名证据靠 record_key 区分(档位 / 制度 / 题材 / 时段 / 事件)。
@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources.mappers import empty, ev, out  # noqa: E402
+from sources.shortline_boards import render_board_ladder, render_theme_rotation  # noqa: E402
 from sources.shortline_emotion import render_cycle, render_daily, render_metrics, render_settled  # noqa: E402
 from sources.shortline_facts import render_facts  # noqa: E402
 from sources.shortline_live import render_live  # noqa: E402
@@ -505,3 +506,83 @@ def shortline_bigcaps_map(result: dict, ctx: dict) -> dict:
     extra = {"date": day, "as_of": result.get("as_of"), "min_cap_yi": result.get("min_cap_yi"), "text": render_bigcaps(result), "result": result,
              "computation": _computation("shortline_watch.build_bigcaps", {"min_cap_yi": result.get("min_cap_yi")}, note="新浪 hs_a 节点按总市值降序翻页")}
     return a.finish(True, extra, "大市值名单一只都没有")
+
+
+# ---------------------------------------------------------------- 连板天梯
+def _codes(codes: list[str]) -> str:
+    return "、".join(codes[:5]) + (" 等" if len(codes) > 5 else "")
+
+
+def shortline_board_ladder_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("连板天梯计算为空")
+    day, prev = result["date"], result.get("prev_date")
+    a = _Acc(ctx, day)
+    lad: dict = result.get("ladder") or {}
+    if a.block("board_ladder", lad):
+        a.num("limit_up_count", lad.get("total_limit_up"), "只", note="东财涨停池只数")
+        a.num("ladder_highest", lad.get("highest"), "板")
+        a.num("consec_count", lad.get("consec_count"), "只", note="东财连板数 ≥ 2")
+        for lv in lad.get("levels") or []:
+            k = f"{lv['boards']}板"
+            a.num("ladder_tier_count", len(lv["stocks"]), "只", key=k)
+            if lv.get("base"):
+                n = f"{prev} 连板数 {lv['boards'] - 1} 的涨停股，{day} 仍在涨停池里的只数"
+                a.num("ladder_tier_base", lv["base"], "只", key=k, note=f"{prev} 连板数 {lv['boards'] - 1} 的涨停只数")
+                a.num("ladder_tier_promoted", lv["promoted"], "只", key=k, note=n)
+                a.num("ladder_tier_promotion_rate", lv.get("rate"), "小数", key=k, note=n)
+            for st in lv["stocks"]:
+                a.text("ladder_stock", f"{st['name']}（{st['code']}）｜{st['label']}｜首封 {st.get('first_seal') or '—'}"
+                       f"｜开板 {st['broken_times']} 次｜{st['reason'] or ('同花顺不收录北交所' if st.get('board') == '北交所' else '原因没取到')}", key=st["code"], note="原因是源站编辑归因，非公司确认")
+            for f in lv["fell"]:
+                a.text("ladder_fell", f"{f['name']}（{f['code']}）｜昨日 {f['prev_label']}｜今天{f['outcome']}", key=f["code"])
+                a.num("ladder_fell_ret", f.get("ret"), "%", key=f["code"], note=f"{prev} 涨停、{day} 没再涨停的当天涨跌幅（定稿记录优先）")
+        if not lad.get("prev_available"):
+            a.missing.append({"field": "ladder_tier_promotion_rate", "period": day, "reason": lad.get("prev_note") or "前一交易日涨停池未取得"})
+        # 没接上的票去向 / 涨跌幅没取到、沪深涨停股缺原因 = 缺数,不能当完整的结果长期缓存
+        unknown = [f["code"] for lv in lad.get("levels") or [] for f in lv["fell"] if f["ret"] is None]
+        if unknown:
+            a.missing.append({"field": "ladder_fell_ret", "period": day,
+                              "reason": f"{len(unknown)} 只昨天涨停、今天没再涨停的票当天表现没取到（{_codes(unknown)}）"})
+        if lad.get("reason_missing"):
+            a.missing.append({"field": "ladder_stock_reason", "period": day,
+                              "reason": f"{len(lad['reason_missing'])} 只沪深涨停股没有涨停原因（{_codes(lad['reason_missing'])}）"})
+        if not lad.get("reason_available"):
+            a.missing.append({"field": "ladder_stock_reason", "period": day, "reason": lad.get("reason_note") or "涨停原因没取到"})
+    extra = {"date": day, "prev_date": prev, "settled": result.get("settled"), "text": render_board_ladder(result), "result": result,
+             "computation": _computation("shortline_boards.build_board_ladder", {"date": day},
+                                         "池子取东财涨停 / 炸板 / 跌停 / 昨日涨停池,原因取问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘")}
+    return a.finish(bool(result.get("settled")), extra, "连板天梯没算出来")
+
+
+# ---------------------------------------------------------------- 题材轮动
+def shortline_theme_rotation_map(result: dict, ctx: dict) -> dict:
+    if not result:
+        return empty("题材轮动计算为空")
+    day = result["date"]
+    a = _Acc(ctx, day)
+    rot: dict = result.get("rotation") or {}
+    if a.block("theme_rotation", rot):
+        dates = rot["dates"]
+        span = f"{dates[0]}..{dates[-1]}"
+        for d in rot.get("days") or []:
+            if d["available"]:
+                a.num("limit_up_count", d["limit_up"], "只", period=d["date"], note="东财涨停池只数")
+                a.num("reason_covered", d["covered"], "只", period=d["date"], note="涨停原因里有事件题材、且对上东财涨停池的只数")
+            else:
+                a.missing.append({"field": "rotation_day", "period": d["date"], "reason": d["reason"]})
+            if d.get("unknown"):
+                a.missing.append({"field": "rotation_day", "period": d["date"],
+                                  "reason": f"{d['unknown']} 只沪深涨停股没有涨停原因：这天没出现的题材按缺数处理，出现的只数是下限"})
+        for t in rot.get("themes") or []:
+            k = t["tag"]
+            for d, v, rk in zip(dates, t["series"], t["ranks"]):   # 缺数的那天是 None,a.num 不写
+                a.num("rotation_topic_limit_up", v, "只", period=d, key=k, note="这个题材当天的涨停只数（按涨停原因标签归组）")
+                a.num("rotation_topic_rank", rk, "名", period=d, key=k, note="当天按涨停只数排第几（并列同名次）")
+            a.text("rotation_topic_status", t["status"], period=span, key=k, note="只由这几天的读数推出，不含对明天的判断")
+            a.num("rotation_topic_active_days", t["active_days"], "天", period=span, key=k)
+            a.num("rotation_topic_top3_days", t["top3_days"], "天", period=span, key=k)
+    extra = {"date": day, "days": result.get("days"), "settled": result.get("settled"), "text": render_theme_rotation(result), "result": result,
+             "computation": _computation("shortline_boards.build_theme_rotation", {"date": day, "days": result.get("days")},
+                                         "每天的东财涨停池 + 问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘的涨停原因")}
+    return a.finish(bool(result.get("settled")), extra, "题材轮动没算出来")

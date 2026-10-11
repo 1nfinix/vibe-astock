@@ -3948,6 +3948,57 @@
       "notes": "计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。涨停原因来源同 cn_shortline_themes;原因取不到时名单照出、标 partial(不缓存,下次再取)。已收盘的日子长期缓存;没收盘的那一天一律 partial"
     },
     {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+ths+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_board_ladder",
+      "title": "短线连板天梯(某天收盘时每个高度的涨停股:首封 / 末封时间、开板次数、封单、涨停原因;前一交易日低一档今天没接上的票去向 —— 炸板 / 跌停 / 没涨停及当天涨跌幅;每一档的晋级数)",
+      "layer": "8 打板",
+      "module": "shortline_boards",
+      "function": "build_board_ladder",
+      "mapper": "shortline_board_ladder_map",
+      "endpoint_label": "push2ex 涨停 / 炸板 / 跌停 / 昨日涨停池 + 问财或同花顺涨停揭秘(涨停原因) → board_ladder",
+      "args": {
+        "date": null
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG);信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。板位按东财连板数(反包票连板数是 1,标「N天M板」),晋级按昨天这一档的票今天还在涨停池里,与情绪四项同口径;最高标断板那一档今天没人也留一行。没接上的票当天涨跌幅先用定稿记录(东财昨日涨停池),缺了再看炸板 / 跌停池。涨停原因来源同 cn_shortline_themes,取不到时天梯照出、标 partial。已收盘的日子长期缓存;没收盘的那一天一律 partial"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+ths+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "id": "cn_shortline_theme_rotation",
+      "title": "短线题材轮动(近 N 个交易日每个事件题材每天的涨停只数与当天名次、连续几天有涨停、几天进前三、隔几天回流;昨天还有今天没有的也列出)",
+      "layer": "8 打板",
+      "module": "shortline_boards",
+      "function": "build_theme_rotation",
+      "mapper": "shortline_theme_rotation_map",
+      "endpoint_label": "逐日 push2ex 涨停池 + 问财或同花顺涨停揭秘(涨停原因) → theme_rotation",
+      "args": {
+        "date": null,
+        "days": 5
+      },
+      "notes": "计算型端点:取数层确定性计算(非 calc DAG);信封结构同 cn_shortline_themes。题材按涨停原因串里的标签归组(滤掉国企改革、破净等属性词),同义不同名的标签分开算。某天涨停池或原因没取到按缺数(None)处理、标 partial,不当 0;东财涨停池只留约一个月,更早的日子会缺。days 3–10,默认 5(约 2×days 次请求)。已收盘的日子长期缓存;没收盘的那一天一律 partial"
+    },
+    {
       "id": "em_market_trend",
       "title": "主要指数中长线(5/20/60/250 日涨跌、年初至今、均线、250 日高低点)+ 沪深两市成交额近 60 日",
       "layer": "19 指数",

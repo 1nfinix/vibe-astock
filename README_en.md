@@ -4,14 +4,14 @@
 
 <p align="center">
   <b>A short-term trading review and tracking workbench for China A-shares</b><br>
-  Watch · Sentiment review · AI review · Next-day checks · Trade journal · Company deep dive · Backtesting · 180 data endpoints
+  Watch · Sentiment review · AI review · Next-day checks · Trade journal · Company deep dive · Backtesting · 182 data endpoints
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
   <a href="CHANGELOG.md"><img alt="Source v2.0.0" src="https://img.shields.io/badge/source-v2.0.0-F35D2B"></a>
   <img alt="China A-shares, short-term" src="https://img.shields.io/badge/market-China%20A--shares-c92a2a">
-  <img alt="180 data endpoints" src="https://img.shields.io/badge/data-180%20endpoints-2f9e44">
+  <img alt="182 data endpoints" src="https://img.shields.io/badge/data-182%20endpoints-2f9e44">
   <img alt="AI: Claude Code, Codex, WorkBuddy, or a model API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
 </p>
 
@@ -35,9 +35,9 @@ From v2.0.0 it shares one foundation with [Vibe Research](https://github.com/sim
 
 - **10 primary sections**: Home, Watch, Review, Trade journal, Industry news, Industry research, Research tools, My stocks, Library, and Connect AI. The short-term sections come first: Watch holds Live moves and Auction & intraday, Review holds Sentiment review and Daily review, and Trade journal is a section of its own; Research tools holds Company deep dive, Bull/bear debate, Backtesting, and Candidate pool, and Industry research lists each sector directly.
 - **Watch**: live readings for your holdings, your watchlist, yesterday's ladder, large caps, and the top ten by turnover; a move of 1.5% or more within 3 minutes is logged as a surge or drop, and touching or leaving the limit-up price as sealed or opened; how yesterday's limit-up names did in the 09:25 auction, and the sentiment path across six snapshots through the day.
-- **Sentiment review**: the money-making effect, promotion rates, the streak premium, gaps in the ladder, the sentiment cycle, seal quality, the theme tree, and first-board names; AI review and AI weekly review, next-day checks (write conditions the night before, scored automatically after the next close), limit-up sample statistics, and structural shifts.
+- **Sentiment review**: the money-making effect, promotion rates, the board ladder, the streak premium, gaps in the ladder, the sentiment cycle, seal quality, the theme tree, first-board names, and theme rotation over the last 5 days; AI review and AI weekly review, next-day checks (write conditions the night before, scored automatically after the next close), limit-up sample statistics, and structural shifts.
 - **Trade journal**: each trade is matched automatically to that day's sentiment (strong / middling / weak) and where the stock stood, with win rates by sentiment, board, playbook, and whether it followed the plan; plus risk & discipline, review, and playbook cards. It stays on your machine and never goes to the AI.
-- **180 data endpoints** (35 layers), 12 of them built for short-term work: sentiment readings, six fact tables, the theme tree, first-board names, limit-up structure, intraday sentiment, yesterday's ladder, and more; the rest cover quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, the dragon-tiger list, lock-up expiries, convertible bonds, futures and commodities, Hong Kong and US stocks, news, macro data, and more.
+- **182 data endpoints** (35 layers), 14 of them built for short-term work: sentiment readings, six fact tables, the board ladder, the theme tree, theme rotation, first-board names, limit-up structure, intraday sentiment, yesterday's ladder, and more; the rest cover quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, the dragon-tiger list, lock-up expiries, convertible bonds, futures and commodities, Hong Kong and US stocks, news, macro data, and more.
 - **Six-stage company research (A-shares, Hong Kong, US)**: company profile → financials → earnings expectations → valuation → risk → report. Raw data keeps its source; derived figures keep their calculations.
 - **Bring your own AI**: a Claude Code, Codex, or WorkBuddy subscription, or any Chat Completions–compatible model API such as DeepSeek, Qwen, Kimi, or MiMo.
 - **Runs on Windows, macOS, and Linux**; it can also run on a macOS / Linux cloud computer and be opened remotely through a link with an access token.
@@ -163,10 +163,10 @@ Watch has two pages. They refresh on their own while open, stop and say "paused"
 
 First under Review, with 8 tabs. The review date defaults to the most recent trading day that has closed; future dates and non-trading days are refused outright instead of producing "0 limit-ups".
 
-- **Today**: the money-making effect (median and mean move of yesterday's limit-up names today, share in the green, how many hit limit-up again), promotion rates (first to second board, second to third, three boards and up), the streak premium, the ladder structure (which board level has a gap), how yesterday's strong names did (by what they were yesterday), the money-losing effect, seal quality (never broke, broke and resealed), the sentiment cycle, the theme tree (Tonghuashun limit-up reasons grouped into themes, with iWencai as a supplement), and first-board names. Each block has a "method" note you can open to see how it is computed.
+- **Today**: the money-making effect (median and mean move of yesterday's limit-up names today, share in the green, how many hit limit-up again), promotion rates (first to second board, second to third, three boards and up), the board ladder (who is at each streak height, how many names one level down yesterday made it up, and whether the ones that didn't hit limit-down, broke the seal, or never reached limit-up today), the streak premium, the ladder structure (which board level has a gap), how yesterday's strong names did (by what they were yesterday), the money-losing effect, seal quality (never broke, broke and resealed), the sentiment cycle, the theme tree (Tonghuashun limit-up reasons grouped into themes, with iWencai as a supplement), and first-board names. Each block has a "method" note you can open to see how it is computed.
 - **AI review**: five parts (sentiment, money, themes, the dragon-tiger list, leading names), each in a fresh conversation that sees only its own blocks of data, then a summary that suggests conditions for next-day checks, added in one click. Every number is checked by the app in three tiers: matches the data pack, shows a formula that recomputes correctly, or gives no source (a formula that does not recompute is flagged red); evidence IDs are checked one by one, and hovering "see evidence" shows the original row. Data after the review date never enters the data pack; each run is saved as a new version without overwriting older ones.
 - **AI weekly review**: for the week containing the selected day, three parts (sentiment trend, theme rotation, a look back at the checks) plus a summary, checked the same way as the AI review; it opens by listing the weekdays the market was closed. "My trades this week" is computed from the trade journal on your computer, shown only on the page, and never enters the AI data pack or the page context.
-- **Last 5 days**: theme heat and the lineage of leading names, with forward-adjusted daily candles for the leaders; names at the same height are ordered by first seal time.
+- **Last 5 days**: theme heat, theme rotation, and the lineage of leading names. Theme rotation shows, for each of the last 5 trading days, how many limit-ups each theme had and where it ranked, and marks how many days in a row, a return after a gap, a first appearance in the window, and themes that were there yesterday but gone today; a day that could not be fetched shows "—", not 0. Leaders use forward-adjusted daily candles; names at the same height are ordered by first seal time.
 - **Sentiment history**: where each daily reading sits within the last 10 / 20 / 30 / 60 trading days, compared with the day before.
 - **Next-day checks**: after the close, write directional conditions for the next trading day (for example "limit-up count flat tomorrow" or "first-to-second promotion rate up tomorrow"), each with how often that direction has occurred historically; they are scored automatically after the next close, with a running record over the last 60 trading days. From 09:15 on the next trading day, when the opening auction starts, conditions can no longer be written or edited; anything written after that is marked "after the fact" and left out of the record.
 - **Limit-up samples**: how yesterday's limit-up names did the next day, grouped by playbook (first-board breakout, early first-board seal, and so on), last seal time, and the entry day's sentiment, over the last 20 / 30 / 60 / 90 days. The samples are a list drawn up after the fact, do not account for orders that could not be filled in the queue, and use equal-weighted closing prices; they describe a market phenomenon, not a strategy backtest.
@@ -291,13 +291,15 @@ Watchlist and portfolio drafts can also be transcribed by AI from screenshots or
 
 ### Scheduled reminders
 
-While the app is running, three messages are put together after each A-share trading day closes and land in the inbox on the Reminders page:
+While the app is running, four messages are put together before the open and after the close on each A-share trading day and land in the inbox on the Reminders page:
+
+- **Pre-market reminder** (09:05 by default): overnight moves of the three major US indices, the FTSE China A50 future (against its previous settlement), and USD/CNY; for the previous trading day's names on a streak of 2 boards or more, whether they are on today's suspension list, and for the 20 highest of them, new filing titles (titles with words such as trading halt, abnormal volatility, inquiry, or share reduction listed first) and which are close to the severe-abnormal-volatility threshold (estimated from the rules; exchange announcements are authoritative); and IPOs open for subscription or listing today. If it is set for the morning and only gets to run after 11:30, it is not sent.
 
 - **Close summary** (15:40 by default): major index moves, limit-up / failed-limit-up / limit-down counts, the longest limit-up streak, the top three industries by main-fund net inflow and outflow, and how many stocks made the Dragon-Tiger list.
 - **Watchlist changes** (16:15 by default): each watchlist stock's change for the day (US and HK stocks show their quote date), titles of new filings for A-share watchlist stocks since the last run (up to 30 stocks), and A-share watchlist stocks at least 70% of the way to an abnormal-volatility threshold (estimated from the rules; exchange announcements are authoritative).
 - **Criteria due** (16:30 by default): verdict criteria and falsifiers in your ledger that have reached their date, with titles of company filings since you wrote them (A-shares), as a reminder to come back and mark them. Criteria due on a weekend are reminded on the next trading day, and each one only once.
 
-Two more jobs run in the background without sending a message: **Short-term close fetch** (15:35 by default) saves the day's final sentiment readings, how yesterday's limit-up names did today, the limit-up structure, and the fact tables on your computer, so sentiment history and next-day checks open without waiting, and the history keeps growing even though Eastmoney only keeps about a month; **intraday snapshots** are saved on trading days at 09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00 for Watch · Auction & intraday, and a missed one cannot be filled in later.
+Two more jobs run in the background without sending a message: **Short-term close fetch** (15:35 by default) saves the day's final sentiment readings, how yesterday's limit-up names did today, the limit-up structure, the fact tables, and the board ladder on your computer, so sentiment history and next-day checks open without waiting, and the history keeps growing even though Eastmoney only keeps about a month; **intraday snapshots** are saved on trading days at 09:25 / 09:35 / 10:00 / 11:30 / 14:00 / 15:00 for Watch · Auction & intraday, and a missed one cannot be filled in later.
 
 Facts only, no buy or sell suggestions; a block that could not be fetched says so instead of showing 0. Times are Beijing time and can be changed or turned off. Weekends and holidays are skipped; if the trading calendar cannot be fetched, nothing runs that day and the inbox says why. Nothing runs while the computer is off or the app is closed; when you open it later the same day, any task past its time runs once.
 
@@ -319,7 +321,7 @@ Verdict criteria and falsifiers that are due and not yet judged sit at the top o
 
 ## Data and markets
 
-The data registry has **180 endpoints across 35 layers**, 12 of them built for short-term work (`cn_shortline_*`): the four sentiment readings, the sentiment cycle, daily readings, six fact tables, the theme tree, first-board names, how yesterday's limit-up names did today, limit-up structure, intraday sentiment, yesterday's ladder, the top ten by turnover, and large caps. Closed days are cached for good; a day that has not closed is marked "partial" and not cached. The 7 SEC endpoints need an SEC contact filled in on the Connect AI page (or the `VRA_SEC_CONTACT` environment variable); without it they say what's missing. Other coverage includes quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, positioning, Southbound flows, A/H premiums, company profiles, options, indices, futures and commodities, corporate events, convertible bonds, SEC / FINRA / CBOE, news, macro data, industry thermometers, hiring, restrictions, and data calendars. A-share data is synced to [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1; US and Hong Kong data to [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3.
+The data registry has **182 endpoints across 35 layers**, 14 of them built for short-term work (`cn_shortline_*`): the four sentiment readings, the sentiment cycle, daily readings, six fact tables, the board ladder, the theme tree, theme rotation over the last 5 days, first-board names, how yesterday's limit-up names did today, limit-up structure, intraday sentiment, yesterday's ladder, the top ten by turnover, and large caps. Closed days are cached for good; a day that has not closed is marked "partial" and not cached. The 7 SEC endpoints need an SEC contact filled in on the Connect AI page (or the `VRA_SEC_CONTACT` environment variable); without it they say what's missing. Other coverage includes quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, positioning, Southbound flows, A/H premiums, company profiles, options, indices, futures and commodities, corporate events, convertible bonds, SEC / FINRA / CBOE, news, macro data, industry thermometers, hiring, restrictions, and data calendars. A-share data is synced to [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1; US and Hong Kong data to [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3.
 
 | | A-shares | US | Hong Kong |
 |---|---|---|---|
@@ -561,7 +563,7 @@ Home · watch · sentiment review · trade journal · daily review · industry n
         │
         ▼
 Research layer
-180 data endpoints · short-term readings and scoring · six-stage research workflow · calc · validator · report archive
+182 data endpoints · short-term readings and scoring · six-stage research workflow · calc · validator · report archive
         │
         ▼
 Local Agent Runtime and Model Provider
@@ -671,10 +673,10 @@ npm run build --prefix desktop
 
 Latest local acceptance checks (October 11, 2026, before the v2.0.0 release):
 
-- orchestrator: all backend tests on Node 26, **1,369 tests: 1,368 passed, 1 Windows ACL-specific test skipped**; type check passed.
-- desktop: **387/387**, type check and production build passed (the build only prints Vite's bundle-size notice); Python (calculation library 311, backtesting 571, data scripts 724): **1,606/1,606**; mypy passed on 114 files.
+- orchestrator: all backend tests on Node 26, **1,397 tests: 1,396 passed, 1 Windows ACL-specific test skipped**; type check passed.
+- desktop: **404/404**, type check and production build passed (the build only prints Vite's bundle-size notice); Python (calculation library 311, backtesting 574, data scripts 774): **1,659/1,659**; mypy passed on 115 files.
 - AI review and AI weekly review were run for real with a Claude Code subscription (written on October 10, 2026 for October 9: 4 review versions, 3 weekly versions), and the app's number checks and evidence-ID checks took effect; Import from the old version was tested on a copy of real old data (the original was not touched).
-- This round did not re-run every external data endpoint or test on Windows hardware; Watch has not yet been tested during a trading session (see "Current boundaries").
+- Premarket reminder was run once by hand on real data (October 11, 2026) but has not yet run at 09:05 on a trading day; this round did not re-run every external data endpoint or test on Windows hardware; Watch has not yet been tested during a trading session (see "Current boundaries").
 
 Project rule: test each completed component; for significant changes, run one independent review, verify every
 finding, fix valid issues, and re-verify the affected scope. A component is not described as complete and is not

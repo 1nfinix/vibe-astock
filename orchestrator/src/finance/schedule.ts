@@ -306,8 +306,14 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
   beat: async (b) => (await import("./shortline/intraday.ts")).intradayBeat(b),
   jobs: [
     {
+      id: "shortline_premarket", label: "盘前提醒", at: "09:05", defaultEnabled: true,
+      description: "集合竞价前:隔夜美股三大指数、A50 期指和美元兑人民币;前一交易日连板股(2 板及以上)的新公告标题、今天是否停牌、按交易所规则推算离严重异常波动较近的;今天申购和上市的新股。只列事实;设在上午、拖到 11:30 以后才补跑的不发。",
+      // 动态导入:premarket.ts 反过来要用本文件的 pool / failedNote / rowsOf
+      run: async (j) => (await import("./shortline/premarket.ts")).shortlinePremarket(j),
+    },
+    {
       id: "shortline_close_fetch", label: "短线收盘取数", at: "15:35", defaultEnabled: true,
-      description: "A 股收盘后把当天定稿的每日情绪读数、昨日涨停股今日表现、涨停结构和事实表先取好存在本机:以后打开情绪历史、明日验证、涨停样本不用等,东财只留约一个月的数据也能一直攒下去。不推送消息。",
+      description: "A 股收盘后把当天定稿的每日情绪读数、昨日涨停股今日表现、涨停结构、事实表和连板天梯先取好存在本机:以后打开情绪历史、明日验证、涨停样本不用等,东财只留约一个月的数据也能一直攒下去。不推送消息。",
       run: async (j) => (await import("./shortline/close_fetch.ts")).shortlineCloseFetch(j),
     },
     {

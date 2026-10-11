@@ -1,10 +1,10 @@
 /**
  * 短线(Vibe AStock)的界面查询。和 VR 原有的页面分开放,由 `../page_queries.ts` 合进 FINANCE_PAGE_QUERIES。
  *
- * 🔴 情绪复盘一页拆成四个查询,页面先取第一个、拿到业务日后再并发取其余三个:
+ * 🔴 情绪复盘一页拆成几个查询,页面先取第一个、拿到业务日后再并发取其余的:
  *    冷启动时五个短线端点要约 45 次东财请求,东财按全局节奏一次一个(约 1.3 秒);
  *    放进同一个查询要等最慢的周期(要逐日取近 10 天)一起回来,一分钟后才出第一屏。
- * 后三个不解析上下文:页面总是把第一个查询定下的那天作为 date 传过来;
+ * 后面几个不解析上下文:页面总是把第一个查询定下的那天作为 date 传过来;
  * 不传时端点自己取最近一个已收盘交易日(AI 按名字浏览时也是这一天),不会拿盘中半天的数冒充复盘。
  */
 import type { PageQueryDef } from "../../plugin.ts";
@@ -48,6 +48,21 @@ export const SHORTLINE_PAGE_QUERIES: Record<string, PageQueryDef> = {
     intent: "这一轮情绪从哪天起来、走到第几天(启发式,不是精确的周期划分)",
     blocks: [
       { id: "cycle", title: "情绪周期", note: "近 10 个交易日的涨停数 / 最高连板 / 炸板率合成的相对分", endpoint: "cn_shortline_cycle", userArgs: DATE_ONLY },
+    ],
+  },
+  shortline_ladder: {
+    title: "情绪复盘 · 连板天梯",
+    intent: "这一天每个连板高度有谁、昨天同一高度的有几只接上了、没接上的今天怎么样",
+    blocks: [
+      { id: "ladder", title: "连板天梯", note: "按东财连板数分层;晋级 = 昨天 N 板的今天还在涨停池,没接上的写明跌停 / 炸板 / 没涨停", endpoint: "cn_shortline_board_ladder", userArgs: DATE_ONLY },
+    ],
+  },
+  shortline_rotation: {
+    title: "情绪复盘 · 题材轮动",
+    intent: "近几天涨停题材怎么轮动:哪些连续在前排、哪些新出现、哪些回流、哪些退下去了",
+    blocks: [
+      // 只开放日期:窗口固定 5 个交易日,和「近 5 天」分页一致
+      { id: "rotation", title: "题材轮动", note: "题材 = 同花顺涨停揭秘的涨停原因拆出的标签;某天没取到按缺数处理,不当 0", endpoint: "cn_shortline_theme_rotation", userArgs: DATE_ONLY },
     ],
   },
 };

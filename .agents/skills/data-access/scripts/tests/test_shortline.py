@@ -715,7 +715,8 @@ def test_registry_entries_resolve():
     by_id = {e["id"]: e for e in reg["endpoints"]}
     import importlib
     for ep_id, args in (("cn_shortline_emotion", {"date"}), ("cn_shortline_cycle", {"date", "lookback"}), ("cn_shortline_facts", {"date"}), ("cn_shortline_daily", {"date"}), ("cn_shortline_settled", {"date"}),
-                         ("cn_shortline_themes", {"date", "top"}), ("cn_shortline_firstboard", {"date"})):
+                         ("cn_shortline_themes", {"date", "top"}), ("cn_shortline_firstboard", {"date"}),
+                         ("cn_shortline_board_ladder", {"date"}), ("cn_shortline_theme_rotation", {"date", "days"})):
         e = by_id[ep_id]
         assert e["symbol_kind"] == "none" and e["computed"] is True and set(e["args"]) == args
         assert "cache_max_age_sec" not in e, "已收盘的日子结果不变;没收盘的靠 partial 不进缓存"

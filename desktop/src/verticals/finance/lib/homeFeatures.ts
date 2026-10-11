@@ -30,7 +30,7 @@ export const HOME_FEATURE_GROUPS = [
   { title: "我的股票", detail: "自选、持仓和它们的事件", features: [
     { to: "/my-stocks", title: "自选与持仓", detail: "自选总览、持仓台账与收益" },
     { to: "/calendar", title: "事件日历", detail: "自选和持仓未来 30 天的事件" },
-    { to: "/inbox", title: "提醒", detail: "收盘摘要、自选变化与推送" },
+    { to: "/inbox", title: "提醒", detail: "盘前提醒、收盘摘要、自选变化与推送" },
   ] },
   { title: "资料库", detail: "把研究积累留在自己手里", features: [
     { to: "/my-reports", title: "我的研报", detail: "导入、查阅和分析研究资料" },

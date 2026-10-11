@@ -1,5 +1,6 @@
 /**
- * 情绪复盘页取数:先取 `shortline`(定业务日 + 情绪四项),再按同一天并发取盘面事实、题材与首板、情绪周期。
+ * 情绪复盘页取数:先取 `shortline`(定业务日 + 情绪四项),再按同一天并发取盘面事实、题材与首板、情绪周期、连板天梯。
+ * 「近 5 天」分页的题材轮动也走这里(`shortline_rotation`)。
  * 页面只认查询名,端点 id 只在后端的查询声明里(orchestrator/src/finance/shortline/pages.ts)。
  */
 import { backend, type PageBlock, type PageContext } from "@/lib/backend";
@@ -74,7 +75,9 @@ export async function loadEmotion(opts: { date?: string; refresh?: boolean }) {
 }
 
 /** 第二步:同一天的其余面板,各自回来各自显示 */
-export async function loadBlocks(query: "shortline_facts" | "shortline_themes" | "shortline_cycle", ids: string[], date: string, refresh: boolean): Promise<Record<string, Panel<unknown>>> {
+export type BlockQuery = "shortline_facts" | "shortline_themes" | "shortline_cycle" | "shortline_ladder" | "shortline_rotation";
+
+export async function loadBlocks(query: BlockQuery, ids: string[], date: string, refresh: boolean): Promise<Record<string, Panel<unknown>>> {
   try {
     const page = await backend.page(query, { ...(refresh ? { refresh: true } : {}), blockArgs: Object.fromEntries(ids.map((id) => [id, { date }])) });
     return Object.fromEntries(ids.map((id) => [id, panelOf(page.blocks.find((b) => b.id === id))]));

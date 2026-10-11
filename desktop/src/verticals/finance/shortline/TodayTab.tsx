@@ -1,16 +1,18 @@
 /**
  * 情绪复盘 · 今日情绪。排法照 Vibe AStock 的看板:先看昨天涨停的今天赚不赚钱(四项读数),
- * 再看钱亏在哪个板位、板封得结不结实,再看钱在哪些题材,最后是事件、分制度、周期和首板名单。
+ * 再看各个高度有谁、昨天那层接上了几只(连板天梯),钱亏在哪个板位、板封得结不结实,
+ * 再看钱在哪些题材,最后是事件、分制度、周期和首板名单。
  * 只负责摆;取数在页面里(各块各自回来各自显示)。
  */
 import type { ReactNode } from "react";
 import { useAiPage } from "../../../core/ai/pageContext";
 import type { Panel } from "./api";
+import { BoardLadderPanel } from "./BoardLadderPanel";
 import { ConsecPremiumCard, CycleCard, LadderCard, MoneyEffectCard, PromotionCard } from "./EmotionCards";
 import { BoardSystemSection, Ledger, LossEffectSection, Matrix, SealQualitySection, ThemeTreeView, Themes } from "./FactsPanels";
 import { FirstBoardPanel } from "./FirstBoardPanel";
 import { todaySummary } from "./summary";
-import type { ConsecPremium, CycleResult, EmotionResult, FactsResult, FirstBoardResult, LadderGap, MoneyEffect, Promotion, ThemesResult } from "./types";
+import type { BoardLadderResult, ConsecPremium, CycleResult, EmotionResult, FactsResult, FirstBoardResult, LadderGap, MoneyEffect, Promotion, ThemesResult } from "./types";
 
 export interface TodayPanels {
   emotion: Panel<EmotionResult>;
@@ -18,6 +20,7 @@ export interface TodayPanels {
   themes: Panel<ThemesResult>;
   firstboard: Panel<FirstBoardResult>;
   cycle: Panel<CycleResult>;
+  ladder: Panel<BoardLadderResult>;
 }
 
 /** 一块还在取 / 没取到时占的位;取到了才把内容画出来 */
@@ -39,7 +42,7 @@ export function Slot<T>({ p, title, children, minH = "min-h-[8rem]" }: { p: Pane
 const OFF = { available: false } as const;
 
 export function TodayTab({ day, panels }: { day: string | null; panels: TodayPanels }) {
-  const { emotion, facts, themes, firstboard, cycle } = panels;
+  const { emotion, facts, themes, firstboard, cycle, ladder } = panels;
   const e = emotion.state === "done" ? emotion.result : null;
 
   useAiPage(day ? {
@@ -82,7 +85,10 @@ export function TodayTab({ day, panels }: { day: string | null; panels: TodayPan
         )}
       </Slot>
 
-      {/* 2. 钱亏在哪个板位、板封得结不结实 */}
+      {/* 2. 各个高度有谁、昨天那层接上了几只 */}
+      <Slot p={ladder} title="连板天梯">{(l) => <BoardLadderPanel r={l} />}</Slot>
+
+      {/* 3. 钱亏在哪个板位、板封得结不结实 */}
       <Slot p={facts} title="盘面事实">
         {(f) => (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -95,7 +101,7 @@ export function TodayTab({ day, panels }: { day: string | null; panels: TodayPan
         )}
       </Slot>
 
-      {/* 3. 钱在哪些题材 */}
+      {/* 4. 钱在哪些题材 */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Slot p={themes} title="题材事件树">{(t) => <ThemeTreeView t={t.tree} />}</Slot>
         <div className="space-y-4">
@@ -104,7 +110,7 @@ export function TodayTab({ day, panels }: { day: string | null; panels: TodayPan
         </div>
       </div>
 
-      {/* 4. 事件与分制度 */}
+      {/* 5. 事件与分制度 */}
       {facts.state === "done" && facts.result && (
         <div className="space-y-4">
           <Ledger el={facts.result.events} />
@@ -112,7 +118,7 @@ export function TodayTab({ day, panels }: { day: string | null; panels: TodayPan
         </div>
       )}
 
-      {/* 5. 首板名单 */}
+      {/* 6. 首板名单 */}
       <Slot p={firstboard} title="首板名单">{(fb) => <FirstBoardPanel fb={fb} />}</Slot>
     </div>
   );

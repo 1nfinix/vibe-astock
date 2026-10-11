@@ -3,8 +3,9 @@
  * 🔴 没取到 / 还在取的块要明说 —— 漏写一块,模型会把「没有这项数据」读成「这项是零」。
  */
 import type { Panel } from "./api";
+import { ladderSummary } from "./BoardLadderPanel";
 import { finite, hhmm, ladderRows, rate, safeArray, safeRecord, signed, tierOrder } from "./format";
-import type { CycleResult, EmotionResult, FactsResult, FeedbackCell, FirstBoardResult, FirstBoardStock, LedgerEvent, PromotionTier, ThemeNode, ThemesResult } from "./types";
+import type { BoardLadderResult, CycleResult, EmotionResult, FactsResult, FeedbackCell, FirstBoardResult, FirstBoardStock, LedgerEvent, PromotionTier, ThemeNode, ThemesResult } from "./types";
 
 function missing<T>(label: string, p: Panel<T>): string | null {
   if (p.state === "loading") return `${label}:还在取,先别据此下结论`;
@@ -17,7 +18,7 @@ const off = (label: string, x?: { available?: boolean; reason?: string }) =>
 
 export function todaySummary(day: string | null, p: {
   emotion: Panel<EmotionResult>; facts: Panel<FactsResult>; themes: Panel<ThemesResult>;
-  firstboard: Panel<FirstBoardResult>; cycle: Panel<CycleResult>;
+  firstboard: Panel<FirstBoardResult>; cycle: Panel<CycleResult>; ladder: Panel<BoardLadderResult>;
 }): string {
   const out: string[] = [];
   const e = p.emotion.state === "done" ? p.emotion.result : null;
@@ -38,6 +39,10 @@ export function todaySummary(day: string | null, p: {
     const rows = lg ? ladderRows(lg) : [];
     out.push(off("梯队", lg) ?? `梯队(当天收盘涨停,2 板以上,全市场不分题材):${rows.map((r) => (r.count == null ? `${r.board}板缺` : `${r.board}板×${r.count}`)).join(" ") || "没有 2 板以上"}`);
   }
+
+  const ml = missing("连板天梯", p.ladder);
+  if (ml) out.push(ml);
+  else if (p.ladder.state === "done" && p.ladder.result) out.push(ladderSummary(p.ladder.result));
 
   const m2 = missing("盘面事实", p.facts);
   if (m2) out.push(m2);
