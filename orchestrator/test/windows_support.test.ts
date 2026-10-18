@@ -327,9 +327,14 @@ test("Windows 收紧:所有者不是当前用户时改回当前用户", { skip: 
     fs.writeFileSync(file, "secret");
     t.diagnostic(`新建文件的所有者:${owner(file)}`);
     restrictPrivateFile(file);
-    // S-1-5-32-544 = 本机 Administrators 组;只有提权的管理员能把所有者设成它(GitHub 的 Windows 测试机可以)
+    // S-1-5-32-544 = 本机 Administrators 组;只有提权的管理员能把所有者设成它。
+    // GitHub 的 Windows 测试机以管理员运行、关了 UAC,在那里设不成就是测试准备出错,要报红而不是跳过。
     const set = spawnSync("icacls.exe", [file, "/setowner", "*S-1-5-32-544"], { encoding: "utf8" });
-    if (set.status !== 0) { t.skip(`这台机器不能把所有者设成 Administrators:${set.stdout}${set.stderr}`); return; }
+    if (set.status !== 0) {
+      assert.notEqual(process.env.GITHUB_ACTIONS, "true", `CI 上把所有者设成 Administrators 失败:${set.stdout}${set.stderr}`);
+      t.skip(`这台机器(未提权)不能把所有者设成 Administrators:${set.stdout}${set.stderr}`);
+      return;
+    }
     assert.match(privateFilePermissions(file).detail, /所有者不是当前用户/);
     await restrict(file);
     const check = privateFilePermissions(file);
