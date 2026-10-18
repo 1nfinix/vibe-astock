@@ -505,7 +505,8 @@ function npmShimTarget(bin: string): string | null {
     const entry = path.resolve(base, targets[0]!);
     // 解析后还要落在安装目录里(挡住 "$basedir/../x"、"$basedir/C:/x"):全局 shim 是它所在的目录,
     // 项目里的 node_modules/.bin/x.ps1 指向上一层的 node_modules/<包>/。
-    const root = path.basename(base).toLowerCase() === ".bin" ? path.dirname(base) : base;
+    const projectBin = path.basename(base).toLowerCase() === ".bin" && path.basename(path.dirname(base)).toLowerCase() === "node_modules";
+    const root = projectBin ? path.dirname(base) : base;
     const rel = path.relative(root, entry);
     if (!rel || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
     if (!fs.statSync(entry).isFile()) return null;

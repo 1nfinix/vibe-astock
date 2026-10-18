@@ -104,11 +104,17 @@ test("Windows npm shim 指向原生 exe 时(Claude Code 形态)直接 spawn 该 
   fs.writeFileSync(ps1, `#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "${outside.replace(/\\/g, "/")}" $args\n`);
   assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
     "目标在 $basedir 之外的 shim 不得被执行");
-  // 写成 $basedir/../ 跳出安装目录 → 拒绝
-  fs.writeFileSync(path.join(path.dirname(npmBin), "escaped.exe"), "MZ fake exe");
-  fs.writeFileSync(ps1, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "$basedir/../escaped.exe" $args\n');
-  assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
-    "$basedir/../ 跳出安装目录的 shim 不得被执行");
+  // 写成 $basedir/../ 跳出安装目录 → 拒绝;名叫 .bin、但不在 node_modules 下的文件夹也不放宽
+  const outer = temp();
+  fs.writeFileSync(path.join(outer, "escaped.exe"), "MZ fake exe");
+  for (const sub of ["npm", ".bin"]) {
+    const shimDir = path.join(outer, sub);
+    fs.mkdirSync(shimDir);
+    const escaping = path.join(shimDir, "claude.ps1");
+    fs.writeFileSync(escaping, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "$basedir/../escaped.exe" $args\n');
+    assert.throws(() => executableInvocation(escaping, ["--version"], {}, "win32"), /标准 npm|原生/,
+      `${sub}/ 下 $basedir/../ 跳出安装目录的 shim 不得被执行`);
+  }
 });
 
 test("项目里 node_modules/.bin 的 shim 指向上一层 node_modules/<包> 时照常放行", () => {
