@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-  <a href="CHANGELOG.md"><img alt="Source v2.1.0" src="https://img.shields.io/badge/source-v2.1.0-F35D2B"></a>
+  <a href="CHANGELOG.md"><img alt="Source v2.1.1" src="https://img.shields.io/badge/source-v2.1.1-F35D2B"></a>
   <img alt="China A-shares, short-term" src="https://img.shields.io/badge/market-China%20A--shares-c92a2a">
   <img alt="182 data endpoints" src="https://img.shields.io/badge/data-182%20endpoints-2f9e44">
   <img alt="AI: Claude Code, Codex, WorkBuddy, or a model API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
@@ -680,13 +680,14 @@ npm run build --prefix desktop
 .venv/bin/python -m pytest .agents/skills/data-access/scripts/tests -q
 ```
 
-Latest local acceptance checks (October 11, 2026, before the v2.1.0 release):
+Latest local acceptance checks (October 18, 2026, before the v2.1.1 release, on macOS):
 
-- orchestrator: all backend tests on Node 26, **1,433 tests: 1,429 passed, 4 Windows-specific tests skipped**; type check passed.
-- desktop: **405/405**, type check and production build passed (the build only prints Vite's bundle-size notice); Python (calculation library 311, backtesting 583, data scripts 783): **1,677/1,677**; mypy passed on 115 files.
-- Two independent read-only audits before release (Codex 6.1 Sol and Opus 5.5) confirmed four issues, all in the merged Vibe Research code; they were fixed and shipped in Vibe Research v2.2.1 as well. The fix patch then got its own independent review (Opus 5.5), and all six issues it found were fixed. Every fix has a reverse check (undo the fix and the test must fail).
+- orchestrator: all backend tests on Node 26, **1,439 tests: 1,434 passed, 5 Windows-specific tests skipped**; type check passed.
+- desktop: **406/406**, type check and production build passed (the build only prints Vite's bundle-size notice); Python (calculation library 311, backtesting 583, data scripts 783): **1,677/1,677**; mypy passed on 115 files.
+- One independent read-only audit before release (Codex 6.1 Sol) found five issues, four of which were fixed; the fix patch then got its own review (Codex 6.1 Sol), which found three, two of which were fixed (the two left unfixed and the reasons are in the CHANGELOG). Key fixes have a reverse check (undo the fix and the test must fail).
+- This release fixes Windows problems, but no Windows hardware was available: the Windows-specific tests run only on GitHub's Windows runner (which runs as administrator), and the "fails when not run as administrator" fix relies on the PR author's report from real hardware.
 - In the previous release (v2.0.0), AI review and AI weekly review were run for real with a Claude Code subscription (written on October 10, 2026 for October 9: 4 review versions, 3 weekly versions; this release does not change them and they were not rerun), and the app's number checks and evidence-ID checks took effect; Import from the old version was tested on a copy of real old data (the original was not touched).
-- Premarket reminder was run once by hand on real data (October 11, 2026) but has not yet run at 09:05 on a trading day; this round did not re-run every external data endpoint or test on Windows hardware; Watch has not yet been tested during a trading session (see "Current boundaries").
+- Premarket reminder was run once by hand on real data (October 11, 2026) but has not yet run at 09:05 on a trading day; this round did not re-run every external data endpoint; Watch has not yet been tested during a trading session (see "Current boundaries").
 
 Project rule: test each completed component; for significant changes, run one independent review, verify every
 finding, fix valid issues, and re-verify the affected scope. A component is not described as complete and is not
