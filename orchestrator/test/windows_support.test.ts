@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import "../src/finance/register.ts";
 import { fetchEnv, interpreterRoot, makeConfig, normalizeInterpreter } from "../src/config.ts";
-import { privateFilePermissions, restrictPrivateFile, restrictPrivateFileAsync, sha256File, writeJson } from "../src/fsutil.ts";
+import { parseWhoamiSid, privateFilePermissions, restrictPrivateFile, restrictPrivateFileAsync, sha256File, writeJson } from "../src/fsutil.ts";
 import { executableInvocation, findExecutable, LocalAgentError, localSubscriptionEnv, runLocalAgent } from "../src/local_agent_runtime.ts";
 import { RunToolsError, listRunFiles, readRunFile, runCalculation, writeStageOutput } from "../src/finance/run_tools_mcp.ts";
 import { writeTurnContext } from "../src/turn_context.ts";
@@ -98,6 +98,20 @@ test("Windows npm shim 指向原生 exe 时(Claude Code 形态)直接 spawn 该 
   fs.writeFileSync(ps1, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "$basedir/node_modules/x/bin/$($env:EVIL).exe" $args\n');
   assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
     "目标带插值字符的 shim 不得被执行");
+  // 目标不在 shim 所在目录($basedir)下 → 不是 npm 生成的 shim,拒绝
+  const outside = path.join(temp(), "other.exe");
+  fs.writeFileSync(outside, "MZ fake exe");
+  fs.writeFileSync(ps1, `#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "${outside.replace(/\\/g, "/")}" $args\n`);
+  assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
+    "目标在 $basedir 之外的 shim 不得被执行");
+});
+
+test("whoami /user 的 CSV 输出能取出 SID,取不到时返回 null", () => {
+  assert.equal(parseWhoamiSid('"desktop-ab12\\simon","S-1-5-21-1004336348-1177238915-682003330-1001"\r\n'), "S-1-5-21-1004336348-1177238915-682003330-1001");
+  assert.equal(parseWhoamiSid('"域\\用户 名","S-1-5-18"'), "S-1-5-18");
+  assert.equal(parseWhoamiSid(""), null);
+  assert.equal(parseWhoamiSid("ERROR: Access is denied."), null);
+  assert.equal(parseWhoamiSid('"user","S-1-5-21-1-2"," extra"'), null);
 });
 
 test("Windows npm shim 指向无扩展名 node 入口时(CodeBuddy 形态)用 node 运行该入口", () => {

@@ -498,7 +498,8 @@ function npmShimTarget(bin: string): string | null {
     const source = fs.readFileSync(bin, "utf8").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
     if (!source.startsWith("#!/usr/bin/env pwsh\n") ||
       !source.includes("$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n")) return null;
-    const targets = [...source.matchAll(/&\s+"(?:\$basedir\/)?(?:node\$exe"\s+"(?:\$basedir\/)?)?([^"\r\n]+)"\s+\$args\b/g)].map((m) => m[1]!);
+    // 目标必须在 $basedir 下(npm 生成的 shim 都是这样);只有 node 本身可以是 "node$exe"(走 PATH)。
+    const targets = [...source.matchAll(/&\s+"(?:(?:\$basedir\/)?node\$exe"\s+")?\$basedir\/([^"\r\n]+)"\s+\$args\b/g)].map((m) => m[1]!);
     if (!targets.length || new Set(targets).size !== 1 || /[$`]/.test(targets[0]!)) return null;
     const entry = path.resolve(path.dirname(bin), targets[0]!);
     if (!fs.statSync(entry).isFile()) return null;
@@ -1308,8 +1309,11 @@ export function parseCodeBuddyOutput(stdout: string): string {
     const value = item as { result?: unknown; response?: unknown; structured_output?: unknown; is_error?: unknown };
     if (value.is_error === true) throw new LocalAgentError("agent_failed", "CodeBuddy 本轮执行失败");
     if (value.structured_output !== undefined) return JSON.stringify(value.structured_output);
-    if (typeof value.result === "string" && value.result.trim()) return stripThinkTags(value.result);
-    if (typeof value.response === "string" && value.response.trim()) return stripThinkTags(value.response);
+    // 先清推理标签再判空:整段只有推理痕迹时按「没有可见回答」处理,不能返回空串冒充回答。
+    const result = typeof value.result === "string" ? stripThinkTags(value.result) : "";
+    if (result) return result;
+    const response = typeof value.response === "string" ? stripThinkTags(value.response) : "";
+    if (response) return response;
   }
   throw new LocalAgentError("agent_empty_output", "CodeBuddy 没有返回可见回答");
 }

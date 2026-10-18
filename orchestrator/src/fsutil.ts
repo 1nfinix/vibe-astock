@@ -37,18 +37,41 @@ function windowsAcl(script: string, file: string): { status: number | null; erro
   return { status: result.status, error: result.error };
 }
 
-/** Windows 的 mode 0600 不会改变 NTFS DACL；敏感文件必须显式断开继承并只授权当前用户。
- *
- * 🔴 不用 Get-Acl/Set-Acl:Get-Acl 默认捕获全部安全节(含 SACL),Set-Acl 会原样写回,
- *    而写 SACL 需要 SeSecurityPrivilege —— 普通未提权进程没有这个特权,
- *    整个 API 会因此起不来(2026-10-14 实测:PrivilegeNotHeldException)。
- *    icacls 只动 DACL 和继承标志,不需要任何特权,语义相同(断开继承 + 仅当前用户 FullControl)。
- */
-function windowsAccount(): string {
+let windowsSidCache: string | null = null;
+
+/** 从 `whoami /user /fo csv /nh` 的输出里取 SID(形如 "域\用户","S-1-5-21-…")。 */
+export function parseWhoamiSid(output: string): string | null {
+  const m = /"(S-1-\d+(?:-\d+)+)"$/.exec(String(output ?? "").trim());
+  return m ? m[1]! : null;
+}
+
+function accountFromEnv(): string {
   const user = process.env.USERNAME ?? "";
   const domain = process.env.USERDOMAIN ?? "";
-  if (!user) throw new Error("拿不到当前用户名(USERNAME 为空)");
+  if (!user) throw new Error("拿不到当前用户(whoami 失败且 USERNAME 为空)");
   return domain ? `${domain}\\${user}` : user;
+}
+
+/** icacls 的授权对象:优先当前进程用户的 SID(`*S-1-…`),跟 WINDOWS_CHECK_ACL 认的是同一个身份,
+ *  不受 USERDOMAIN / USERNAME 环境变量影响;whoami 拿不到时才退回用户名(授错人时检查会报出来)。 */
+function windowsAccount(): string {
+  if (windowsSidCache) return `*${windowsSidCache}`;
+  const result = spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+  const sid = !result.error && result.status === 0 ? parseWhoamiSid(result.stdout) : null;
+  if (!sid) return accountFromEnv();
+  windowsSidCache = sid;
+  return `*${sid}`;
+}
+
+async function windowsAccountAsync(): Promise<string> {
+  if (windowsSidCache) return `*${windowsSidCache}`;
+  const sid = await new Promise<string | null>(resolve => {
+    execFile("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true, timeout: 10_000 },
+      (error, stdout) => resolve(error ? null : parseWhoamiSid(stdout)));
+  });
+  if (!sid) return accountFromEnv();
+  windowsSidCache = sid;
+  return `*${sid}`;
 }
 
 function icacls(file: string, args: string[]): { status: number | null; error?: Error } {
@@ -56,6 +79,13 @@ function icacls(file: string, args: string[]): { status: number | null; error?: 
   return { status: result.status, error: result.error };
 }
 
+/** Windows 的 mode 0600 不会改变 NTFS DACL；敏感文件必须显式断开继承并只授权当前用户。
+ *
+ * 🔴 不用 Get-Acl/Set-Acl:Get-Acl 默认捕获全部安全节(含 SACL),Set-Acl 会原样写回,
+ *    而写 SACL 需要 SeSecurityPrivilege —— 普通未提权进程没有这个特权,
+ *    整个 API 会因此起不来(2026-10-14 实测:PrivilegeNotHeldException)。
+ *    icacls 只动 DACL 和继承标志,不需要任何特权,语义相同(断开继承 + 仅当前用户 FullControl)。
+ */
 export function restrictPrivateFile(file: string): void {
   if (process.platform !== "win32") { fs.chmodSync(file, 0o600); return; }
   const account = windowsAccount();
@@ -71,11 +101,11 @@ export function restrictPrivateFile(file: string): void {
 /** Request-path ACL setup must not block unrelated API requests on Windows. */
 export async function restrictPrivateFileAsync(file: string): Promise<void> {
   if (process.platform !== "win32") { await fs.promises.chmod(file, 0o600); return; }
-  const account = windowsAccount();
+  const account = await windowsAccountAsync();
   await new Promise<void>((resolve, reject) => {
     execFile("icacls.exe", [path.resolve(file), "/inheritance:r", "/grant:r", `${account}:F`],
-      { windowsHide: true, timeout: 10_000 },
-      err => err ? reject(new Error("无法收紧 Windows 文件权限")) : resolve());
+      { windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
+      err => err ? reject(new Error(`无法收紧 Windows 文件权限(${err.message})`)) : resolve());
   });
 }
 
