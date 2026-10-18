@@ -258,7 +258,9 @@ test("Windows 复查:当前用户只剩「读取权限说明」(RC)时不算安�
   fs.writeFileSync(file, "secret");
   const sid = parseWhoamiSid(spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" }).stdout);
   assert.ok(sid, "取不到当前用户 SID");
-  const rc = spawnSync("icacls.exe", [file, "/inheritance:r", "/grant:r", `*${sid}:(RC)`], { encoding: "utf8" });
+  // 先收紧到只剩当前用户(新建文件可能自带 SYSTEM / Administrators 的显式授权),再把当前用户降成只有 RC
+  restrictPrivateFile(file);
+  const rc = spawnSync("icacls.exe", [file, "/grant:r", `*${sid}:(RC)`], { encoding: "utf8" });
   assert.equal(rc.status, 0, rc.stdout + rc.stderr);
   assert.match(privateFilePermissions(file).detail, /没有给当前用户完全控制/);
   restrictPrivateFile(file);
