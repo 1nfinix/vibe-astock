@@ -143,14 +143,14 @@ test("whoami /user 的 CSV 输出能取出 SID,取不到时返回 null", () => {
   assert.equal(parseWhoamiSid('"user","S-1-5-21-1-2"," extra"'), null);
 });
 
-test("Windows ACL 复查结论:列出其他账户的 SID 供删除,不是 SID 的输出不交给 icacls;当前用户没授权不算安全", () => {
+test("Windows ACL 复查结论:列出其他账户的 SID 供删除,不是 SID 的输出不交给 icacls;当前用户没有完全控制不算安全", () => {
   const four = windowsAclVerdict(4, "S-1-5-32-545 S-1-5-18\r\n");
   assert.equal(four.secure, false);
   assert.deepEqual(four.others, ["S-1-5-32-545", "S-1-5-18"]);
   assert.match(four.detail, /还授权了其他账户\(S-1-5-32-545、S-1-5-18\)/);
   assert.deepEqual(windowsAclVerdict(4, "BUILTIN\\Users /grant S-1-5-18;x S-1-5-32-544").others, ["S-1-5-32-544"]);
   assert.deepEqual(windowsAclVerdict(4, "").others, []);
-  assert.deepEqual(windowsAclVerdict(5, ""), { secure: false, detail: "Windows ACL 没有授权给当前用户", others: [] });
+  assert.deepEqual(windowsAclVerdict(5, ""), { secure: false, detail: "Windows ACL 没有给当前用户完全控制", others: [] });
   assert.equal(windowsAclVerdict(3, "S-1-5-18").others.length, 0, "还在继承时不按列表删授权");
   assert.equal(windowsAclVerdict(0, "").secure, true);
   assert.equal(windowsAclVerdict(null, null, new Error("spawn powershell.exe ENOENT")).secure, false);
@@ -251,6 +251,19 @@ test("Windows 私密文件权限不用 Unix mode 冒充 ACL 验证", { skip: pro
     assert.equal(eventLoopAdvanced, true, "等待 PowerShell 期间事件循环必须继续处理请求");
     assert.equal(privateFilePermissions(asyncFile).secure, true);
   } finally { clearTimeout(timer); }
+});
+
+test("Windows 复查:当前用户只剩「读取权限说明」(RC)时不算安全,收紧后改回完全控制", { skip: process.platform !== "win32" }, () => {
+  const file = path.join(temp(), "rc-only.txt");
+  fs.writeFileSync(file, "secret");
+  const sid = parseWhoamiSid(spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" }).stdout);
+  assert.ok(sid, "取不到当前用户 SID");
+  const rc = spawnSync("icacls.exe", [file, "/inheritance:r", "/grant:r", `*${sid}:(RC)`], { encoding: "utf8" });
+  assert.equal(rc.status, 0, rc.stdout + rc.stderr);
+  assert.match(privateFilePermissions(file).detail, /没有给当前用户完全控制/);
+  restrictPrivateFile(file);
+  assert.equal(privateFilePermissions(file).secure, true);
+  assert.equal(fs.readFileSync(file, "utf8"), "secret");
 });
 
 test("Windows 收紧:文件上别的账户单独加的授权也删掉,只留当前用户", { skip: process.platform !== "win32" }, async () => {

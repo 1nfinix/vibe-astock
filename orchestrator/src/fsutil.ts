@@ -13,12 +13,14 @@ $file = $env:VRA_PRIVATE_FILE
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $acl = Get-Acl -LiteralPath $file
 if (-not $acl.AreAccessRulesProtected) { exit 3 }
+$full = [System.Security.AccessControl.FileSystemRights]::FullControl
 $others = @()
 $self = $false
 foreach ($rule in $acl.Access) {
   if ($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow) {
     $ruleSid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-    if ($ruleSid -eq $sid) { $self = $true } elseif ($others -notcontains $ruleSid) { $others += $ruleSid }
+    if ($ruleSid -eq $sid) { if (($rule.FileSystemRights -band $full) -eq $full) { $self = $true } }
+    elseif ($others -notcontains $ruleSid) { $others += $ruleSid }
   }
 }
 if ($others.Count -gt 0) { Write-Output ($others -join " "); exit 4 }
@@ -106,7 +108,7 @@ const removeOthersArgs = (others: string[]) => ["/remove:g", ...others.map(sid =
  *
  * 🔴 `/inheritance:r /grant:r` 只断继承、替换当前用户那一条,不删别的账户单独挂的授权 ——
  *    GitHub 的 Windows 测试机上新建的文件就带着(2026-10-18 CI 实测)。所以收紧后复查,
- *    复查列出的其他账户用 `/remove:g` 删掉再查一次;还不干净、或当前用户自己没有授权
+ *    复查列出的其他账户用 `/remove:g` 删掉再查一次;还不干净、或当前用户自己没有完全控制
  *    (whoami 失败时退回的用户名不对)就报错,不当成功。
  */
 export function restrictPrivateFile(file: string): void {
@@ -143,7 +145,8 @@ export function privateFilePermissions(file: string): { secure: boolean; detail:
   return { secure, detail };
 }
 
-/** WINDOWS_CHECK_ACL 的退出码 → 结论;exit 4 时 stdout 是用空格隔开的其他账户 SID。 */
+/** WINDOWS_CHECK_ACL 的退出码 → 结论;exit 4 时 stdout 是用空格隔开的其他账户 SID;
+ *  exit 5 = 没有别人,但当前用户自己也没有完全控制(产品写的私密文件一律给当前用户完全控制)。 */
 export function windowsAclVerdict(status: number | null, stdout?: string | null, error?: Error): WindowsAclCheck {
   if (error) return { secure: false, detail: `Windows ACL 检查失败:${error.message}`, others: [] };
   if (status === 0) return { secure: true, detail: "Windows ACL 已断开继承，仅当前用户 SID 可读写", others: [] };
@@ -152,7 +155,7 @@ export function windowsAclVerdict(status: number | null, stdout?: string | null,
     const others = String(stdout ?? "").split(/\s+/).filter(s => /^S-1-\d+(?:-\d+)+$/.test(s));
     return { secure: false, detail: `Windows ACL 还授权了其他账户${others.length ? `(${others.join("、")})` : ""}`, others };
   }
-  if (status === 5) return { secure: false, detail: "Windows ACL 没有授权给当前用户", others: [] };
+  if (status === 5) return { secure: false, detail: "Windows ACL 没有给当前用户完全控制", others: [] };
   return { secure: false, detail: `Windows ACL 检查异常(exit ${status})`, others: [] };
 }
 
