@@ -13,12 +13,16 @@ $file = $env:VRA_PRIVATE_FILE
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $acl = Get-Acl -LiteralPath $file
 if (-not $acl.AreAccessRulesProtected) { exit 3 }
+$others = @()
+$self = $false
 foreach ($rule in $acl.Access) {
   if ($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow) {
     $ruleSid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-    if ($ruleSid -ne $sid) { exit 4 }
+    if ($ruleSid -eq $sid) { $self = $true } elseif ($others -notcontains $ruleSid) { $others += $ruleSid }
   }
 }
+if ($others.Count -gt 0) { Write-Output ($others -join " "); exit 4 }
+if (-not $self) { exit 5 }
 exit 0
 `;
 
@@ -30,11 +34,13 @@ function windowsAclEnv(file: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function windowsAcl(script: string, file: string): { status: number | null; error?: Error } {
-  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
+type WindowsAclCheck = { secure: boolean; detail: string; others: string[] };
+
+function windowsAclCheck(file: string): WindowsAclCheck {
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WINDOWS_CHECK_ACL], {
     env: windowsAclEnv(file), encoding: "utf8", windowsHide: true, timeout: 10_000,
   });
-  return { status: result.status, error: result.error };
+  return windowsAclVerdict(result.status, result.stdout, result.error);
 }
 
 let windowsSidCache: string | null = null;
@@ -74,43 +80,57 @@ async function windowsAccountAsync(): Promise<string> {
   return `*${sid}`;
 }
 
-function icacls(file: string, args: string[]): { status: number | null; error?: Error } {
+function icacls(file: string, args: string[]): void {
   const result = spawnSync("icacls.exe", [path.resolve(file), ...args], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
-  return { status: result.status, error: result.error };
+  if (result.error || result.status !== 0) {
+    throw new Error(`无法收紧 Windows 文件权限(${result.error?.message ?? `icacls exit ${result.status}`})`);
+  }
 }
+
+function icaclsAsync(file: string, args: string[]): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    execFile("icacls.exe", [path.resolve(file), ...args], { windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
+      err => err ? reject(new Error(`无法收紧 Windows 文件权限(${err.message})`)) : resolve());
+  });
+}
+
+/** 复查里列出的其他账户,交给 `icacls /remove:g` 逐个删掉授权。 */
+const removeOthersArgs = (others: string[]) => ["/remove:g", ...others.map(sid => `*${sid}`)];
 
 /** Windows 的 mode 0600 不会改变 NTFS DACL；敏感文件必须显式断开继承并只授权当前用户。
  *
  * 🔴 不用 Get-Acl/Set-Acl:Get-Acl 默认捕获全部安全节(含 SACL),Set-Acl 会原样写回,
  *    而写 SACL 需要 SeSecurityPrivilege —— 普通未提权进程没有这个特权,
  *    整个 API 会因此起不来(2026-10-14 实测:PrivilegeNotHeldException)。
- *    icacls 只动 DACL 和继承标志,不需要任何特权,语义相同(断开继承 + 仅当前用户 FullControl)。
+ *    icacls 只动 DACL 和继承标志,不需要任何特权。
+ *
+ * 🔴 `/inheritance:r /grant:r` 只断继承、替换当前用户那一条,不删别的账户单独挂的授权 ——
+ *    GitHub 的 Windows 测试机上新建的文件就带着(2026-10-18 CI 实测)。所以收紧后复查,
+ *    复查列出的其他账户用 `/remove:g` 删掉再查一次;还不干净、或当前用户自己没有授权
+ *    (whoami 失败时退回的用户名不对)就报错,不当成功。
  */
 export function restrictPrivateFile(file: string): void {
   if (process.platform !== "win32") { fs.chmodSync(file, 0o600); return; }
-  // icacls 不删别的账户单独加的授权,whoami 失败时退回的用户名也可能不对 ⇒ 收紧后必须复查,不过就报错
-  const account = windowsAccount();
-  // 🔴 必须一条命令原子完成:先 /inheritance:r 单独执行会把 DACL 清空(继承 ACE 全没了、又没加新 ACE),
-  //    连 icacls 自己都打不开文件(实测拒绝访问),第二步永远失败。
-  //    单次调用内 icacls 先记下 /grant 的新 ACE、再断继承,结果 = 仅当前用户一条 FullControl。
-  const result = icacls(file, ["/inheritance:r", "/grant:r", `${account}:F`]);
-  if (result.error || result.status !== 0) {
-    throw new Error(`无法收紧 Windows 文件权限(${result.error?.message ?? `icacls exit ${result.status}`})`);
+  // 🔴 必须一条命令完成:先 /inheritance:r 单独执行会把 DACL 清空(继承 ACE 全没了、又没加新 ACE),
+  //    连 icacls 自己都打不开文件(实测拒绝访问),第二步永远失败。先授权当前用户、再删别人,也是这个原因。
+  icacls(file, ["/inheritance:r", "/grant:r", `${windowsAccount()}:F`]);
+  let check = windowsAclCheck(file);
+  if (!check.secure && check.others.length) {
+    icacls(file, removeOthersArgs(check.others));
+    check = windowsAclCheck(file);
   }
-  const check = privateFilePermissions(file);
   if (!check.secure) throw new Error(`无法收紧 Windows 文件权限(${check.detail})`);
 }
 
 /** Request-path ACL setup must not block unrelated API requests on Windows. */
 export async function restrictPrivateFileAsync(file: string): Promise<void> {
   if (process.platform !== "win32") { await fs.promises.chmod(file, 0o600); return; }
-  const account = await windowsAccountAsync();
-  await new Promise<void>((resolve, reject) => {
-    execFile("icacls.exe", [path.resolve(file), "/inheritance:r", "/grant:r", `${account}:F`],
-      { windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
-      err => err ? reject(new Error(`无法收紧 Windows 文件权限(${err.message})`)) : resolve());
-  });
-  const check = await windowsAclCheckAsync(file);
+  await icaclsAsync(file, ["/inheritance:r", "/grant:r", `${await windowsAccountAsync()}:F`]);
+  let check = await windowsAclCheckAsync(file);
+  if (!check.secure && check.others.length) {
+    await icaclsAsync(file, removeOthersArgs(check.others));
+    check = await windowsAclCheckAsync(file);
+  }
   if (!check.secure) throw new Error(`无法收紧 Windows 文件权限(${check.detail})`);
 }
 
@@ -119,27 +139,32 @@ export function privateFilePermissions(file: string): { secure: boolean; detail:
     const mode = fs.statSync(file).mode & 0o777;
     return { secure: (mode & 0o077) === 0, detail: `mode ${mode.toString(8)}` };
   }
-  const result = windowsAcl(WINDOWS_CHECK_ACL, file);
-  return aclVerdict(result.status, result.error);
+  const { secure, detail } = windowsAclCheck(file);
+  return { secure, detail };
 }
 
-function aclVerdict(status: number | null, error?: Error): { secure: boolean; detail: string } {
-  if (error) return { secure: false, detail: `Windows ACL 检查失败:${error.message}` };
-  if (status === 0) return { secure: true, detail: "Windows ACL 已断开继承，仅当前用户 SID 可读写" };
-  if (status === 3) return { secure: false, detail: "Windows ACL 仍在继承父目录权限" };
-  if (status === 4) return { secure: false, detail: "Windows ACL 还授权了其他账户" };
-  return { secure: false, detail: `Windows ACL 检查异常(exit ${status})` };
+/** WINDOWS_CHECK_ACL 的退出码 → 结论;exit 4 时 stdout 是用空格隔开的其他账户 SID。 */
+export function windowsAclVerdict(status: number | null, stdout?: string | null, error?: Error): WindowsAclCheck {
+  if (error) return { secure: false, detail: `Windows ACL 检查失败:${error.message}`, others: [] };
+  if (status === 0) return { secure: true, detail: "Windows ACL 已断开继承，仅当前用户 SID 可读写", others: [] };
+  if (status === 3) return { secure: false, detail: "Windows ACL 仍在继承父目录权限", others: [] };
+  if (status === 4) {
+    const others = String(stdout ?? "").split(/\s+/).filter(s => /^S-1-\d+(?:-\d+)+$/.test(s));
+    return { secure: false, detail: `Windows ACL 还授权了其他账户${others.length ? `(${others.join("、")})` : ""}`, others };
+  }
+  if (status === 5) return { secure: false, detail: "Windows ACL 没有授权给当前用户", others: [] };
+  return { secure: false, detail: `Windows ACL 检查异常(exit ${status})`, others: [] };
 }
 
 /** 同 privateFilePermissions 的 Windows 分支,但不阻塞事件循环(请求路径上用)。 */
-function windowsAclCheckAsync(file: string): Promise<{ secure: boolean; detail: string }> {
+function windowsAclCheckAsync(file: string): Promise<WindowsAclCheck> {
   return new Promise(resolve => {
     execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WINDOWS_CHECK_ACL],
       { env: windowsAclEnv(file), encoding: "utf8", windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
-      error => {
-        if (!error) return resolve(aclVerdict(0));
+      (error, stdout) => {
+        if (!error) return resolve(windowsAclVerdict(0, stdout));
         const failure = error as { code?: unknown; killed?: boolean };
-        resolve(typeof failure.code === "number" && !failure.killed ? aclVerdict(failure.code) : aclVerdict(null, error));
+        resolve(typeof failure.code === "number" && !failure.killed ? windowsAclVerdict(failure.code, stdout) : windowsAclVerdict(null, null, error));
       });
   });
 }

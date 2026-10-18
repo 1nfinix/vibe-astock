@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import "../src/finance/register.ts";
 import { fetchEnv, interpreterRoot, makeConfig, normalizeInterpreter } from "../src/config.ts";
-import { parseWhoamiSid, privateFilePermissions, restrictPrivateFile, restrictPrivateFileAsync, sha256File, writeJson } from "../src/fsutil.ts";
+import { parseWhoamiSid, privateFilePermissions, restrictPrivateFile, restrictPrivateFileAsync, sha256File, windowsAclVerdict, writeJson } from "../src/fsutil.ts";
 import { executableInvocation, findExecutable, LocalAgentError, localSubscriptionEnv, runLocalAgent } from "../src/local_agent_runtime.ts";
 import { RunToolsError, listRunFiles, readRunFile, runCalculation, writeStageOutput } from "../src/finance/run_tools_mcp.ts";
 import { writeTurnContext } from "../src/turn_context.ts";
@@ -143,6 +143,19 @@ test("whoami /user 的 CSV 输出能取出 SID,取不到时返回 null", () => {
   assert.equal(parseWhoamiSid('"user","S-1-5-21-1-2"," extra"'), null);
 });
 
+test("Windows ACL 复查结论:列出其他账户的 SID 供删除,不是 SID 的输出不交给 icacls;当前用户没授权不算安全", () => {
+  const four = windowsAclVerdict(4, "S-1-5-32-545 S-1-5-18\r\n");
+  assert.equal(four.secure, false);
+  assert.deepEqual(four.others, ["S-1-5-32-545", "S-1-5-18"]);
+  assert.match(four.detail, /还授权了其他账户\(S-1-5-32-545、S-1-5-18\)/);
+  assert.deepEqual(windowsAclVerdict(4, "BUILTIN\\Users /grant S-1-5-18;x S-1-5-32-544").others, ["S-1-5-32-544"]);
+  assert.deepEqual(windowsAclVerdict(4, "").others, []);
+  assert.deepEqual(windowsAclVerdict(5, ""), { secure: false, detail: "Windows ACL 没有授权给当前用户", others: [] });
+  assert.equal(windowsAclVerdict(3, "S-1-5-18").others.length, 0, "还在继承时不按列表删授权");
+  assert.equal(windowsAclVerdict(0, "").secure, true);
+  assert.equal(windowsAclVerdict(null, null, new Error("spawn powershell.exe ENOENT")).secure, false);
+});
+
 test("Windows npm shim 指向无扩展名 node 入口时(CodeBuddy 形态)用 node 运行该入口", () => {
   const npmBin = temp();
   const ps1 = path.join(npmBin, "codebuddy.ps1");
@@ -221,11 +234,13 @@ test("Windows 账本路径按 JSON 契约使用正斜杠，不随宿主路径分
   assert.deepEqual(validateFetchIntegrity(loadRun(runDir, ledger)).errors, []);
 });
 
-test("Windows 私密文件权限不用 Unix mode 冒充 ACL 验证", { skip: process.platform !== "win32" }, async () => {
+test("Windows 私密文件权限不用 Unix mode 冒充 ACL 验证", { skip: process.platform !== "win32" }, async (t) => {
   const dir = temp();
   const file = path.join(dir, "private.txt");
   fs.writeFileSync(file, "secret", { mode: 0o600 });
+  t.diagnostic(`新建文件的 ACL:${spawnSync("icacls.exe", [file], { encoding: "utf8" }).stdout}`);
   restrictPrivateFile(file);
+  assert.equal(fs.readFileSync(file, "utf8"), "secret", "收紧后当前用户照常能读");
   assert.equal(privateFilePermissions(file).secure, true, "收紧后必须断开继承且只留当前用户 SID");
   const asyncFile = path.join(dir, "private-async.txt");
   fs.writeFileSync(asyncFile, "");
@@ -238,15 +253,19 @@ test("Windows 私密文件权限不用 Unix mode 冒充 ACL 验证", { skip: pro
   } finally { clearTimeout(timer); }
 });
 
-test("Windows 收紧后复查:文件上还挂着别的账户单独加的授权时报错,不当成功", { skip: process.platform !== "win32" }, async () => {
+test("Windows 收紧:文件上别的账户单独加的授权也删掉,只留当前用户", { skip: process.platform !== "win32" }, async () => {
   const dir = temp();
   for (const [name, restrict] of [["sync.txt", (f: string) => Promise.resolve().then(() => restrictPrivateFile(f))],
     ["async.txt", restrictPrivateFileAsync]] as const) {
     const file = path.join(dir, name);
     fs.writeFileSync(file, "secret");
-    // S-1-5-32-545 = 本机 Users 组:先给它单独加一条授权(icacls /inheritance:r /grant:r 不会删它)
-    const grant = spawnSync("icacls.exe", [file, "/grant", "*S-1-5-32-545:R"], { encoding: "utf8" });
+    // S-1-5-32-545 = 本机 Users 组、S-1-5-32-546 = Guests 组:先单独加两条授权(icacls /inheritance:r /grant:r 不会删它们)
+    const grant = spawnSync("icacls.exe", [file, "/grant", "*S-1-5-32-545:R", "/grant", "*S-1-5-32-546:R"], { encoding: "utf8" });
     assert.equal(grant.status, 0, grant.stdout + grant.stderr);
-    await assert.rejects(restrict(file), /还授权了其他账户/);
+    assert.match(privateFilePermissions(file).detail, /仍在继承/);
+    await restrict(file);
+    const check = privateFilePermissions(file);
+    assert.equal(check.secure, true, check.detail);
+    assert.equal(fs.readFileSync(file, "utf8"), "secret");
   }
 });
