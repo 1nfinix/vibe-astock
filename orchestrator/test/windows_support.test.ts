@@ -150,7 +150,15 @@ test("Windows ACL 复查结论:列出其他账户的 SID 供删除,不是 SID �
   assert.match(four.detail, /还授权了其他账户\(S-1-5-32-545、S-1-5-18\)/);
   assert.deepEqual(windowsAclVerdict(4, "BUILTIN\\Users /grant S-1-5-18;x S-1-5-32-544").others, ["S-1-5-32-544"]);
   assert.deepEqual(windowsAclVerdict(4, "").others, []);
-  assert.deepEqual(windowsAclVerdict(5, ""), { secure: false, detail: "Windows ACL 没有给当前用户完全控制", others: [] });
+  assert.deepEqual(windowsAclVerdict(5, ""), { secure: false, detail: "Windows ACL 没有给当前用户完全控制", others: [], denied: [], ownerWrong: false });
+  // 拒绝规则和所有者也要列出来交给修复(旧的 Set-Acl 写法会清掉拒绝规则、改所有者,换成 icacls 后要单独补)
+  const mixed = windowsAclVerdict(4, "S-1-5-32-545 deny:S-1-5-32-546 deny:S-1-5-21-1-2-3-1001 owner\r\n");
+  assert.deepEqual([mixed.others, mixed.denied, mixed.ownerWrong], [["S-1-5-32-545"], ["S-1-5-32-546", "S-1-5-21-1-2-3-1001"], true]);
+  assert.match(mixed.detail, /还授权了其他账户\(S-1-5-32-545\)，还有拒绝规则\(S-1-5-32-546、S-1-5-21-1-2-3-1001\)，所有者不是当前用户/);
+  const ownerOnly = windowsAclVerdict(4, "owner");
+  assert.deepEqual([ownerOnly.secure, ownerOnly.others, ownerOnly.denied, ownerOnly.ownerWrong, ownerOnly.detail], [false, [], [], true, "Windows ACL 所有者不是当前用户"]);
+  assert.deepEqual(windowsAclVerdict(4, "deny:BUILTIN\\Users deny:S-1-5-18;x deny:S-1-5-32-544").denied, ["S-1-5-32-544"], "不是 SID 的拒绝项不交给 icacls");
+  assert.equal(windowsAclVerdict(4, "ownerX S-1-5-18").ownerWrong, false);
   assert.equal(windowsAclVerdict(3, "S-1-5-18").others.length, 0, "还在继承时不按列表删授权");
   assert.equal(windowsAclVerdict(0, "").secure, true);
   assert.equal(windowsAclVerdict(null, null, new Error("spawn powershell.exe ENOENT")).secure, false);
@@ -281,6 +289,52 @@ test("Windows 收紧:文件上别的账户单独加的授权也删掉,只留当�
     await restrict(file);
     const check = privateFilePermissions(file);
     assert.equal(check.secure, true, check.detail);
+    assert.equal(fs.readFileSync(file, "utf8"), "secret");
+  }
+});
+
+const currentSid = () => parseWhoamiSid(spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" }).stdout);
+const restrictBoth = [["sync", (f: string) => Promise.resolve().then(() => restrictPrivateFile(f))], ["async", restrictPrivateFileAsync]] as const;
+
+test("Windows 收紧:文件上单独挂的拒绝规则也删掉,收紧后当前用户照常能读写", { skip: process.platform !== "win32" }, async () => {
+  const sid = currentSid();
+  assert.ok(sid, "取不到当前用户 SID");
+  const selfDeny = `*${sid}:(WD)`;
+  const dir = temp();
+  for (const [name, restrict] of restrictBoth) {
+    const file = path.join(dir, `${name}.txt`);
+    fs.writeFileSync(file, "secret");
+    // Users 组拒绝读数据(当前用户通常也在这个组里)+ 当前用户自己拒绝写数据:/grant:r、/remove:g 都不删拒绝规则
+    const deny = spawnSync("icacls.exe", [file, "/deny", "*S-1-5-32-545:(RD)", selfDeny], { encoding: "utf8" });
+    assert.equal(deny.status, 0, deny.stdout + deny.stderr);
+    await restrict(file);
+    const check = privateFilePermissions(file);
+    assert.equal(check.secure, true, check.detail);
+    assert.equal(fs.readFileSync(file, "utf8"), "secret");
+    fs.writeFileSync(file, "secret2");
+    assert.equal(fs.readFileSync(file, "utf8"), "secret2");
+  }
+});
+
+test("Windows 收紧:所有者不是当前用户时改回当前用户", { skip: process.platform !== "win32" }, async (t) => {
+  const dir = temp();
+  // 跟 fsutil 一样去掉 PSModulePath:CI 在 PowerShell 7 里跑,传下去 Windows PowerShell 5.1 会载不了 Get-Acl
+  const psEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toLowerCase() !== "psmodulepath"));
+  const owner = (f: string) => spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "(Get-Acl -LiteralPath $env:F).Owner"],
+    { encoding: "utf8", env: { ...psEnv, F: f } }).stdout.trim();
+  for (const [name, restrict] of restrictBoth) {
+    const file = path.join(dir, `${name}.txt`);
+    fs.writeFileSync(file, "secret");
+    t.diagnostic(`新建文件的所有者:${owner(file)}`);
+    restrictPrivateFile(file);
+    // S-1-5-32-544 = 本机 Administrators 组;只有提权的管理员能把所有者设成它(GitHub 的 Windows 测试机可以)
+    const set = spawnSync("icacls.exe", [file, "/setowner", "*S-1-5-32-544"], { encoding: "utf8" });
+    if (set.status !== 0) { t.skip(`这台机器不能把所有者设成 Administrators:${set.stdout}${set.stderr}`); return; }
+    assert.match(privateFilePermissions(file).detail, /所有者不是当前用户/);
+    await restrict(file);
+    const check = privateFilePermissions(file);
+    assert.equal(check.secure, true, check.detail);
+    t.diagnostic(`${name} 收紧后的所有者:${owner(file)}`);
     assert.equal(fs.readFileSync(file, "utf8"), "secret");
   }
 });
