@@ -104,6 +104,29 @@ test("Windows npm shim 指向原生 exe 时(Claude Code 形态)直接 spawn 该 
   fs.writeFileSync(ps1, `#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "${outside.replace(/\\/g, "/")}" $args\n`);
   assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
     "目标在 $basedir 之外的 shim 不得被执行");
+  // 写成 $basedir/../ 跳出安装目录 → 拒绝
+  fs.writeFileSync(path.join(path.dirname(npmBin), "escaped.exe"), "MZ fake exe");
+  fs.writeFileSync(ps1, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "$basedir/../escaped.exe" $args\n');
+  assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/,
+    "$basedir/../ 跳出安装目录的 shim 不得被执行");
+});
+
+test("项目里 node_modules/.bin 的 shim 指向上一层 node_modules/<包> 时照常放行", () => {
+  const project = temp();
+  const binDir = path.join(project, "node_modules", ".bin");
+  const entry = path.join(project, "node_modules", "@tencent-ai", "codebuddy-code", "bin", "codebuddy.js");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.mkdirSync(path.dirname(entry), { recursive: true });
+  fs.writeFileSync(entry, "console.log(1);\n");
+  const ps1 = path.join(binDir, "codebuddy.ps1");
+  fs.writeFileSync(ps1, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "node$exe"  "$basedir/../@tencent-ai/codebuddy-code/bin/codebuddy.js" $args\n');
+  const launch = executableInvocation(ps1, ["--version"], {}, "win32");
+  assert.equal(launch.file, process.execPath);
+  assert.equal(launch.args[0], entry);
+  // 再往上跳出 node_modules 就不行
+  fs.writeFileSync(path.join(project, "outside.js"), "console.log(1);\n");
+  fs.writeFileSync(ps1, '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "node$exe"  "$basedir/../../outside.js" $args\n');
+  assert.throws(() => executableInvocation(ps1, ["--version"], {}, "win32"), /标准 npm|原生/);
 });
 
 test("whoami /user 的 CSV 输出能取出 SID,取不到时返回 null", () => {
@@ -207,4 +230,17 @@ test("Windows 私密文件权限不用 Unix mode 冒充 ACL 验证", { skip: pro
     assert.equal(eventLoopAdvanced, true, "等待 PowerShell 期间事件循环必须继续处理请求");
     assert.equal(privateFilePermissions(asyncFile).secure, true);
   } finally { clearTimeout(timer); }
+});
+
+test("Windows 收紧后复查:文件上还挂着别的账户单独加的授权时报错,不当成功", { skip: process.platform !== "win32" }, async () => {
+  const dir = temp();
+  for (const [name, restrict] of [["sync.txt", (f: string) => Promise.resolve().then(() => restrictPrivateFile(f))],
+    ["async.txt", restrictPrivateFileAsync]] as const) {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, "secret");
+    // S-1-5-32-545 = 本机 Users 组:先给它单独加一条授权(icacls /inheritance:r /grant:r 不会删它)
+    const grant = spawnSync("icacls.exe", [file, "/grant", "*S-1-5-32-545:R"], { encoding: "utf8" });
+    assert.equal(grant.status, 0, grant.stdout + grant.stderr);
+    await assert.rejects(restrict(file), /还授权了其他账户/);
+  }
 });

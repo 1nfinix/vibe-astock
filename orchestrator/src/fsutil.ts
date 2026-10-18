@@ -88,6 +88,7 @@ function icacls(file: string, args: string[]): { status: number | null; error?: 
  */
 export function restrictPrivateFile(file: string): void {
   if (process.platform !== "win32") { fs.chmodSync(file, 0o600); return; }
+  // icacls 不删别的账户单独加的授权,whoami 失败时退回的用户名也可能不对 ⇒ 收紧后必须复查,不过就报错
   const account = windowsAccount();
   // 🔴 必须一条命令原子完成:先 /inheritance:r 单独执行会把 DACL 清空(继承 ACE 全没了、又没加新 ACE),
   //    连 icacls 自己都打不开文件(实测拒绝访问),第二步永远失败。
@@ -96,6 +97,8 @@ export function restrictPrivateFile(file: string): void {
   if (result.error || result.status !== 0) {
     throw new Error(`无法收紧 Windows 文件权限(${result.error?.message ?? `icacls exit ${result.status}`})`);
   }
+  const check = privateFilePermissions(file);
+  if (!check.secure) throw new Error(`无法收紧 Windows 文件权限(${check.detail})`);
 }
 
 /** Request-path ACL setup must not block unrelated API requests on Windows. */
@@ -107,6 +110,8 @@ export async function restrictPrivateFileAsync(file: string): Promise<void> {
       { windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
       err => err ? reject(new Error(`无法收紧 Windows 文件权限(${err.message})`)) : resolve());
   });
+  const check = await windowsAclCheckAsync(file);
+  if (!check.secure) throw new Error(`无法收紧 Windows 文件权限(${check.detail})`);
 }
 
 export function privateFilePermissions(file: string): { secure: boolean; detail: string } {
@@ -115,11 +120,28 @@ export function privateFilePermissions(file: string): { secure: boolean; detail:
     return { secure: (mode & 0o077) === 0, detail: `mode ${mode.toString(8)}` };
   }
   const result = windowsAcl(WINDOWS_CHECK_ACL, file);
-  if (result.error) return { secure: false, detail: `Windows ACL 检查失败:${result.error.message}` };
-  if (result.status === 0) return { secure: true, detail: "Windows ACL 已断开继承，仅当前用户 SID 可读写" };
-  if (result.status === 3) return { secure: false, detail: "Windows ACL 仍在继承父目录权限" };
-  if (result.status === 4) return { secure: false, detail: "Windows ACL 还授权了其他账户" };
-  return { secure: false, detail: `Windows ACL 检查异常(exit ${result.status})` };
+  return aclVerdict(result.status, result.error);
+}
+
+function aclVerdict(status: number | null, error?: Error): { secure: boolean; detail: string } {
+  if (error) return { secure: false, detail: `Windows ACL 检查失败:${error.message}` };
+  if (status === 0) return { secure: true, detail: "Windows ACL 已断开继承，仅当前用户 SID 可读写" };
+  if (status === 3) return { secure: false, detail: "Windows ACL 仍在继承父目录权限" };
+  if (status === 4) return { secure: false, detail: "Windows ACL 还授权了其他账户" };
+  return { secure: false, detail: `Windows ACL 检查异常(exit ${status})` };
+}
+
+/** 同 privateFilePermissions 的 Windows 分支,但不阻塞事件循环(请求路径上用)。 */
+function windowsAclCheckAsync(file: string): Promise<{ secure: boolean; detail: string }> {
+  return new Promise(resolve => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WINDOWS_CHECK_ACL],
+      { env: windowsAclEnv(file), encoding: "utf8", windowsHide: true, timeout: 10_000, killSignal: "SIGKILL" },
+      error => {
+        if (!error) return resolve(aclVerdict(0));
+        const failure = error as { code?: unknown; killed?: boolean };
+        resolve(typeof failure.code === "number" && !failure.killed ? aclVerdict(failure.code) : aclVerdict(null, error));
+      });
+  });
 }
 
 export function sha256File(p: string): string {
