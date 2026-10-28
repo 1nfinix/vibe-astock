@@ -387,6 +387,16 @@ export function listRecords(dataRoot: string, kind: string): LedgerRecord[] {
 }
 
 /**
+ * 更新时刻:一定晚于上一版的 `updated_at`。
+ * 🔴 写完马上改会落在同一毫秒;整批录入还把 `created_at` 往后排了几毫秒 —— 直接取当前时刻,
+ *    改过的记录会和 `created_at` 相等甚至更早,靠 `updated_at === created_at` 判断"没改过"的地方就会认错。
+ */
+function updatedAfter(prev: string, at: string): string {
+  const p = Date.parse(prev);
+  return Number.isFinite(p) && Date.parse(at) <= p ? nowIso(new Date(p + 1)) : at;
+}
+
+/**
  * 新增或更新一条。带 `id` 且能找到 = 更新(**整条替换,不做字段级合并**);否则新增。
  * 不合并是刻意的:合并会让"我把某个字段清空了"和"我这次没提这个字段"变得无法区分。
  */
@@ -406,7 +416,7 @@ export function upsertRecord(dataRoot: string, kind: string, input: Record<strin
       const i = data.records.findIndex((r) => r.id === id);
       if (i < 0) throw new LedgerError("not_found", `台账里没有这条记录:${id}`);
       const prev = data.records[i]!;
-      const next: LedgerRecord = { ...rest, id, kind, created_at: prev.created_at, updated_at: now };
+      const next: LedgerRecord = { ...rest, id, kind, created_at: prev.created_at, updated_at: updatedAfter(prev.updated_at, now) };
       data.records[i] = next;
       // 🔴 比**整条内容**,不只比 id 与时间戳:并发覆盖可以保留同一个 id、
       //    同一毫秒里 `updated_at` 还会一模一样 ⇒ 只比标识的话,字段已经是别人的版本也照样报成功。
@@ -517,7 +527,7 @@ export function replaceRecords(
         const prev = group.get(id);
         if (!prev) throw new LedgerError("not_found", `这一组里没有这条记录:${id}`);
         if (bodyKey(prev) === bodyKey(rest)) return prev;
-        const r = { ...rest, id, kind, created_at: prev.created_at, updated_at: at } as LedgerRecord;
+        const r = { ...rest, id, kind, created_at: prev.created_at, updated_at: updatedAfter(prev.updated_at, at) } as LedgerRecord;
         saved.push(r);
         return r;
       }
