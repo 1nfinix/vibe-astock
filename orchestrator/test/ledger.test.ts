@@ -170,6 +170,20 @@ test("种类表来自插件,不是 Core 写死的", () => {
   }
 });
 
+test("🔴 改过的记录 updated_at 一定晚于上一版:写完马上改(同一毫秒,或整批录入把 created_at 往后排了几毫秒)也不能和 created_at 相等", () => {
+  const root = tmpRoot();
+  const k = "closed_position";
+  const base = { symbol: "600519", closed_at: "2026-09-01", price: 1200, shares: 1, cost: 1000 };
+  // 整批的第 50 条 created_at = 录入时刻 + 49 毫秒:紧接着改它,当前时刻几乎一定还没追上
+  const last = insertRecords(root, k, Array.from({ length: 50 }, () => ({ ...base }))).at(-1)!;
+  const edited = upsertRecord(root, k, { ...base, id: last.id, note: "改过" });
+  assert.ok(Date.parse(edited.updated_at) > Date.parse(last.updated_at), `${last.updated_at} → ${edited.updated_at}`);
+  assert.equal(edited.updated_at.slice(-6), last.updated_at.slice(-6), "同一种时间写法");
+  const { saved } = replaceRecords(root, k, () => true, listRecords(root, k).map((r) => (r.id === last.id ? { ...r, note: "再改" } : r)));
+  assert.equal(saved.length, 1);
+  assert.ok(Date.parse(saved[0]!.updated_at) > Date.parse(edited.updated_at), `${edited.updated_at} → ${saved[0]!.updated_at}`);
+});
+
 test("增改删:id / created_at 由 Core 拥有,更新是整条替换", () => {
   const root = tmpRoot();
   const kind = "position";
