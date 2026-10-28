@@ -1,0 +1,5 @@
+# 开发与验证用:产品运行依赖 + 测试与类型检查工具。产品安装(scripts/setup)不装这些。
+# 开发机按这一份装:python -m pip install -r requirements-dev.txt(工具版本与 CI 的安装命令一致)
+-r .agents/skills/data-access/scripts/requirements.txt
+pytest
+mypy==2.4.0

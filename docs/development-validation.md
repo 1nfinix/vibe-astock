@@ -29,8 +29,8 @@ npm run build --prefix desktop
 
 逐项检查退出码，不能把最后一项成功当作前面全部成功。平台跳过项、构建警告单独记载。
 
-`python -m mypy` 是 Python 类型检查，配置在仓库根目录 `mypy.ini`。mypy 不随产品安装，开发机装一次：
-`python -m pip install mypy==2.4.0`（与 CI 同版本）。
+`python -m mypy` 是 Python 类型检查，配置在仓库根目录 `mypy.ini`。pytest 和 mypy 不随产品安装，开发机装一次：
+`python -m pip install -r requirements-dev.txt`（mypy 固定 2.4.0，与 CI 同版本）。
 
 - 报错先修代码或把标注写准；不加 `# type: ignore` 了事。确属检查器看不懂的写法，就改成它看得懂的写法。
 - `sources/astock_ported.py` 由 `datasources/port_astock.py` 从上游生成，不在检查范围内；它的问题回上游修。
