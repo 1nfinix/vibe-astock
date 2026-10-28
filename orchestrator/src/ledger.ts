@@ -397,6 +397,20 @@ function updatedAfter(prev: string, at: string): string {
 }
 
 /**
+ * 新记录的录入时刻(毫秒):晚于这个种类里已有的每一条。
+ * 🔴 录入先后要能从记录本身还原:同一毫秒里接连新增,或紧跟在整批录入(往后排了几毫秒)后面新增,
+ *    直接取当前时刻会和前面的相等甚至更早,先后就乱了。
+ */
+function createdAfter(records: readonly LedgerRecord[], at: number): number {
+  let last = -Infinity;
+  for (const r of records) {
+    const t = Date.parse(r.created_at);
+    if (Number.isFinite(t) && t > last) last = t;
+  }
+  return Math.max(at, last + 1);
+}
+
+/**
  * 新增或更新一条。带 `id` 且能找到 = 更新(**整条替换,不做字段级合并**);否则新增。
  * 不合并是刻意的:合并会让"我把某个字段清空了"和"我这次没提这个字段"变得无法区分。
  */
@@ -427,7 +441,8 @@ export function upsertRecord(dataRoot: string, kind: string, input: Record<strin
     // 便宜的兜底:UUID 撞的概率可以忽略,但"忽略"和"检查过"在数据丢失面前不是一回事
     for (let i = 0; data.records.some((r) => r.id === fresh) && i < 5; i++) fresh = newId(kind);
     if (data.records.some((r) => r.id === fresh)) throw new LedgerError("id_collision", "生成 id 连续撞车,请重试");
-    const next: LedgerRecord = { ...rest, id: fresh, kind, created_at: now, updated_at: now };
+    const at = nowIso(new Date(createdAfter(data.records, Date.parse(now))));
+    const next: LedgerRecord = { ...rest, id: fresh, kind, created_at: at, updated_at: at };
     data.records.push(next);
     saveVerified(file, kind, data, (rs) => sameRecord(rs.find((r) => r.id === fresh), next));
     return next;
@@ -463,7 +478,7 @@ export function insertRecords(dataRoot: string, kind: string, inputs: readonly R
   if (!rests.length) return [];
   return withLock(file, () => {
     const data = loadFile(file, kind);
-    const base = Date.now();
+    const base = createdAfter(data.records, Date.now());
     const taken = new Set(data.records.map((r) => r.id));
     const added = rests.map((rest, i) => {
       let fresh = newId(kind);
@@ -519,7 +534,7 @@ export function replaceRecords(
     const data = loadFile(file, kind);
     const group = new Map(data.records.filter(match).map((r) => [r.id, r]));
     const taken = new Set(data.records.map((r) => r.id));
-    const base = Date.now();
+    const base = createdAfter(data.records, Date.now());
     const saved: LedgerRecord[] = [];
     const next = items.map(({ id, rest }, i) => {
       const at = nowIso(new Date(base + i));

@@ -184,6 +184,19 @@ test("🔴 改过的记录 updated_at 一定晚于上一版:写完马上改(同�
   assert.ok(Date.parse(saved[0]!.updated_at) > Date.parse(edited.updated_at), `${edited.updated_at} → ${saved[0]!.updated_at}`);
 });
 
+test("🔴 新记录的录入时间晚于这个种类里已有的每一条:紧跟在整批录入后面(那批被往后排了几毫秒)单条或整组新增,先后也不能乱", () => {
+  const root = tmpRoot();
+  const k = "closed_position";
+  const base = { symbol: "600519", closed_at: "2026-09-01", price: 1200, shares: 1, cost: 1000 };
+  const batch = insertRecords(root, k, Array.from({ length: 50 }, () => ({ ...base })));
+  const one = upsertRecord(root, k, { ...base });
+  assert.ok(one.created_at > batch.at(-1)!.created_at, `${batch.at(-1)!.created_at} / ${one.created_at}`);
+  const more = insertRecords(root, k, [{ ...base }]);
+  assert.ok(more[0]!.created_at > one.created_at, `${one.created_at} / ${more[0]!.created_at}`);
+  const { saved } = replaceRecords(root, k, () => true, [...listRecords(root, k), { ...base }]);
+  assert.ok(saved[0]!.created_at > more[0]!.created_at, `${more[0]!.created_at} / ${saved[0]!.created_at}`);
+});
+
 test("增改删:id / created_at 由 Core 拥有,更新是整条替换", () => {
   const root = tmpRoot();
   const kind = "position";
