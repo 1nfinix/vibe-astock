@@ -3,6 +3,21 @@
 格式遵循 Keep a Changelog，并采用语义化版本。v1.1.3 及更早的条目保留旧版原文。
 底座（Vibe Research）此前的变化见 [Vibe Research 的 CHANGELOG](https://github.com/simonlin1212/Vibe-Research/blob/main/CHANGELOG.md)。
 
+## [2.1.5] - 2026-10-29
+
+修「工作空间 → 提醒」里公告标题显示成乱码的问题（issue #25，提交 `2eb9bb9`）；短线功能和页面用法都没有变化。
+
+### 修复
+
+- **中文 Windows 上公告标题乱码**：盘前提醒里「以来的公告」等内容来自 legacy 取数脚本（`fetch_announcements` 等 8 个）。它们经 `common.finish()` 输出 JSON 时没有像 `fetch_endpoint.py` 那样把标准输出固定成 UTF-8；中文 Windows 的管道默认用 GBK 写，后端按 UTF-8 读，标题就成了乱码。现在 `common.finish()` 输出前固定 UTF-8，后端启动取数子进程时也固定 `PYTHONIOENCODING=utf-8`、`PYTHONUTF8=1`（调用方显式给的值仍可覆盖）。
+
+### 测试
+
+- macOS（2026-10-29）：用 `PYTHONIOENCODING=gbk` 模拟中文 Windows 管道跑 `fetch_announcements`，修复前按 UTF-8 读出乱码，修复后标题正常；新增回归测试（GBK 管道下 legacy 输出仍是合法 UTF-8；取数环境的编码变量不受外部 GBK 设置影响）。
+- 后端全套 1455 项：1447 通过、8 跳过、0 失败；数据脚本 785 项全部通过；desktop 406/406；前后端类型检查通过。
+- 独立审查（Codex 6.1 Sol）通过。
+- 没有 Windows 实机验证。
+
 ## [2.1.4] - 2026-10-26
 
 修独立安装的 CodeBuddy CLI 未登录时，WorkBuddy 已登录仍报未登录的问题（提交 `5d6d2e2`），移植自 Vibe Research v2.2.4 的同一修复（Vibe Research #56）；短线功能和页面用法都没有变化。
