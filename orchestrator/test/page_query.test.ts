@@ -14,7 +14,8 @@ import type { EndpointDef } from "../src/registry.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** 解释器:VRA_PYTHON → 仓库 .venv → 上一级 .venv(开发布局)→ PATH 上的 python3;不写死任何机器的绝对路径 */
-const PY = process.env.VRA_PYTHON?.trim() || detectPython(REPO) || detectPython(path.join(REPO, "..")) || "python3";
+const PY = process.env.VRA_PYTHON?.trim() || detectPython(REPO) || detectPython(path.join(REPO, ".."))
+  || (process.platform === "win32" ? "python" : "python3");
 /**
  * 上下文真正会注入哪些键 —— **从垂类的 pageContext.resolve 真实产出里取**,
  * 不在测试里手写一份(手写的那份迟早与实现漂移,而漂移的表现是"棘轮全绿但没查到东西")。

@@ -19,7 +19,8 @@ import { researchFailure } from "../src/research_failure.ts";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "vra-deep-engine-"));
 const ctx = (dataRoot: string): ServiceContext => ({ repoRoot: REPO, dataRoot,
-  python: process.env.VRA_PYTHON?.trim() || detectPython(REPO) || detectPython(path.join(REPO, "..")) || "python3", node: process.execPath });
+  python: process.env.VRA_PYTHON?.trim() || detectPython(REPO) || detectPython(path.join(REPO, ".."))
+    || (process.platform === "win32" ? "python" : "python3"), node: process.execPath });
 
 test("Deep 已知启动校验给出操作指引，但不透传异常正文", async (t) => {
   const dataRoot = tmp();

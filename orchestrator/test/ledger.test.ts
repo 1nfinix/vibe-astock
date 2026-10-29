@@ -7,6 +7,7 @@ import { test } from "node:test";
 import "../src/finance/register.ts"; // 测试文件也是入口:插件要先注册
 import { ENVELOPE_KEYS, LedgerError, checkRecord, insertRecords, kinds, listAll, listAllIssues, listRecords, listRecordsChecked, removeRecord, replaceRecords, upsertRecord } from "../src/ledger.ts";
 import { assertKnownFormats } from "../src/formats.ts";
+import { nowIso } from "../src/fsutil.ts";
 import { PLUGIN_SCHEMA } from "../src/plugin.ts";
 
 function tmpRoot(): string {
@@ -170,31 +171,60 @@ test("种类表来自插件,不是 Core 写死的", () => {
   }
 });
 
-test("🔴 改过的记录 updated_at 一定晚于上一版:写完马上改(同一毫秒,或整批录入把 created_at 往后排了几毫秒)也不能和 created_at 相等", () => {
+// 时钟固定在同一毫秒:不靠机器快慢制造窗口,旧实现(直接取当前时刻)每次都红
+const T0 = Date.parse("2026-10-28T09:00:00.000+08:00");
+const at = (ms: number) => nowIso(new Date(ms));
+const closed = { symbol: "600519", closed_at: "2026-09-01", price: 1200, shares: 1, cost: 1000 };
+
+test("🔴 改过的记录 updated_at 一定晚于上一版:写完马上改(同一毫秒,或整批录入把 created_at 往后排了几毫秒)也不能和 created_at 相等", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: T0 });
   const root = tmpRoot();
   const k = "closed_position";
-  const base = { symbol: "600519", closed_at: "2026-09-01", price: 1200, shares: 1, cost: 1000 };
-  // 整批的第 50 条 created_at = 录入时刻 + 49 毫秒:紧接着改它,当前时刻几乎一定还没追上
-  const last = insertRecords(root, k, Array.from({ length: 50 }, () => ({ ...base }))).at(-1)!;
-  const edited = upsertRecord(root, k, { ...base, id: last.id, note: "改过" });
-  assert.ok(Date.parse(edited.updated_at) > Date.parse(last.updated_at), `${last.updated_at} → ${edited.updated_at}`);
-  assert.equal(edited.updated_at.slice(-6), last.updated_at.slice(-6), "同一种时间写法");
+  const one = upsertRecord(root, k, { ...closed });
+  assert.equal(one.created_at, at(T0));
+  assert.equal(upsertRecord(root, k, { ...closed, id: one.id, note: "改过" }).updated_at, at(T0 + 1), "同一毫秒里改");
+  // 整批 3 条排在 T0+1..T0+3(接着已有最晚的那条):改最后一条,时钟还停在 T0
+  const last = insertRecords(root, k, [{ ...closed }, { ...closed }, { ...closed }]).at(-1)!;
+  assert.equal(last.created_at, at(T0 + 3));
+  const edited = upsertRecord(root, k, { ...closed, id: last.id, note: "改过" });
+  assert.equal(edited.updated_at, at(T0 + 4));
+  // 整组替换按条目序号往后排(base + i),这里只要求比上一版晚
   const { saved } = replaceRecords(root, k, () => true, listRecords(root, k).map((r) => (r.id === last.id ? { ...r, note: "再改" } : r)));
   assert.equal(saved.length, 1);
-  assert.ok(Date.parse(saved[0]!.updated_at) > Date.parse(edited.updated_at), `${edited.updated_at} → ${saved[0]!.updated_at}`);
+  assert.ok(saved[0]!.updated_at > edited.updated_at, `${edited.updated_at} → ${saved[0]!.updated_at}`);
 });
 
-test("🔴 新记录的录入时间晚于这个种类里已有的每一条:紧跟在整批录入后面(那批被往后排了几毫秒)单条或整组新增,先后也不能乱", () => {
+test("🔴 新记录的录入时间晚于这个种类里已有的每一条:同一毫秒里接连新增、紧跟在整批录入后面单条或整组新增,先后也不能乱", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: T0 });
   const root = tmpRoot();
   const k = "closed_position";
-  const base = { symbol: "600519", closed_at: "2026-09-01", price: 1200, shares: 1, cost: 1000 };
-  const batch = insertRecords(root, k, Array.from({ length: 50 }, () => ({ ...base })));
-  const one = upsertRecord(root, k, { ...base });
-  assert.ok(one.created_at > batch.at(-1)!.created_at, `${batch.at(-1)!.created_at} / ${one.created_at}`);
-  const more = insertRecords(root, k, [{ ...base }]);
-  assert.ok(more[0]!.created_at > one.created_at, `${one.created_at} / ${more[0]!.created_at}`);
-  const { saved } = replaceRecords(root, k, () => true, [...listRecords(root, k), { ...base }]);
-  assert.ok(saved[0]!.created_at > more[0]!.created_at, `${more[0]!.created_at} / ${saved[0]!.created_at}`);
+  const a = upsertRecord(root, k, { ...closed });
+  const b = upsertRecord(root, k, { ...closed });
+  const batch = insertRecords(root, k, [{ ...closed }, { ...closed }]);
+  const one = upsertRecord(root, k, { ...closed });
+  assert.deepEqual([a, b, ...batch, one].map((r) => r.created_at), [0, 1, 2, 3, 4].map((i) => at(T0 + i)));
+  // 整组替换按条目序号往后排(base + i),这里只要求晚于已有的每一条
+  const { saved } = replaceRecords(root, k, () => true, [...listRecords(root, k), { ...closed }]);
+  assert.ok(saved[0]!.created_at > one.created_at, `${one.created_at} / ${saved[0]!.created_at}`);
+});
+
+test("🔴 已有记录是未来时间(系统时间曾被调快):1 秒内的照样接着排,更远的不跟,新增和修改都回到当前时刻", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: T0 });
+  const root = tmpRoot();
+  const k = "closed_position";
+  t.mock.timers.setTime(T0 + 3_600_000);
+  const future = upsertRecord(root, k, { ...closed });
+  t.mock.timers.setTime(T0);
+  const fresh = upsertRecord(root, k, { ...closed });
+  assert.equal(fresh.created_at, at(T0), "一小时后的那条不带着新记录走");
+  assert.equal(insertRecords(root, k, [{ ...closed }])[0]!.created_at, at(T0 + 1), "只接着正常的那条");
+  assert.equal(upsertRecord(root, k, { ...closed, id: future.id, note: "改过" }).updated_at, at(T0), "改未来时间的那条,也按当前时刻");
+  // 1 秒以内的(整批录入往后排出来的就是这种)仍然接着排
+  t.mock.timers.setTime(T0 + 500);
+  const near = upsertRecord(root, k, { ...closed });
+  t.mock.timers.setTime(T0);
+  assert.equal(upsertRecord(root, k, { ...closed }).created_at, at(T0 + 501));
+  assert.equal(upsertRecord(root, k, { ...closed, id: near.id, note: "改过" }).updated_at, at(T0 + 501));
 });
 
 test("增改删:id / created_at 由 Core 拥有,更新是整条替换", () => {

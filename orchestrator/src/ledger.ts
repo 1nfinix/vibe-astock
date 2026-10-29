@@ -387,17 +387,25 @@ export function listRecords(dataRoot: string, kind: string): LedgerRecord[] {
 }
 
 /**
- * 更新时刻:一定晚于上一版的 `updated_at`。
+ * 已有时间比当前时刻最多晚这么多,才接着它往后排。
+ * 🔴 超过的当成系统时间曾被调快时写下的未来时间,不跟着走:否则以后每条都排到那个未来时刻之后,
+ *    删掉那条也恢复不了,按录入 / 修改时间判断先后的地方会把早写的记录判成晚写的。
+ */
+const MAX_AHEAD_MS = 1_000;
+
+/**
+ * 更新时刻:晚于上一版的 `updated_at`(上一版是未来时间的除外,见 MAX_AHEAD_MS)。
  * 🔴 写完马上改会落在同一毫秒;整批录入还把 `created_at` 往后排了几毫秒 —— 直接取当前时刻,
  *    改过的记录会和 `created_at` 相等甚至更早,靠 `updated_at === created_at` 判断"没改过"的地方就会认错。
  */
 function updatedAfter(prev: string, at: string): string {
   const p = Date.parse(prev);
-  return Number.isFinite(p) && Date.parse(at) <= p ? nowIso(new Date(p + 1)) : at;
+  const a = Date.parse(at);
+  return Number.isFinite(p) && a <= p && p - a <= MAX_AHEAD_MS ? nowIso(new Date(p + 1)) : at;
 }
 
 /**
- * 新记录的录入时刻(毫秒):晚于这个种类里已有的每一条。
+ * 新记录的录入时刻(毫秒):晚于这个种类里已有的每一条(未来时间的除外,见 MAX_AHEAD_MS)。
  * 🔴 录入先后要能从记录本身还原:同一毫秒里接连新增,或紧跟在整批录入(往后排了几毫秒)后面新增,
  *    直接取当前时刻会和前面的相等甚至更早,先后就乱了。
  */
@@ -405,7 +413,7 @@ function createdAfter(records: readonly LedgerRecord[], at: number): number {
   let last = -Infinity;
   for (const r of records) {
     const t = Date.parse(r.created_at);
-    if (Number.isFinite(t) && t > last) last = t;
+    if (Number.isFinite(t) && t > last && t - at <= MAX_AHEAD_MS) last = t;
   }
   return Math.max(at, last + 1);
 }
