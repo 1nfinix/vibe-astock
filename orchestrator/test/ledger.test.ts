@@ -227,6 +227,31 @@ test("🔴 已有记录是未来时间(系统时间曾被调快):1 秒内的照�
   assert.equal(upsertRecord(root, k, { ...closed, id: near.id, note: "改过" }).updated_at, at(T0 + 501));
 });
 
+test("整组替换的未来时间上限对照当前时刻,不随条目位置推进", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: T0 });
+  const k = "closed_position";
+  for (const futureIndex of [0, 1]) {
+    const root = tmpRoot();
+    t.mock.timers.setTime(T0 + 500);
+    const near = upsertRecord(root, k, { ...closed });
+    t.mock.timers.setTime(T0 + 1_500);
+    const future = upsertRecord(root, k, { ...closed });
+    t.mock.timers.setTime(T0);
+
+    const inputs = [
+      { ...closed, id: future.id, note: "改远处" },
+      { ...closed, id: near.id, note: "改近处" },
+    ];
+    if (futureIndex === 1) inputs.reverse();
+    const { saved } = replaceRecords(root, k, () => true, inputs);
+    const farUpdated = saved.find((r) => r.id === future.id)!;
+    const nearUpdated = saved.find((r) => r.id === near.id)!;
+    assert.equal(farUpdated.updated_at, at(T0 + 501 + futureIndex), `远处记录在第 ${futureIndex} 位按 base+i 更新`);
+    assert.ok(Date.parse(farUpdated.updated_at) <= T0 + 1_000);
+    assert.ok(Date.parse(nearUpdated.updated_at) > Date.parse(near.updated_at), "1 秒内的记录仍向后推进");
+  }
+});
+
 test("增改删:id / created_at 由 Core 拥有,更新是整条替换", () => {
   const root = tmpRoot();
   const kind = "position";
