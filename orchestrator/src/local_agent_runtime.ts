@@ -7,7 +7,7 @@
  * 普通 Agent 对话与 Deep 研究使用各自的产品 MCP；连接探针等内部任务不挂载工具。
  * 所有路径都关闭会话落盘与用户配置；没有等价隔离参数的 CLI 不能把按钮点亮。
  */
-import { execFile, spawn, spawnSync, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -1561,7 +1561,9 @@ export async function runLocalAgent(
   }
 
   return await new Promise<string>((resolve, reject) => {
-    let child: ChildProcessWithoutNullStreams;
+    let child: ChildProcess;
+    const codeBuddyOutputFile = agent === "codebuddy" ? path.join(tmpDir, "stdout.json") : null;
+    let outputFd: number | undefined;
     try {
     const runEnv = agent === "claude"
       ? subscriptionEnv(baseEnv)
@@ -1587,20 +1589,25 @@ export async function runLocalAgent(
       : codeBuddyArgs(opts.systemPrompt, opts.outputSchema, codeBuddyRuntime!.legacyEphemeralHome, opts.controlledMcp);
     if (agent === "codebuddy" && opts.userImages?.length) args.push("--input-format", "stream-json");
     const launch = executableInvocation(bin, args, runEnv);
+    // 🔴 CodeBuddy 接管道时 stdout 会在 64 KiB 截断却 exit 0；直接接文件才能收全。
+    if (codeBuddyOutputFile) outputFd = fs.openSync(codeBuddyOutputFile, "w", 0o600);
     child = spawn(launch.file, launch.args, {
       cwd: tmpDir,
       env: runEnv,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["pipe", outputFd ?? "pipe", "pipe"],
       // POSIX 下创建独立进程组。本机 Agent CLI 可能继续派生 node / shell 子进程；
       // 只杀直接 child 会让后代留在后台继续消耗订阅额度。
       detached: process.platform !== "win32",
     });
     } catch {
       // 参数拼装或 spawn 同步失败(如提示词里有 NUL):还没有子进程,当场释放槽位与工作区。
+      if (outputFd !== undefined) { fs.closeSync(outputFd); outputFd = undefined; }
       releaseSlot();
       try { fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* 尽力清理 */ }
       reject(new LocalAgentError("agent_launch_failed", `${label} 未能启动`));
       return;
+    } finally {
+      if (outputFd !== undefined) fs.closeSync(outputFd);
     }
     trackLocalAgentProcess(child);
     let stdout = "";
@@ -1610,6 +1617,7 @@ export async function runLocalAgent(
     let terminationError: LocalAgentError | null = null;
     let hardKillTimer: NodeJS.Timeout | null = null;
     let killFallbackTimer: NodeJS.Timeout | null = null;
+    let outputSizeTimer: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
       opts.signal?.removeEventListener("abort", onAbort);
@@ -1626,6 +1634,7 @@ export async function runLocalAgent(
       clearTimeout(timer);
       if (hardKillTimer) clearTimeout(hardKillTimer);
       if (killFallbackTimer) clearTimeout(killFallbackTimer);
+      if (outputSizeTimer) clearInterval(outputSizeTimer);
       activeLocalAgents = Math.max(0, activeLocalAgents - 1);
       untrackLocalAgentProcess(child);
       try { cleanup(); }
@@ -1653,7 +1662,7 @@ export async function runLocalAgent(
       terminationError = error;
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
-      try { child.stdin.destroy(); } catch { /* 已关闭 */ }
+      try { child.stdin?.destroy(); } catch { /* 已关闭 */ }
       signalTree("SIGTERM");
       // Promise 不能在 TERM 发出后立刻返回：那会清掉临时目录与监听器，
       // 却无法证明整个进程组已经退出。两秒后杀整组，再等 close。
@@ -1687,13 +1696,17 @@ export async function runLocalAgent(
     const timer = setTimeout(() => {
       terminate(new LocalAgentError("agent_timeout", `${label} 超时（>${Math.round(timeoutMs / 1000)} 秒）`));
     }, timeoutMs);
+    if (codeBuddyOutputFile) outputSizeTimer = setInterval(() => {
+      if (!terminationError && fs.statSync(codeBuddyOutputFile).size > maxOut)
+        terminate(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`));
+    }, 1_000);
 
-    child.stdin.on("error", () => { /* 提前退出时的 EPIPE 由 close 统一处理 */ });
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
+    child.stdin!.on("error", () => { /* 提前退出时的 EPIPE 由 close 统一处理 */ });
+    child.stdout?.setEncoding("utf8");
+    child.stderr!.setEncoding("utf8");
     const codexStream = agent === "codex" ? new CodexEventStream(opts.controlledMcp) : null;
     let pendingLine = "";
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout?.on("data", (chunk: string) => {
       if (terminationError) return;
       if (codexStream) {
         const lines = (pendingLine + chunk).split("\n");
@@ -1712,7 +1725,7 @@ export async function runLocalAgent(
       }
       stdout += chunk;
     });
-    child.stderr.on("data", (chunk: string) => {
+    child.stderr!.on("data", (chunk: string) => {
       if (Buffer.byteLength(stderr, "utf8") < maxErr) stderr += chunk;
     });
     child.on("error", () => {
@@ -1729,6 +1742,22 @@ export async function runLocalAgent(
       clearTimeout(timer);
       settleOwnedProcessGroup(child.pid).then(() => {
         if (terminationError) return finish(() => reject(terminationError!));
+        if (codeBuddyOutputFile) {
+          try {
+            const fd = fs.openSync(codeBuddyOutputFile, "r");
+            try {
+              const buffer = Buffer.allocUnsafe(maxOut + 1);
+              let bytesRead = 0;
+              while (bytesRead < buffer.length) {
+                const count = fs.readSync(fd, buffer, bytesRead, buffer.length - bytesRead, null);
+                if (count === 0) break;
+                bytesRead += count;
+              }
+              if (bytesRead > maxOut) return finish(() => reject(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`)));
+              stdout = buffer.toString("utf8", 0, bytesRead);
+            } finally { fs.closeSync(fd); }
+          } catch { return finish(() => reject(new LocalAgentError("agent_bad_output", `${label} 返回了无法解析的结果`))); }
+        }
         const lastViolation = codexStream && pendingLine ? codexStream.push(pendingLine) : null;
         if (lastViolation) return finish(() => reject(new LocalAgentError("agent_policy_violation", lastViolation)));
         // Codex 的 stdout 是整段工具往来；分类只看它的终止原因，免得把研究正文里的 “401” 误判成掉登录。
@@ -1750,6 +1779,6 @@ export async function runLocalAgent(
     // 先返回就等不到 close，只能误报“退出未确认”。
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) return onAbort();
-    child.stdin.end(input, "utf8");
+    child.stdin!.end(input, "utf8");
   });
 }

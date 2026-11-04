@@ -135,6 +135,7 @@ let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>input+
   }
   if(process.env.FAKE_EXEC_MARKER) require('node:fs').writeFileSync(process.env.FAKE_EXEC_MARKER,'executed');
   if(process.env.FAKE_EXEC_NOT_LOGGED==='1'){console.log('Authentication required. Please use /login command to sign in to your account');return}
+  if(process.env.FAKE_OUTPUT_BYTES){process.stdout.write(JSON.stringify({result:'x'.repeat(Number(process.env.FAKE_OUTPUT_BYTES))}));process.exit(0)}
   const profiles=['HOME','USERPROFILE','APPDATA','LOCALAPPDATA'].every(k=>!process.env['FAKE_BASE_'+k]||process.env[k]!==process.env['FAKE_BASE_'+k]);
   const result={result:input+'|api='+Boolean(process.env.CODEBUDDY_API_KEY)+'|token='+Boolean(process.env.CODEBUDDY_AUTH_TOKEN)+'|base='+Boolean(process.env.CODEBUDDY_BASE_URL)+'|tools='+a.slice(a.indexOf('--tools'),a.indexOf('--tools')+2).join(':')+'|memory='+process.env.CODEBUDDY_DISABLE_AUTO_MEMORY+'|ephemeral='+Boolean(process.env.FAKE_BASE_HOME&&process.env.HOME!==process.env.FAKE_BASE_HOME)+'|profiles='+profiles+'|noSession='+a.includes('--no-session-persistence')+'|permission='+a[a.indexOf('--permission-mode')+1]};
   if(process.env.FAKE_ECHO_MCP_ENV==='1') result.result+='|wait='+process.env.CODEBUDDY_WAIT_FOR_MCP_SERVERS_ENABLED+'|prewait='+process.env.CODEBUDDY_FIRST_RUN_MCP_PREWAIT_TIMEOUT_MS;
@@ -1111,6 +1112,24 @@ test("CodeBuddy 订阅调用走 stdin，移除 API / token / 自定义端点并�
       },
     });
     assert.equal(out, "USER_SECRET_PROMPT|api=false|token=false|base=false|tools=--tools:|memory=1|ephemeral=false|profiles=true|noSession=true|permission=dontAsk");
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test("CodeBuddy 直接退出前写出超过 64 KiB 的完整 JSON", async () => {
+  const f = fakeCodeBuddy();
+  try {
+    const result = await runLocalAgent("codebuddy", { systemPrompt: "规则", userPrompt: "hello",
+      env: { ...PLATFORM_ENV, CODEBUDDY_BIN: f.bin, PATH: process.env.PATH, FAKE_OUTPUT_BYTES: String(200 * 1024) } });
+    assert.equal(result, "x".repeat(200 * 1024));
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test("CodeBuddy 文件输出超过 4 MiB 时拒绝", async () => {
+  const f = fakeCodeBuddy();
+  try {
+    await assert.rejects(runLocalAgent("codebuddy", { systemPrompt: "规则", userPrompt: "hello",
+      env: { ...PLATFORM_ENV, CODEBUDDY_BIN: f.bin, PATH: process.env.PATH, FAKE_OUTPUT_BYTES: String(5 * 1024 * 1024) } }),
+    (e: unknown) => e instanceof LocalAgentError && e.code === "agent_output_too_large");
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
