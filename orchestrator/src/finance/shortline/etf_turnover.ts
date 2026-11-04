@@ -77,14 +77,14 @@ export function dateWeek(day: string): string {
   const date = new Date(`${day}T12:00:00+08:00`);
   return Number.isNaN(date.getTime()) ? day : `${day} ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]}`;
 }
-export function timeAnnotation(mode: "stale" | "lunch" | "intraday" | "closed", day: string, hm: string, progressPct: number): string {
+export function timeAnnotation(mode: "stale" | "lunch" | "intraday" | "closed" | "none", day: string, hm: string, progressPct: number): string {
   if (mode === "stale") return `（实时行情不是今日数据，当前显示 ${dateWeek(day)} 全天数据，与全天基准直接对比）`;
   if (mode === "lunch") return `（午间休市，成交额锁定 11:30；对比基准 = 20 日均额 × 历史同时点进度 ${progressPct.toFixed(1)}%）`;
   if (mode === "intraday") return `（${hm} 历史平均已走完全天 ${progressPct.toFixed(1)}%，分母已同比例缩小）`;
-  return `（非交易时段，以上为 ${dateWeek(day)} 收盘复盘，开盘后自动切换实时）`;
+  return mode === "closed" ? `（非交易时段，以上为 ${dateWeek(day)} 收盘复盘，开盘后自动切换实时）` : "";
 }
 export function verdict(ratio: number | null, net: number | null, tail: number | null, tailBase: number | null, weightedPct: number | null, annotation = ""): Verdict {
-  if (ratio === null || net === null) return { level: "missing", title: "量价判断暂不可得", reason: `成交额或主动买卖盘缺数。${annotation}这是量价现象，不能证明任何机构当日交易。` };
+  if (ratio === null || net === null) return { level: "missing", title: "量价判断暂不可得", reason: `成交额或主动买卖盘缺数。${annotation ? `${annotation}。` : ""}这是量价现象，不能证明任何机构当日交易。` };
   const level = ratio >= 1.8 && net > 0 ? "strong" : ratio >= 1.3 && net > 0 ? "medium" : ratio >= 1.8 ? "sell" : ratio >= 1.3 ? "unclear" : "quiet";
   const title = { strong: "放量且主动净买入同向", medium: "温和放量、偏买", sell: "放量但主动净卖出", unclear: "成交活跃、方向不清", quiet: "量价平静" }[level];
   const x = ratio.toFixed(2), y = net.toFixed(2);
@@ -99,7 +99,7 @@ export function verdict(ratio: number | null, net: number | null, tail: number |
     if (tail !== null && tailBase !== null && tail > tailBase * 1.25) reason += `尾盘半小时成交占全天 ${(tail * 100).toFixed(1)}%，明显高于 20 日均值 ${(tailBase * 100).toFixed(1)}%。`;
     if (weightedPct !== null && weightedPct < -0.5) reason += `池内规模加权涨跌 ${weightedPct.toFixed(2)}%，下跌日放量更符合护盘场景。`;
   }
-  reason += `${annotation}这是量价现象，不能证明任何机构当日交易。`;
+  reason += `${annotation ? `${annotation}。` : ""}这是量价现象，不能证明任何机构当日交易。`;
   return { level, title, reason };
 }
 
@@ -142,13 +142,15 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const notes: string[] = [];
   if (trading === false) notes.push("今日休市，展示最近一场行情；同时点倍数按全天对齐。");
   if (trading === null) notes.push("交易日历未取到，行情日期仅按腾讯时间校验。");
-  const args = { trade_date: day, extra_codes: watch };
-  const [baseEnv, liveEnv] = await Promise.all([
-    fetch(ctx, { endpoint: "cn_etf_turnover_baseline", args, signal }),
+  const [coreEnv, watchEnv, liveEnv] = await Promise.all([
+    fetch(ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: day, extra_codes: [] }, signal }),
+    fetch(ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: day, extra_codes: watch, include_core: false }, signal }),
     fetch(ctx, { endpoint: "cn_etf_turnover_live", args: { extra_codes: watch }, signal }),
   ]);
-  const base = resultOf(baseEnv.envelope), live = resultOf(liveEnv.envelope);
-  if (!base) notes.push(`近 20 日基准未取到：${failedNote(baseEnv.envelope) || "源无数据"}`);
+  const coreBase = resultOf(coreEnv.envelope), watchBase = resultOf(watchEnv.envelope), live = resultOf(liveEnv.envelope);
+  const base = coreBase || watchBase ? { date: s(coreBase?.date || watchBase?.date), items: [...records(coreBase?.items), ...records(watchBase?.items)], missing: [...records(coreBase?.missing), ...records(watchBase?.missing)] } : null;
+  if (!coreBase) notes.push(`固定名单近 20 日基准未取到：${failedNote(coreEnv.envelope) || "源无数据"}`);
+  if (!watchBase) notes.push(`观察组近 20 日基准未取到：${failedNote(watchEnv.envelope) || "源无数据"}`);
   if (!live) notes.push(`实时行情未取到：${failedNote(liveEnv.envelope) || "源无数据"}`);
   if (!live && last.has(ctx.dataRoot)) {
     const prior = last.get(ctx.dataRoot)!;
@@ -193,10 +195,10 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const quoteHm = quoteTime ? `${quoteTime.slice(8, 10)}:${quoteTime.slice(10, 12)}` : hm;
   const stale = !!quoteDate && quoteDate !== day;
   const progressPct = expected !== null && avg20Total !== null && avg20Total > 0 ? expected / avg20Total * 100 : null;
-  const mode = stale ? "stale" : phase === "lunch" ? "lunch" : ["morning", "afternoon", "closing_auction"].includes(phase) && trading !== false ? "intraday" : "closed";
+  const mode = stale ? "stale" : phase === "lunch" && trading !== false ? "lunch" : ["morning", "afternoon", "closing_auction"].includes(phase) && trading !== false ? "intraday" : phase === "closed" && trading !== false ? "none" : "closed";
   const annotation = timeAnnotation(mode, quoteDate || day, quoteHm, progressPct ?? 100);
   if (valid.length < CORE_CODES.length) notes.push(`固定名单 ${CORE_CODES.length} 只中 ${CORE_CODES.length - valid.length} 只缺基准或成交额；合计仅覆盖有数标的。`);
-  const view: EtfView = { date: day, asof: now.toISOString(), baseline_date: s(base?.date) || day, baseline_generated: baseEnv.fetched_at || now.toISOString(), quote_time: quoteTime, quote_date: quoteDate, quote_hm: quoteHm, data_connected: !!live, stale, progress_pct: progressPct, avg20_total_yi: avg20Total, daily_ratio: amount !== null && avg20Total !== null && avg20Total > 0 ? amount / avg20Total : null, core_count: CORE_CODES.length, phase, trading_day: trading, poll_ms: pollMsOf(phase, trading), watch_codes: watch, previous_shares_date: prev.date, shares_suspect: [...suspect], items,
+  const view: EtfView = { date: day, asof: now.toISOString(), baseline_date: s(base?.date) || day, baseline_generated: coreEnv.fetched_at || now.toISOString(), quote_time: quoteTime, quote_date: quoteDate, quote_hm: quoteHm, data_connected: !!live, stale, progress_pct: progressPct, avg20_total_yi: avg20Total, daily_ratio: amount !== null && avg20Total !== null && avg20Total > 0 ? amount / avg20Total : null, core_count: CORE_CODES.length, phase, trading_day: trading, poll_ms: pollMsOf(phase, trading), watch_codes: watch, previous_shares_date: prev.date, shares_suspect: [...suspect], items,
     totals: { amount_yi: amount, expected_yi: expected, ratio, net_yi: net, weighted_pct: weighted }, verdict: verdict(ratio, net, tail, tailBase, weighted, annotation), missing, notes };
   last.set(ctx.dataRoot, view);
   return view;
@@ -209,15 +211,16 @@ export async function etfTurnoverAct(ctx: ServiceContext, body: Record<string, u
 }
 
 export async function etfTurnoverClose(j: JobContext, fetch: Fetch = fetchEndpoint): Promise<JobResult> {
-  const args = { trade_date: j.day, extra_codes: loadWatch(j.ctx.dataRoot) };
-  const [base, live] = await Promise.all([
-    fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args, consistency: { mode: "fresh" }, signal: j.signal }),
-    fetch(j.ctx, { endpoint: "cn_etf_turnover_live", args: { extra_codes: args.extra_codes }, consistency: { mode: "fresh" }, signal: j.signal }),
+  const watch = loadWatch(j.ctx.dataRoot);
+  const [coreBase, watchBase, live] = await Promise.all([
+    fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: j.day, extra_codes: [] }, consistency: { mode: "fresh" }, signal: j.signal }),
+    fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: j.day, extra_codes: watch, include_core: false }, consistency: { mode: "fresh" }, signal: j.signal }),
+    fetch(j.ctx, { endpoint: "cn_etf_turnover_live", args: { extra_codes: watch }, consistency: { mode: "fresh" }, signal: j.signal }),
   ]);
   const liveResult = resultOf(live.envelope);
-  const baseOk = !!resultOf(base.envelope);
+  const baseOk = !!resultOf(coreBase.envelope) && !!resultOf(watchBase.envelope);
   const shareRows = records(liveResult?.items).filter((x) => n(x.shares) !== null);
   const count = shareRows.length ? saveShares(j.ctx.dataRoot, j.day, shareRows) : 0;
-  if (!baseOk && !count) throw new Error(`ETF 收盘基准与份额均失败：${failedNote(base.envelope)}；${failedNote(live.envelope)}`);
+  if (!baseOk && !count) throw new Error(`ETF 收盘基准与份额均失败：${failedNote(coreBase.envelope)}；${failedNote(watchBase.envelope)}；${failedNote(live.envelope)}`);
   return { messages: [], note: `ETF 收盘基准${baseOk ? "已更新" : "失败"}；份额快照 ${count} 只` };
 }

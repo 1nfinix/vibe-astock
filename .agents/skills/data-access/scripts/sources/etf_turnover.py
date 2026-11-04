@@ -33,11 +33,13 @@ CORE_CODES = {x["code"] for x in ETF_POOL}
 POOL_NOTE = "汇金组来自 2025 年报前十大持有人历史披露；信披规则变化后，名单不能证明当日持仓或交易。"
 
 
-def _pool(extra_codes=None):
+def _pool(extra_codes=None, include_core=True):
     codes = DEFAULT_WATCH if extra_codes is None else extra_codes
     if not isinstance(codes, list) or len(codes) > 30 or any(not isinstance(c, str) or not re.fullmatch(r"[51]\d{5}", c) for c in codes):
         raise ValueError("观察组限 30 只沪深 ETF 六位代码")
-    return ETF_POOL + [dict(code=c, tcode=tencent_prefix(c), name=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[0], index=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[1], group="watch", huijin_yi=None)
+    if not isinstance(include_core, bool):
+        raise ValueError("include_core 必须是布尔值")
+    return (ETF_POOL if include_core else []) + [dict(code=c, tcode=tencent_prefix(c), name=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[0], index=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[1], group="watch", huijin_yi=None)
                        for c in dict.fromkeys(codes) if c not in CORE_CODES]
 
 
@@ -74,10 +76,10 @@ def _shape(bars, trade_date):
     return [round(sum(x[i] for x in shapes) / len(shapes), 6) for i in range(48)], round(sum(tails) / len(tails), 6)
 
 
-def build_etf_turnover_baseline(trade_date=None, extra_codes=None):
+def build_etf_turnover_baseline(trade_date=None, extra_codes=None, include_core=True):
     day = trade_date or _day()
     items, missing = [], []
-    for item in _pool(extra_codes):
+    for item in _pool(extra_codes, include_core):
         code = item["code"]
         try:
             daily = sorted(sina_kline(code, 240, 50), key=lambda b: b["day"])

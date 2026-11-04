@@ -44,3 +44,13 @@ test("宽基 ETF 量价：默认顺序、合计、份额状态与缺数可见", 
     assert.doesNotMatch(text, /汪汪队|上班|国家队买了|投顾内部/);
   });
 });
+
+test("观察组保存中与失败原因在编辑区可见", async () => {
+  await withRenderer(async (r) => {
+    const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    const saving = textOf(r.html(EtfTurnoverView, { view, onSetWatch: () => {}, busy: true }));
+    assert.match(saving, /扩展观察.*保存中….*编辑观察组/);
+    const failed = textOf(r.html(EtfTurnoverView, { view, onSetWatch: () => {}, saveError: "本机接口超时" }));
+    assert.match(failed, /扩展观察.*保存失败：本机接口超时/);
+  });
+});

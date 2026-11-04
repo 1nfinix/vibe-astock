@@ -20,6 +20,6 @@ export function EtfTurnoverTab() {
   };
   return <section aria-label="宽基 ETF 量价跟踪" className="mt-4">
     {!view ? <p role="status" className="text-sm text-muted-foreground">正在读取宽基 ETF 量价…{poll.error ? ` ${poll.error}` : ""}</p> :
-      <EtfTurnoverView view={view} onRefresh={() => { setOverride(null); poll.refresh(); }} autoRefresh={auto} onAutoRefresh={setAuto} onSetWatch={(codes) => { void setWatch(codes); }} busy={saving} error={actionError ?? poll.error} />}
+      <EtfTurnoverView view={view} onRefresh={() => { setOverride(null); poll.refresh(); }} autoRefresh={auto} onAutoRefresh={setAuto} onSetWatch={(codes) => { void setWatch(codes); }} busy={saving} saveError={actionError} error={poll.error} />}
   </section>;
 }

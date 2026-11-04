@@ -84,3 +84,18 @@ def test_fixed_names_and_daily_amount_ohlc4(monkeypatch):
     })
     got = etf_turnover.build_etf_turnover_live(["588000", "512345"])
     assert [x["name"] for x in got["items"]] == ["沪深300ETF华泰柏瑞", "科创50ETF华夏", "新增标的名称"]
+
+
+def test_baseline_observation_only_does_not_fetch_fixed_pool(monkeypatch):
+    calls = []
+    daily = [bar(f"2026-10-{d:02d}") for d in range(1, 31)]
+
+    def fake(code, scale, _n):
+        calls.append((code, scale))
+        return daily if scale == 240 else []
+
+    monkeypatch.setattr(etf_turnover, "sina_kline", fake)
+    got = etf_turnover.build_etf_turnover_baseline("2026-11-04", ["588000"], include_core=False)
+    assert [item["code"] for item in got["items"]] == ["588000"]
+    assert calls == [("588000", 240), ("588000", 5)]
+    assert etf_turnover._pool([], include_core=False) == []

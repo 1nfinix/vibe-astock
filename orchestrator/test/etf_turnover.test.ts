@@ -13,7 +13,7 @@ const ctx = (dataRoot: string): ServiceContext => ({ repoRoot: process.cwd(), da
 const env = (result: unknown) => ({ status: "ok", evidence: [], extra: { result } });
 const fetch = async (_ctx: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
   if (req.endpoint === "fetch_trade_calendar") return { envelope: { status: "failed" } };
-  if (req.endpoint === "cn_etf_turnover_baseline") return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", avg20_yi: 10, shape: Array(48).fill(0.5), hist: [] })), missing: [] }) };
+  if (req.endpoint === "cn_etf_turnover_baseline") return { envelope: env({ date: "2026-10-12", items: (req.args?.include_core === false ? req.args.extra_codes as string[] : [...CORE_CODES]).map((code) => ({ code, name: code, group: req.args?.include_core === false ? "watch" : "core", avg20_yi: 10, shape: Array(48).fill(0.5), hist: [] })), missing: [] }) };
   if (req.endpoint === "cn_etf_turnover_live") { assert.equal(req.args?.trade_date, undefined); return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", price: 2, pct: -1, amount_yi: 20, mktcap_yi: 100, shares: 2, outer_lots: 60, inner_lots: 40, quote_time: "20261009150000" })), missing: [] }) }; }
   throw new Error(req.endpoint);
 };
@@ -39,6 +39,8 @@ test("时点括注覆盖旧日、午休、盘中与非交易时段", () => {
   assert.match(timeAnnotation("lunch", "2026-11-04", "11:30", 50), /午间休市.*11:30.*50.0%/);
   assert.match(timeAnnotation("intraday", "2026-11-04", "10:30", 27), /10:30.*27.0%.*分母已同比例缩小/);
   assert.match(timeAnnotation("closed", "2026-11-03", "15:00", 100), /非交易时段.*2026-11-03 周二.*开盘后自动切换实时/);
+  assert.equal(timeAnnotation("none", "2026-11-04", "15:00", 100), "");
+  assert.match(verdict(1.5, 3, null, null, null, timeAnnotation("lunch", "2026-11-04", "11:30", 50)).reason, /）。这是量价现象/);
 });
 
 test("午休锁与旧日全天比", () => {
@@ -76,6 +78,29 @@ test("固定名单不可编辑，观察组不入合计", async () => {
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
+test("固定组 baseline 参数稳定，观察组单独取数；同日收盘无括注", async () => {
+  const folder = root();
+  try {
+    const calls: Record<string, unknown>[] = [];
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_etf_turnover_baseline") calls.push(req.args ?? {});
+      if (req.endpoint === "cn_etf_turnover_live") return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", price: 2, amount_yi: 20, outer_lots: 60, inner_lots: 40, quote_time: "20261012150000" })), missing: [] }) };
+      return fetch(c, req);
+    };
+    saveWatch(folder, ["588000"]);
+    const first = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T07:30:00Z"));
+    saveWatch(folder, ["588000", "512345"]);
+    const second = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T07:31:00Z"));
+    assert.deepEqual(calls, [
+      { trade_date: "2026-10-12", extra_codes: [] }, { trade_date: "2026-10-12", extra_codes: ["588000"], include_core: false },
+      { trade_date: "2026-10-12", extra_codes: [] }, { trade_date: "2026-10-12", extra_codes: ["588000", "512345"], include_core: false },
+    ]);
+    assert.equal(first.items.filter((x) => x.group === "core").length, 20);
+    assert.equal(second.items.filter((x) => x.group === "watch").length, 2);
+    assert.doesNotMatch(second.verdict.reason, /非交易时段|（/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
 test("实时端点返回失败时保留上一轮读数并标记连接断开", async () => {
   const folder = root();
   try {
@@ -97,7 +122,7 @@ test("收盘作业 fresh 取数，只写份额快照", async () => {
     const tracked = async (c: ServiceContext, req: { endpoint: string; consistency?: { mode: string } }) => { calls.push(`${req.endpoint}:${req.consistency?.mode}`); return fetch(c, req); };
     const result = await etfTurnoverClose({ ctx: ctx(folder), day: "2026-10-12", now: new Date(), signal, state: undefined, manual: true }, tracked);
     assert.match(result.note ?? "", /份额快照 20 只/);
-    assert.deepEqual(calls, ["cn_etf_turnover_baseline:fresh", "cn_etf_turnover_live:fresh"]);
+    assert.deepEqual(calls, ["cn_etf_turnover_baseline:fresh", "cn_etf_turnover_baseline:fresh", "cn_etf_turnover_live:fresh"]);
     assert.equal(previousShares(folder, "2026-10-13").shares["510300"], 2);
     assert.equal(fs.existsSync(path.join(folder, "ledger")), false);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }

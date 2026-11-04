@@ -4501,7 +4501,8 @@
       "endpoint_label": "新浪日 K 与 5 分钟 K",
       "args": {
         "trade_date": null,
-        "extra_codes": null
+        "extra_codes": null,
+        "include_core": true
       },
       "cache_max_age_sec": 86400,
       "notes": "历史 20 日基准；缺数明确标记，收盘作业 fresh 更新"
