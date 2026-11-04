@@ -1697,7 +1697,10 @@ export async function runLocalAgent(
       terminate(new LocalAgentError("agent_timeout", `${label} 超时（>${Math.round(timeoutMs / 1000)} 秒）`));
     }, timeoutMs);
     if (codeBuddyOutputFile) outputSizeTimer = setInterval(() => {
-      if (!terminationError && fs.statSync(codeBuddyOutputFile).size > maxOut)
+      let size: number;
+      // 定时器里抛出的异常没人接，会带垮整个服务；读不到大小就等 close 时再判
+      try { size = fs.statSync(codeBuddyOutputFile).size; } catch { return; }
+      if (!terminationError && size > maxOut)
         terminate(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`));
     }, 1_000);
 
