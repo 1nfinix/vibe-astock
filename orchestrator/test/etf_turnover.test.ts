@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
 import { FINANCE_SCHEDULE } from "../src/finance/schedule.ts";
-import { CORE_CODES, calcItem, dayProgress, etfTurnoverAct, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, resetEtfTurnoverState, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
+import { CORE_CODES, MIN_PROGRESS, calcItem, dayProgress, etfTurnoverAct, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, resetEtfTurnoverState, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
 
 const signal = new AbortController().signal;
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "etf-turnover-"));
@@ -33,6 +33,10 @@ test("五档判断带数字，附句只出现在偏买档", () => {
   assert.match(verdict(2, -3, null, null, null).reason, /更像换手或卖出/);
   assert.match(verdict(1.5, -3, null, null, null).reason, /方向不清晰/);
   assert.match(verdict(1, 3, null, null, null).reason, /量价平静/);
+  // 只写已发生的量价现象，不推断「护盘」意图
+  const strong = verdict(2, 3, 0.3, 0.2, -0.6).reason;
+  assert.match(strong, /放量与主动净买入同向。/); assert.match(strong, /放量发生在下跌日/);
+  assert.doesNotMatch(strong, /护盘/);
 });
 
 test("时点括注覆盖旧日、午休、盘中与非交易时段", () => {
@@ -49,7 +53,13 @@ test("午休锁与旧日全天比", () => {
   assert.equal(shapeAt(shape, "11:30"), shapeAt(shape, "12:30"));
   assert.equal(dayProgress("09:30", null), 0.12);
   assert.equal(dayProgress("09:35", Array(48).fill(0.05)), 0.05);
-  assert.equal(dayProgress("09:35", Array(48).fill(0.01)), 0.12);
+  // 曲线值很小时照用曲线，不再跳到 0.12；开盘第一分钟有下限防除以 0
+  assert.equal(dayProgress("09:35", Array(48).fill(0.01)), 0.01);
+  assert.equal(dayProgress("09:30", Array(48).fill(0.05)), MIN_PROGRESS);
+  // 跨 0.02 前后连续：09:31 与 09:32 的进度差应与曲线插值一致，没有 4 倍跳变
+  const early = Array.from({ length: 48 }, (_, i) => Math.min(1, 0.05 + i * 0.02));
+  const p1 = dayProgress("09:31", early), p2 = dayProgress("09:32", early);
+  assert.ok(Math.abs(p1 - 0.01) < 1e-9 && Math.abs(p2 - 0.02) < 1e-9);
   assert.equal(dayProgress("10:00", shape, true), 1);
   const item = calcItem({ code: "510300", group: "core", avg20_yi: 10, shape }, { code: "510300", price: 2, amount_yi: 20, outer_lots: 60, inner_lots: 40 }, null, "10:00", true);
   assert.equal(item.ratio, 2); assert.equal(item.net_yi, 4);

@@ -68,3 +68,14 @@ test("竞价当日展示等待开盘，昨日行情展示最近交易日", async
     assert.doesNotMatch(stale, /今日结论 · 等待开盘/);
   });
 });
+
+test("迷你柱图与表头对读屏可读", async () => {
+  await withRenderer(async (r) => {
+    const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    const html = r.html(EtfTurnoverView, { view });
+    assert.match(html, /role="img"[^>]*aria-label="近 3 日成交额，最新 30\.00 亿元，区间最高 30\.00 亿元"/);
+    assert.match(html, /aria-label="近 30 日成交额暂无"/);
+    assert.equal((html.match(/scope="col"/g) ?? []).length, 9);
+    assert.match(html, /scope="colgroup"/);
+  });
+});

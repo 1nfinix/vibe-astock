@@ -40,8 +40,15 @@ export function dayProgress(hm: string, shape: number[] | null, stale = false): 
   const m = Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
   const elapsed = Math.max(0, Math.min(240, m < 690 ? m - 570 : m < 780 ? 120 : 120 + m - 780));
   const observed = shapeAt(shape, hm);
-  return observed !== null && observed > 0.02 ? Math.min(1, observed) : Math.max(0.12, elapsed / 240);
+  // 有历史日内曲线就一直用它（开盘头 5 分钟从 0 线性插到第一个点），只设一个很小的下限防除以 0。
+  // 早先「≤0.02 改用 0.12」的写法在 0.02 处跳变：开盘一两分钟分母从 0.12 突降到 0.03，倍数凭空放大约 4 倍。
+  if (observed !== null) return Math.min(1, Math.max(MIN_PROGRESS, observed));
+  return Math.max(0.12, elapsed / 240);
 }
+/** 同时点进度下限：仅防开盘第一分钟分母趋近 0 */
+export const MIN_PROGRESS = 0.005;
+/** 开盘头 5 分钟（第一个 5 分钟点之前）基准很小，倍数对单笔大单很敏感 */
+export const isOpeningMinutes = (hm: string) => hm >= "09:30" && hm < "09:35";
 
 export function subscr(today: number | null, prev: number | null, price: number | null): number | null {
   return today === null || prev === null || price === null ? null : (today - prev) * price;
@@ -90,7 +97,7 @@ export function verdict(ratio: number | null, net: number | null, tail: number |
   const title = { strong: "放量且主动净买入同向", medium: "温和放量、偏买", sell: "放量但主动净卖出", unclear: "成交活跃、方向不清", quiet: "量价平静" }[level];
   const x = ratio.toFixed(2), y = net.toFixed(2);
   let reason = {
-    strong: `固定名单成交额达到历史同时点均值的 ${x} 倍，且主动净买入 ${y} 亿元。放量与主动净买入同向，符合护盘类量价特征。`,
+    strong: `固定名单成交额达到历史同时点均值的 ${x} 倍，且主动净买入 ${y} 亿元。放量与主动净买入同向。`,
     medium: `成交额放大到历史同时点均值的 ${x} 倍，主动净买入 ${y} 亿元，方向偏买，但力度未达强信号阈值（1.8×）。`,
     sell: `成交额放大到历史同时点均值的 ${x} 倍，但主动净买入 ${y} 亿元。大额成交未必是买盘，更像换手或卖出。`,
     unclear: `成交额达到历史同时点均值的 ${x} 倍，但主动净买入 ${y} 亿元，方向不清晰。`,
@@ -98,7 +105,7 @@ export function verdict(ratio: number | null, net: number | null, tail: number |
   }[level];
   if (level === "strong" || level === "medium") {
     if (tail !== null && tailBase !== null && tail > tailBase * 1.25) reason += `尾盘半小时成交占全天 ${(tail * 100).toFixed(1)}%，明显高于 20 日均值 ${(tailBase * 100).toFixed(1)}%。`;
-    if (weightedPct !== null && weightedPct < -0.5) reason += `池内规模加权涨跌 ${weightedPct.toFixed(2)}%，下跌日放量更符合护盘场景。`;
+    if (weightedPct !== null && weightedPct < -0.5) reason += `池内规模加权涨跌 ${weightedPct.toFixed(2)}%，放量发生在下跌日。`;
   }
   reason += `${annotation ? `${annotation}。` : ""}这是量价现象，不能证明任何机构当日交易。`;
   return { level, title, reason };
@@ -244,6 +251,7 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
     if (trading !== false && (phase === "pre_open" || phase === "auction") && quoteDateFromLive === day) item.ratio = null;
     return item;
   });
+  if (trading !== false && phase === "morning" && isOpeningMinutes(hm) && !staleCount) notes.push("开盘不足 5 分钟，同时点基准很小，放量倍数对单笔大额成交很敏感。");
   if (staleCount) notes.push(`${staleCount} 只行情日期不是今天；放量倍数按全天成交额比较，不代表今日盘中变化。`);
   const suspect = sharesSuspect(items);
   for (const item of items) if (suspect.has(item.code[0]!)) item.subscr_net_yi = null;

@@ -36,8 +36,12 @@ export function useWatchPoll<T extends { poll_ms: number } = WatchView>(fetcher:
   const [live, setLive] = useState(true);
   const [receivedAt, setReceivedAt] = useState<number | null>(null);
   const kick = useRef<(() => void) | null>(null);
+  const hasData = useRef(false);
 
   useEffect(() => {
+    // 关掉自动刷新(enabled=false)后只认手动刷新:不再定时、不在切回页面时补取。
+    // 唯一例外是还没拿到过数据 —— 首屏总得取一次。
+    const wanted = () => enabled || !hasData.current;
     // cancelled / timer / ctl 都是这一次 effect 的局部变量:StrictMode 重挂时旧循环不会复活
     let cancelled = false;
     let timer: number | null = null;
@@ -52,7 +56,7 @@ export function useWatchPoll<T extends { poll_ms: number } = WatchView>(fetcher:
       clear();
       if (document.hidden) {
         setLive(false);
-        timer = window.setTimeout(loop, HIDDEN_HEARTBEAT_MS);
+        if (wanted()) timer = window.setTimeout(loop, HIDDEN_HEARTBEAT_MS);
         return;
       }
       setLive(true);
@@ -62,6 +66,7 @@ export function useWatchPoll<T extends { poll_ms: number } = WatchView>(fetcher:
         const v = await fetcher(ctl.signal);
         if (cancelled) return;
         setData(v);
+        hasData.current = true;
         setError(null);
         setReceivedAt(Date.now());
         failures = 0;
@@ -77,9 +82,9 @@ export function useWatchPoll<T extends { poll_ms: number } = WatchView>(fetcher:
       if (enabled) timer = window.setTimeout(loop, nextDelay(lastMs, failures));
     };
     kick.current = () => { void loop(); };
-    void loop();
+    if (wanted()) void loop();
 
-    const onVisible = () => { if (!document.hidden && !cancelled) void loop(); };
+    const onVisible = () => { if (!document.hidden && !cancelled && wanted()) void loop(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
