@@ -27,6 +27,8 @@ _DEFAULT_WATCH_INFO = {
     "512050": ("A500ETF华夏", "中证A500"),
     "159339": ("A500ETF银华", "中证A500"),
 }
+# 沪深场内 ETF 代码段：沪市 51/52/56/58 开头，深市 159 开头；可转债（11/12）、LOF（16/50）等不收
+ETF_CODE_RE = r"(?:5[1268]\d{4}|159\d{3})"
 DEFAULT_WATCH = list(_DEFAULT_WATCH_INFO)
 ETF_POOL = [dict(code=c, tcode=tencent_prefix(c), name=n, index=i, group="core", huijin_yi=h) for c, n, i, h in _CORE]
 CORE_CODES = {x["code"] for x in ETF_POOL}
@@ -35,8 +37,8 @@ POOL_NOTE = "汇金组来自 2025 年报前十大持有人历史披露；信披�
 
 def _pool(extra_codes=None, include_core=True):
     codes = DEFAULT_WATCH if extra_codes is None else extra_codes
-    if not isinstance(codes, list) or len(codes) > 30 or any(not isinstance(c, str) or not re.fullmatch(r"[51]\d{5}", c) for c in codes):
-        raise ValueError("观察组限 30 只沪深 ETF 六位代码")
+    if not isinstance(codes, list) or len(codes) > 30 or any(not isinstance(c, str) or not re.fullmatch(ETF_CODE_RE, c) for c in codes):
+        raise ValueError("观察组限 30 只沪深 ETF（51/52/56/58/159 开头）")
     if not isinstance(include_core, bool):
         raise ValueError("include_core 必须是布尔值")
     return (ETF_POOL if include_core else []) + [dict(code=c, tcode=tencent_prefix(c), name=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[0], index=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[1], group="watch", huijin_yi=None)

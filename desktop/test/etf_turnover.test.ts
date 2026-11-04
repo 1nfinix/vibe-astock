@@ -58,7 +58,7 @@ test("观察组保存中与失败原因在编辑区可见", async () => {
 test("竞价当日展示等待开盘，昨日行情展示最近交易日", async () => {
   await withRenderer(async (r) => {
     const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
-    const auction = { ...view, phase: "auction", quote_date: view.date, quote_hm: "09:20", stale: false,
+    const auction = { ...view, phase: "auction", quote_date: view.date, quote_hm: "09:20", stale: false, waiting_open: true,
       verdict: { level: "missing", title: "等待开盘", reason: "集合竞价阶段成交额尚未形成" }, totals: { ...view.totals, expected_yi: null, ratio: null } };
     const text = textOf(r.html(EtfTurnoverView, { view: auction }));
     assert.match(text, /等待开盘 · 9:30/);
@@ -77,5 +77,26 @@ test("迷你柱图与表头对读屏可读", async () => {
     assert.match(html, /aria-label="近 30 日成交额暂无"/);
     assert.equal((html.match(/scope="col"/g) ?? []).length, 9);
     assert.match(html, /scope="colgroup"/);
+  });
+});
+
+test("排序时缺数排在末尾，同值按规模；观察组代码只收沪深 ETF 段", async () => {
+  await withRenderer(async (r) => {
+    const { filterSortEtfRows, ETF_CODE_RE } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    const byRatio = filterSortEtfRows(view.items, "ratio", "all", "");
+    assert.deepEqual(byRatio.map((x: { code: string }) => x.code), ["510300", "159919", "588000"]);
+    const byAmountCore = filterSortEtfRows(view.items, "amount", "core", "");
+    assert.deepEqual(byAmountCore.map((x: { code: string }) => x.code), ["510300", "159919"]);
+    assert.deepEqual(filterSortEtfRows(view.items, "net", "all", "科创").map((x: { code: string }) => x.code), ["588000"]);
+    for (const ok of ["510300", "520500", "560010", "588000", "159338"]) assert.ok(ETF_CODE_RE.test(ok), ok);
+    for (const bad of ["113001", "123001", "160105", "501050", "15933", "1593380"]) assert.ok(!ETF_CODE_RE.test(bad), bad);
+  });
+});
+
+test("合计行在有标的缺数时写明覆盖只数", async () => {
+  await withRenderer(async (r) => {
+    const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    assert.match(textOf(r.html(EtfTurnoverView, { view: { ...view, covered_count: 19 } })), /汇金历史组合计\s*19\/20 只有数/);
+    assert.match(textOf(r.html(EtfTurnoverView, { view: { ...view, covered_count: 20 } })), /汇金历史组合计\s*20 只/);
   });
 });

@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
 import { FINANCE_SCHEDULE } from "../src/finance/schedule.ts";
-import { CORE_CODES, MIN_PROGRESS, calcItem, dayProgress, etfTurnoverAct, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, resetEtfTurnoverState, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
+import { CORE_CODES, ETF_CODE_RE, MIN_PROGRESS, calcItem, dayProgress, etfTurnoverAct, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, resetEtfTurnoverState, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
 
 const signal = new AbortController().signal;
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "etf-turnover-"));
@@ -270,7 +270,7 @@ test("竞价当天等待开盘，昨日行情保留 stale；周六基准按周�
       return fetch(c, req);
     };
     const auction = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T01:20:00Z"));
-    assert.equal(auction.verdict.title, "等待开盘"); assert.equal(auction.totals.ratio, null); assert.equal(auction.totals.expected_yi, null); assert.equal(auction.items[0]?.ratio, null);
+    assert.equal(auction.verdict.title, "等待开盘"); assert.equal(auction.waiting_open, true); assert.equal(auction.totals.ratio, null); assert.equal(auction.totals.expected_yi, null); assert.equal(auction.items[0]?.ratio, null);
     quote = "20261009150000";
     const stale = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T01:10:00Z"));
     assert.equal(stale.stale, true); assert.notEqual(stale.verdict.title, "等待开盘");
@@ -302,4 +302,59 @@ test("收盘 failed 基准与份额按状态判定，保存观察组后刷新失
     assert.ok(loadWatch(folder).includes("588000"));
     assert.match(saved.notes.join(" "), /观察组已保存，行情刷新失败：/);
   } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("合计口径：成交额、倍数、净买入用同一批标的", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    // 第一只缺内外盘：净买入算不出，它的成交额也不进合计
+    const oneNoLots = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint !== "cn_etf_turnover_live") return fetch(c, req);
+      return { envelope: env({ items: CORE_CODES.map((code, i) => ({ code, group: "core", price: 2, pct: 1, amount_yi: 20, mktcap_yi: 100, outer_lots: i === 0 ? null : 60, inner_lots: i === 0 ? null : 40, quote_time: "20261012100000" })) }) };
+    };
+    const v = await etfTurnoverPoll(ctx(folder), signal, oneNoLots, new Date("2026-10-12T02:00:00Z"));
+    assert.equal(v.covered_count, CORE_CODES.length - 1);
+    assert.equal(v.totals.amount_yi, 20 * (CORE_CODES.length - 1));
+    assert.ok(Math.abs(v.totals.net_yi! - 4 * (CORE_CODES.length - 1)) < 1e-9);
+    assert.match(v.notes.join(" "), /20 只中 1 只缺基准、成交额或内外盘；成交额、倍数和净买入只合计其余 19 只/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("观察组清空时不取观察组基准；收盘作业不误报失败", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    saveWatch(folder, []);
+    const calls: Record<string, unknown>[] = [];
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_etf_turnover_baseline") calls.push(req.args ?? {});
+      return fetch(c, req);
+    };
+    const v = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T02:00:00Z"));
+    assert.ok(calls.every((a) => a.include_core !== false));
+    assert.doesNotMatch(v.notes.join(" "), /观察组/);
+    calls.length = 0;
+    const job = { ctx: ctx(folder), day: "2026-10-12", now: new Date(), signal, state: undefined, manual: true };
+    const done = await etfTurnoverClose(job, tracked);
+    assert.ok(calls.every((a) => a.include_core !== false));
+    assert.match(done.note ?? "", /基准已更新/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("基准首次计算中只报一条，不再叠加「N 只缺基准」", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    const never = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_baseline" ? new Promise<{ envelope: ReturnType<typeof env> }>(() => {}) : fetch(c, req);
+    const v = await etfTurnoverPoll(ctx(folder), signal, never, new Date("2026-10-12T02:00:00Z"), 5);
+    assert.match(v.notes.join(" "), /固定名单近 20 日基准计算中，稍后自动刷新/);
+    assert.doesNotMatch(v.notes.join(" "), /只缺基准/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("观察组代码只收沪深 ETF 段", () => {
+  for (const ok of ["520500", "560010", "588000", "159338"]) assert.ok(ETF_CODE_RE.test(ok), ok);
+  for (const bad of ["113001", "123001", "160105", "501050"]) assert.throws(() => validateWatch([bad]), /51\/52\/56\/58\/159/, bad);
+  assert.deepEqual(validateWatch(["588000", "588000", "159338"]), ["588000", "159338"]);
 });

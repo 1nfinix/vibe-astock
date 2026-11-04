@@ -111,8 +111,10 @@ export function verdict(ratio: number | null, net: number | null, tail: number |
   return { level, title, reason };
 }
 
+/** 沪深场内 ETF 代码段：沪市 51/52/56/58 开头，深市 159 开头。可转债（11/12）、LOF（16/50）等不收 */
+export const ETF_CODE_RE = /^(?:5[1268]\d{4}|159\d{3})$/;
 export function validateWatch(codes: unknown): string[] {
-  if (!Array.isArray(codes) || codes.length > 30 || codes.some((c) => typeof c !== "string" || !/^[51]\d{5}$/.test(c) || CORE.has(c))) throw new ServiceError("bad_request", "观察组限 30 只沪深 ETF 六位代码，且不能包含固定汇金组");
+  if (!Array.isArray(codes) || codes.length > 30 || codes.some((c) => typeof c !== "string" || !ETF_CODE_RE.test(c) || CORE.has(c))) throw new ServiceError("bad_request", "观察组限 30 只沪深 ETF（51/52/56/58/159 开头），且不能包含固定汇金组");
   return [...new Set(codes as string[])];
 }
 const watchFile = (root: string) => path.join(root, "shortline", "etf_turnover", "watch.json");
@@ -138,7 +140,7 @@ export function previousShares(root: string, day: string): { date: string | null
   } catch { return { date: null, shares: {} }; }
 }
 
-export interface EtfView { date: string; asof: string; baseline_date: string; baseline_generated: string; quote_time: string; quote_date: string; quote_hm: string; data_connected: boolean; stale: boolean; progress_pct: number | null; avg20_total_yi: number | null; daily_ratio: number | null; core_count: number; phase: Phase; trading_day: boolean | null; poll_ms: number; watch_codes: string[]; previous_shares_date: string | null; shares_suspect: string[]; items: Item[]; totals: { amount_yi: number | null; expected_yi: number | null; ratio: number | null; net_yi: number | null; weighted_pct: number | null }; verdict: Verdict; missing: { code: string; reason: string }[]; notes: string[] }
+export interface EtfView { date: string; asof: string; baseline_date: string; baseline_generated: string; quote_time: string; quote_date: string; quote_hm: string; data_connected: boolean; stale: boolean; waiting_open: boolean; progress_pct: number | null; avg20_total_yi: number | null; daily_ratio: number | null; core_count: number; covered_count: number; phase: Phase; trading_day: boolean | null; poll_ms: number; watch_codes: string[]; previous_shares_date: string | null; shares_suspect: string[]; items: Item[]; totals: { amount_yi: number | null; expected_yi: number | null; ratio: number | null; net_yi: number | null; weighted_pct: number | null }; verdict: Verdict; missing: { code: string; reason: string }[]; notes: string[] }
 const last = new Map<string, EtfView>();
 const calendars = new Map<string, { day: string; at: number; facts: CalendarFacts | null }>();
 type BaselineReply = Awaited<ReturnType<Fetch>>;
@@ -195,7 +197,7 @@ async function calendar(ctx: ServiceContext, day: string, nowMs: number, fetch: 
   calendars.set(ctx.dataRoot, { day, at: nowMs, facts });
   return facts;
 }
-const emptyView = (now: Date, watch: string[]): EtfView => ({ date: clockOf(now).day, asof: now.toISOString(), baseline_date: "", baseline_generated: "", quote_time: "", quote_date: "", quote_hm: "", data_connected: false, stale: false, progress_pct: null, avg20_total_yi: null, daily_ratio: null, core_count: CORE_CODES.length, phase: phaseOf(now), trading_day: null, poll_ms: 60_000, watch_codes: watch, previous_shares_date: null, shares_suspect: [], items: [], totals: { amount_yi: null, expected_yi: null, ratio: null, net_yi: null, weighted_pct: null }, verdict: verdict(null, null, null, null, null), missing: [], notes: ["等待首次取数"] });
+const emptyView = (now: Date, watch: string[]): EtfView => ({ date: clockOf(now).day, asof: now.toISOString(), baseline_date: "", baseline_generated: "", quote_time: "", quote_date: "", quote_hm: "", data_connected: false, stale: false, waiting_open: false, progress_pct: null, avg20_total_yi: null, daily_ratio: null, core_count: CORE_CODES.length, covered_count: 0, phase: phaseOf(now), trading_day: null, poll_ms: 60_000, watch_codes: watch, previous_shares_date: null, shares_suspect: [], items: [], totals: { amount_yi: null, expected_yi: null, ratio: null, net_yi: null, weighted_pct: null }, verdict: verdict(null, null, null, null, null), missing: [], notes: ["等待首次取数"] });
 export async function etfTurnoverRun(ctx: ServiceContext): Promise<EtfView> { return last.get(ctx.dataRoot) ?? emptyView(new Date(), loadWatch(ctx.dataRoot)); }
 
 export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date(), baselineWaitMs = 2_500): Promise<EtfView> {
@@ -212,20 +214,27 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const quoteDateFromLive = quoteTimeFromLive ? `${quoteTimeFromLive.slice(0, 4)}-${quoteTimeFromLive.slice(4, 6)}-${quoteTimeFromLive.slice(6, 8)}` : "";
   const baselineDay = quoteDateFromLive || day;
   const coreTask = baseline(ctx, { trade_date: baselineDay, extra_codes: [] }, fetch, now.getTime());
-  const watchTask = baseline(ctx, { trade_date: baselineDay, extra_codes: watch, include_core: false }, fetch, now.getTime());
-  const [coreSettled, watchSettled] = await Promise.allSettled([bounded(coreTask.pending, baselineWaitMs), bounded(watchTask.pending, baselineWaitMs)]);
+  // 观察组清空时不起这一路：空名单取不到证据会被判 failed、不进快照，每次轮询都会白起一个取数进程
+  const watchTask = watch.length ? baseline(ctx, { trade_date: baselineDay, extra_codes: watch, include_core: false }, fetch, now.getTime()) : null;
+  const [coreSettled, watchSettled] = await Promise.allSettled([bounded(coreTask.pending, baselineWaitMs), watchTask ? bounded(watchTask.pending, baselineWaitMs) : Promise.resolve(null)]);
   const coreEnv = coreSettled.status === "fulfilled" && coreSettled.value.done ? coreSettled.value.value : null;
-  const watchEnv = watchSettled.status === "fulfilled" && watchSettled.value.done ? watchSettled.value.value : null;
+  const watchEnv = watchSettled.status === "fulfilled" && watchSettled.value?.done ? watchSettled.value.value : null;
   const preferred = (reply: BaselineReply | null, state: BaselineState) => {
     const current = okResult(reply?.envelope);
     return state.result && (!current || missingOf(state.result).length < missingOf(current).length) ? state.result : current;
   };
   const coreBase = preferred(coreEnv, coreTask.state);
-  const watchBase = preferred(watchEnv, watchTask.state);
+  const watchBase = watchTask ? preferred(watchEnv, watchTask.state) : null;
   const base = coreBase || watchBase ? { date: s(coreBase?.date || watchBase?.date), items: [...records(coreBase?.items), ...records(watchBase?.items)], missing: [...records(coreBase?.missing), ...records(watchBase?.missing)] } : null;
-  for (const [label, settled, reply, state] of [["固定名单", coreSettled, coreEnv, coreTask.state], ["观察组", watchSettled, watchEnv, watchTask.state]] as const) {
-    if (settled.status === "fulfilled" && !settled.value.done) notes.push(`近 20 日基准计算中，${state.result ? "暂用上次结果" : "稍后自动刷新"}`);
-    else if (!okResult(reply?.envelope)) notes.push(`${label}近 20 日基准未取到：${reply ? failedNote(reply.envelope) || "源无数据" : settled.status === "rejected" ? String(settled.reason) : "源无数据"}`);
+  // 固定名单的基准还在算、手里又没有上次结果：合计必然全缺，「N 只缺基准」那条提示与「计算中」重复，不再另报
+  let coreComputing = false;
+  const tasks = [["固定名单", coreSettled, coreEnv, coreTask.state] as const, ...(watchTask ? [["观察组", watchSettled, watchEnv, watchTask.state] as const] : [])];
+  for (const [label, settled, reply, state] of tasks) {
+    const waiting = settled.status === "fulfilled" && settled.value !== null && !settled.value.done;
+    if (waiting) {
+      notes.push(`${label}近 20 日基准计算中，${state.result ? "暂用上次结果" : "稍后自动刷新"}`);
+      if (label === "固定名单" && !state.result) coreComputing = true;
+    } else if (!okResult(reply?.envelope)) notes.push(`${label}近 20 日基准未取到：${reply ? failedNote(reply.envelope) || "源无数据" : settled.status === "rejected" ? String(settled.reason) : "源无数据"}`);
   }
   if (!live) notes.push(`实时行情未取到：${liveEnv ? failedNote(liveEnv.envelope) || "源无数据" : liveSettled.status === "rejected" ? String(liveSettled.reason) : "源无数据"}`);
   if (!live && last.has(ctx.dataRoot)) {
@@ -257,12 +266,12 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   for (const item of items) if (suspect.has(item.code[0]!)) item.subscr_net_yi = null;
   if (suspect.size) notes.push("份额源未日更：对应市场申赎暂不显示。");
   const core = items.filter((x) => x.group === "core");
-  const valid = core.filter((x) => x.amount_yi !== null && x.avg20_yi !== null);
+  // 成交额、倍数、净买入用同一批标的合计：三者都有数的才进，否则结论里的「放大 X 倍、净买入 Y 亿」覆盖范围不同
+  const valid = core.filter((x) => x.amount_yi !== null && x.avg20_yi !== null && x.net_yi !== null);
   const amount = valid.length ? valid.reduce((a, x) => a + x.amount_yi!, 0) : null;
   const avg20Total = valid.length ? valid.reduce((a, x) => a + x.avg20_yi!, 0) : null;
   const expected = valid.length ? valid.reduce((a, x) => a + x.avg20_yi! * dayProgress(hm, x.shape, trading === false || x.quote_time.slice(0, 8) !== day.replaceAll("-", "")), 0) : null;
-  const nets = core.filter((x) => x.net_yi !== null);
-  const net = nets.length ? nets.reduce((a, x) => a + x.net_yi!, 0) : null;
+  const net = valid.length ? valid.reduce((a, x) => a + x.net_yi!, 0) : null;
   const caps = core.filter((x) => x.pct !== null && x.mktcap_yi !== null && x.mktcap_yi > 0);
   const capSum = caps.reduce((a, x) => a + x.mktcap_yi!, 0);
   const weighted = capSum ? caps.reduce((a, x) => a + x.pct! * x.mktcap_yi!, 0) / capSum : null;
@@ -279,8 +288,8 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const progressPct = expected !== null && avg20Total !== null && avg20Total > 0 ? expected / avg20Total * 100 : null;
   const mode = stale ? "stale" : phase === "lunch" && trading !== false ? "lunch" : ["morning", "afternoon", "closing_auction"].includes(phase) && trading !== false ? "intraday" : phase === "closed" && trading !== false ? "none" : "closed";
   const annotation = timeAnnotation(mode, quoteDate || day, quoteHm, progressPct ?? 100);
-  if (valid.length < CORE_CODES.length) notes.push(`固定名单 ${CORE_CODES.length} 只中 ${CORE_CODES.length - valid.length} 只缺基准或成交额；合计仅覆盖有数标的。`);
-  const view: EtfView = { date: day, asof: now.toISOString(), baseline_date: baselineDay, baseline_generated: coreEnv?.fetched_at || coreTask.state.fetchedAt || "", quote_time: quoteTime, quote_date: quoteDate, quote_hm: quoteHm, data_connected: records(live.items).some((x) => n(x.amount_yi) !== null), stale, progress_pct: auction ? null : progressPct, avg20_total_yi: avg20Total, daily_ratio: amount !== null && avg20Total !== null && avg20Total > 0 ? amount / avg20Total : null, core_count: CORE_CODES.length, phase, trading_day: trading, poll_ms: pollMsOf(phase, trading), watch_codes: watch, previous_shares_date: prev.date, shares_suspect: [...suspect], items,
+  if (valid.length < CORE_CODES.length && !coreComputing) notes.push(`固定名单 ${CORE_CODES.length} 只中 ${CORE_CODES.length - valid.length} 只缺基准、成交额或内外盘；成交额、倍数和净买入只合计其余 ${valid.length} 只。`);
+  const view: EtfView = { date: day, asof: now.toISOString(), baseline_date: baselineDay, baseline_generated: coreEnv?.fetched_at || coreTask.state.fetchedAt || "", quote_time: quoteTime, quote_date: quoteDate, quote_hm: quoteHm, data_connected: records(live.items).some((x) => n(x.amount_yi) !== null), stale, waiting_open: auction, progress_pct: auction ? null : progressPct, avg20_total_yi: avg20Total, daily_ratio: amount !== null && avg20Total !== null && avg20Total > 0 ? amount / avg20Total : null, core_count: CORE_CODES.length, covered_count: valid.length, phase, trading_day: trading, poll_ms: pollMsOf(phase, trading), watch_codes: watch, previous_shares_date: prev.date, shares_suspect: [...suspect], items,
     totals: { amount_yi: amount, expected_yi: auction ? null : expected, ratio: auction ? null : ratio, net_yi: net, weighted_pct: weighted }, verdict: auction ? { level: "missing", title: "等待开盘", reason: "集合竞价阶段成交额尚未形成，9:30 连续竞价开始后按历史同时点对比。这是量价现象，不能证明任何机构当日交易。" } : verdict(ratio, net, tail, tailBase, weighted, annotation), missing, notes };
   last.set(ctx.dataRoot, view);
   return view;
@@ -306,14 +315,16 @@ export async function etfTurnoverClose(j: JobContext, fetch: Fetch = fetchEndpoi
   const watch = loadWatch(j.ctx.dataRoot);
   const [coreBase, watchBase, live] = await Promise.all([
     fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: j.day, extra_codes: [] }, consistency: { mode: "fresh" }, signal: j.signal }),
-    fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: j.day, extra_codes: watch, include_core: false }, consistency: { mode: "fresh" }, signal: j.signal }),
+    // 观察组为空就不取：空名单的取数必然 failed，会把「基准已更新」误报成失败
+    watch.length ? fetch(j.ctx, { endpoint: "cn_etf_turnover_baseline", args: { trade_date: j.day, extra_codes: watch, include_core: false }, consistency: { mode: "fresh" }, signal: j.signal }) : Promise.resolve(null),
     fetch(j.ctx, { endpoint: "cn_etf_turnover_live", args: { extra_codes: watch }, consistency: { mode: "fresh" }, signal: j.signal }),
   ]);
+  const bases = [coreBase, ...(watchBase ? [watchBase] : [])];
   const liveResult = okResult(live.envelope);
-  const baseOk = !!okResult(coreBase.envelope) && !!okResult(watchBase.envelope);
+  const baseOk = bases.every((x) => !!okResult(x.envelope));
   const shareRows = records(liveResult?.items).filter((x) => n(x.shares) !== null);
   const count = shareRows.length ? saveShares(j.ctx.dataRoot, j.day, shareRows) : 0;
-  if (!baseOk && !count) throw new Error(`ETF 收盘基准与份额均失败：${failedNote(coreBase.envelope)}；${failedNote(watchBase.envelope)}；${failedNote(live.envelope)}`);
-  const baseFailure = !baseOk ? `：${[coreBase, watchBase].filter((x) => !okResult(x.envelope)).map((x) => failedNote(x.envelope) || "源无数据").join("；")}` : "";
+  if (!baseOk && !count) throw new Error(`ETF 收盘基准与份额均失败：${[...bases, live].map((x) => failedNote(x.envelope)).join("；")}`);
+  const baseFailure = !baseOk ? `：${bases.filter((x) => !okResult(x.envelope)).map((x) => failedNote(x.envelope) || "源无数据").join("；")}` : "";
   return { messages: [], note: `ETF 收盘基准${baseOk ? "已更新" : "失败"}${baseFailure}；份额快照 ${count} 只` };
 }

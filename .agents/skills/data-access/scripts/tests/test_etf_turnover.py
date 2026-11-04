@@ -122,3 +122,11 @@ def test_friday_tail_uses_friday_48_bars_and_avg_excludes_friday(monkeypatch):
     assert got["items"][0]["avg20_yi"] == 2.0
     assert got["items"][0]["tail_ratio"] == round(12 / 54, 6)
     assert got["items"][0]["tail_ratio_base"] == round(6 / 48, 6)
+
+
+def test_watch_codes_only_accept_exchange_etf_ranges():
+    import pytest
+    assert [x["code"] for x in etf_turnover._pool(["520500", "159338"], include_core=False)] == ["520500", "159338"]
+    for bad in ["113001", "123001", "160105", "501050"]:
+        with pytest.raises(ValueError):
+            etf_turnover._pool([bad], include_core=False)

@@ -10,7 +10,7 @@ export interface EtfItem {
 }
 export interface EtfTurnoverViewData {
   date: string; asof: string; baseline_date: string; baseline_generated: string; quote_time: string; quote_date: string; quote_hm: string;
-  data_connected: boolean; stale: boolean; progress_pct: number | null; avg20_total_yi: number | null; daily_ratio: number | null; core_count: number;
+  data_connected: boolean; stale: boolean; waiting_open?: boolean; progress_pct: number | null; avg20_total_yi: number | null; daily_ratio: number | null; core_count: number; covered_count?: number;
   phase: string; trading_day: boolean | null; poll_ms: number;
   watch_codes: string[]; previous_shares_date: string | null; shares_suspect: string[];
   items: EtfItem[]; totals: { amount_yi: number | null; expected_yi: number | null; ratio: number | null; net_yi: number | null; weighted_pct: number | null };
@@ -25,7 +25,21 @@ const weekday = (day: string) => { const d = new Date(`${day}T12:00:00+08:00`); 
 const clock = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); };
 const quoteClock = (raw: string) => /^\d{14}$/.test(raw) ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)} ${raw.slice(8, 10)}:${raw.slice(10, 12)}:${raw.slice(12, 14)}` : "—";
 const intraday = (view: EtfTurnoverViewData) => !view.stale && view.trading_day !== false && ["morning", "lunch", "afternoon", "closing_auction"].includes(view.phase);
-type Sort = "huijin" | "amount" | "ratio" | "net" | "mktcap";
+export type Sort = "huijin" | "amount" | "ratio" | "net" | "mktcap";
+/** 与 orchestrator 的 ETF_CODE_RE 同一口径：沪市 51/52/56/58、深市 159 */
+export const ETF_CODE_RE = /^(?:5[1268]\d{4}|159\d{3})$/;
+/** 筛选 + 排序：缺数（null / NaN）一律排在末尾，同值按规模降序 */
+export function filterSortEtfRows(items: readonly EtfItem[], sort: Sort, scope: "all" | "core" | "watch", search: string): EtfItem[] {
+  const key = ({ huijin: "huijin_yi", amount: "amount_yi", ratio: "ratio", net: "net_yi", mktcap: "mktcap_yi" } as const)[sort];
+  const val = (v: number | null) => v === null || !Number.isFinite(v) ? -Infinity : v;
+  const q = search.trim().toLowerCase();
+  return items.filter((x) => (scope === "all" || x.group === scope) && `${x.code} ${x.name} ${x.index}`.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ka = val(a[key]), kb = val(b[key]);
+      if (ka !== kb) return kb === -Infinity ? -1 : ka === -Infinity ? 1 : kb - ka;
+      return val(b.mktcap_yi) - val(a.mktcap_yi) || 0;
+    });
+}
 
 function Bars({ values }: { values: number[] }) {
   const tail = values.slice(-30), max = Math.max(0, ...tail);
@@ -54,17 +68,13 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
     addInput.current?.focus();
   }, [busy, view.watch_codes]);
   const active = intraday(view);
-  const waitingOpen = !view.stale && view.verdict.title === "等待开盘";
-  const rows = useMemo(() => view.items.filter((x) => (scope === "all" || x.group === scope) && `${x.code} ${x.name} ${x.index}`.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort((a, b) => {
-      const key = ({ huijin: "huijin_yi", amount: "amount_yi", ratio: "ratio", net: "net_yi", mktcap: "mktcap_yi" } as const)[sort];
-      return (b[key] ?? -Infinity) - (a[key] ?? -Infinity) || (b.mktcap_yi ?? -Infinity) - (a.mktcap_yi ?? -Infinity);
-    }), [view.items, sort, scope, search]);
+  const waitingOpen = !view.stale && !!view.waiting_open;
+  const rows = useMemo(() => filterSortEtfRows(view.items, sort, scope, search), [view.items, sort, scope, search]);
   const core = rows.filter((x) => x.group === "core"), watch = rows.filter((x) => x.group === "watch");
   const submit = () => {
     if (busy) return;
     const code = newCode.trim();
-    if (!/^[51]\d{5}$/.test(code)) { setInputError("请输入 5/1 开头的六位 ETF 代码"); return; }
+    if (!ETF_CODE_RE.test(code)) { setInputError("请输入沪深 ETF 代码（51/52/56/58/159 开头的六位数）"); return; }
     if (view.items.some((x) => x.code === code)) { setInputError("这只 ETF 已在名单中"); return; }
     if (view.watch_codes.length >= 30) { setInputError("观察组最多 30 只"); return; }
     setInputError(null); onSetWatch?.([...view.watch_codes, code]); setNewCode("");
@@ -114,7 +124,7 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
     </div>
     {(error || view.notes.length > 0) && <div className="flex items-start gap-2 text-[12px] text-warning"><AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /><ul className="space-y-0.5">{error && <li role="alert">本次刷新失败：{error}；保留上次读数。</li>}{view.notes.map((note, i) => <li key={i}>{note}</li>)}</ul></div>}
     <div className="glass max-w-full overflow-x-auto"><table className="w-full min-w-[1080px] text-[13px]"><thead className="text-[12px] font-normal text-muted-foreground"><tr><th scope="col" className="sticky left-0 z-10 w-36 max-w-36 border-r border-border bg-card px-3 py-2 text-left font-normal sm:w-auto sm:max-w-none">ETF</th><th scope="col" className="px-2 py-2 text-right font-normal">规模(亿)</th><th scope="col" className="px-2 py-2 text-right font-normal">成交额(亿)</th><th scope="col" className="px-2 py-2 text-right font-normal">{active ? "同时点倍数" : "较20日均"}</th><th scope="col" className="px-2 py-2 text-right font-normal">主动净买入①</th><th scope="col" className="px-2 py-2 text-right font-normal">涨跌</th><th scope="col" className="px-2 py-2 text-right font-normal">份额(亿份)②</th><th scope="col" className="px-2 py-2 text-right font-normal">近30日成交额</th><th scope="col" className="px-3 py-2 text-right font-normal">汇金持仓(25年报·亿份)</th></tr></thead><tbody>
-      {scope !== "watch" && <><tr className="bg-muted/30 text-[12px] font-medium"><th scope="colgroup" colSpan={9} className="p-0 text-left font-medium"><div className="sticky left-0 z-10 flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-1 bg-muted/30 px-3 py-2 sm:max-w-none">汇金历史持有 · 2025年报最后一次实名披露（此后停止披露） <span className="text-muted-foreground">{core.length} 只</span></div></th></tr>{core.map(tableRow)}<tr className="border-t-2 border-border bg-muted/40 font-semibold"><td className="sticky left-0 z-10 w-36 max-w-36 border-r border-border bg-card px-3 py-2 sm:w-auto sm:max-w-none">汇金历史组合计 <span className="text-[11px] font-normal text-muted-foreground">{view.core_count} 只</span></td><td className="px-2 py-2 text-right font-mono tabular-nums">—</td><td className="px-2 py-2 text-right font-mono tabular-nums">{num(view.totals.amount_yi)}</td><td className="px-2 py-2 text-right font-mono tabular-nums">{ratio(view.totals.ratio)}</td><td className="px-2 py-2 text-right font-mono tabular-nums">{signed(view.totals.net_yi)}</td><td colSpan={4} className="px-3 py-2 text-[11px] font-normal text-muted-foreground">合计口径与上方判断一致</td></tr></>}
+      {scope !== "watch" && <><tr className="bg-muted/30 text-[12px] font-medium"><th scope="colgroup" colSpan={9} className="p-0 text-left font-medium"><div className="sticky left-0 z-10 flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-1 bg-muted/30 px-3 py-2 sm:max-w-none">汇金历史持有 · 2025年报最后一次实名披露（此后停止披露） <span className="text-muted-foreground">{core.length} 只</span></div></th></tr>{core.map(tableRow)}<tr className="border-t-2 border-border bg-muted/40 font-semibold"><td className="sticky left-0 z-10 w-36 max-w-36 border-r border-border bg-card px-3 py-2 sm:w-auto sm:max-w-none">汇金历史组合计 <span className="text-[11px] font-normal text-muted-foreground">{view.covered_count !== undefined && view.covered_count < view.core_count ? `${view.covered_count}/${view.core_count} 只有数` : `${view.core_count} 只`}</span></td><td className="px-2 py-2 text-right font-mono tabular-nums">—</td><td className="px-2 py-2 text-right font-mono tabular-nums">{num(view.totals.amount_yi)}</td><td className="px-2 py-2 text-right font-mono tabular-nums">{ratio(view.totals.ratio)}</td><td className="px-2 py-2 text-right font-mono tabular-nums">{signed(view.totals.net_yi)}</td><td colSpan={4} className="px-3 py-2 text-[11px] font-normal text-muted-foreground">合计口径与上方判断一致</td></tr></>}
       {scope !== "core" && <><tr className="bg-muted/30 text-[12px] font-medium"><th scope="colgroup" colSpan={9} className="p-0 text-left font-medium"><div className="sticky left-0 z-10 flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-1 bg-muted/30 px-3 py-2 sm:max-w-none">扩展观察 · 2025年报未见汇金持仓（名单已停止更新） <span className="text-muted-foreground">{watch.length} 只</span><span className="ml-auto flex items-center gap-2">{busy && <span role="status" className="text-[11px] font-normal text-muted-foreground">保存中…</span>}{onSetWatch && <button type="button" disabled={busy} onClick={() => setEditing((x) => !x)} className="h-8 rounded-md border border-border px-2 text-[12px] font-normal hover:bg-muted disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50">{editing ? "完成编辑" : "编辑观察组"}</button>}</span>{saveError && <p role="alert" className="w-full text-[11px] font-normal text-danger">保存失败：{saveError}</p>}</div></th></tr>{editing && <tr><td className="sticky left-0 z-10 w-36 max-w-36 border-r border-border bg-card sm:w-auto sm:max-w-none" /><td colSpan={8} className="px-3 py-2"><div className="flex flex-wrap items-center gap-2 text-xs"><input ref={addInput} aria-label="添加 ETF 代码" inputMode="numeric" maxLength={6} disabled={busy} value={newCode} onChange={(e) => setNewCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder="输入六位 ETF 代码" className="h-8 rounded-md border border-border bg-background px-2 text-[12px] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50" /><button type="button" disabled={busy} onClick={submit} className="h-8 rounded-md border border-border px-2 text-[12px] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50">添加</button><span>仅作对照，不计入判断与合计；最多 30 只。</span>{inputError && <span role="alert" className="text-danger">{inputError}</span>}</div></td></tr>}{watch.map(tableRow)}</>}
     </tbody></table></div>
     {view.missing.length > 0 && <p className="max-w-[72ch] text-xs text-muted-foreground">缺数：{view.missing.map((x) => `${x.code} ${x.reason}`).join("；")}</p>}
