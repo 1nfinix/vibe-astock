@@ -13,8 +13,8 @@ const BASE_MS = 3000;
 const MAX_BACKOFF_MS = 30_000;
 const HIDDEN_HEARTBEAT_MS = 10_000;
 
-export interface WatchPoll {
-  data: WatchView | null;
+export interface WatchPoll<T extends { poll_ms: number } = WatchView> {
+  data: T | null;
   /** 最近一次没取到的原因(取到就清掉) */
   error: string | null;
   /** 页面切走时为 false */
@@ -30,8 +30,8 @@ export function nextDelay(okMs: number | null, failures: number): number {
   return Math.min(BASE_MS * 2 ** failures, MAX_BACKOFF_MS);
 }
 
-export function useWatchPoll(): WatchPoll {
-  const [data, setData] = useState<WatchView | null>(null);
+export function useWatchPoll<T extends { poll_ms: number } = WatchView>(fetcher: (signal?: AbortSignal) => Promise<T> = backend.shortlineWatchPoll as (signal?: AbortSignal) => Promise<T>, enabled = true): WatchPoll<T> {
+  const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(true);
   const [receivedAt, setReceivedAt] = useState<number | null>(null);
@@ -59,7 +59,7 @@ export function useWatchPoll(): WatchPoll {
       inFlight = true;
       ctl = new AbortController();
       try {
-        const v = await backend.shortlineWatchPoll<WatchView>(ctl.signal);
+        const v = await fetcher(ctl.signal);
         if (cancelled) return;
         setData(v);
         setError(null);
@@ -74,7 +74,7 @@ export function useWatchPoll(): WatchPoll {
         inFlight = false;
       }
       if (cancelled) return;
-      timer = window.setTimeout(loop, nextDelay(lastMs, failures));
+      if (enabled) timer = window.setTimeout(loop, nextDelay(lastMs, failures));
     };
     kick.current = () => { void loop(); };
     void loop();
@@ -88,7 +88,7 @@ export function useWatchPoll(): WatchPoll {
       kick.current = null;
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [fetcher, enabled]);
 
   const refresh = useCallback(() => kick.current?.(), []);
   return { data, error, live, receivedAt, refresh };

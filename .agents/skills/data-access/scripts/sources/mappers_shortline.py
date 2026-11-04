@@ -586,3 +586,19 @@ def shortline_theme_rotation_map(result: dict, ctx: dict) -> dict:
              "computation": _computation("shortline_boards.build_theme_rotation", {"date": day, "days": result.get("days")},
                                          "每天的东财涨停池 + 问财(配了 IWENCAI_API_KEY)或同花顺涨停揭秘的涨停原因")}
     return a.finish(bool(result.get("settled")), extra, "题材轮动没算出来")
+
+
+def etf_turnover_baseline_map(result: dict, ctx: dict) -> dict:
+    evs = [ev(ctx, "avg20_yi", x["avg20_yi"], "亿元", result["date"], record_key=x["code"])
+           for x in result["items"] if x.get("avg20_yi") is not None]
+    missing = [{"field": x["code"], "period": result["date"], "reason": x["reason"]} for x in result["missing"]]
+    return out(evs, extra={"result": result}, missing=missing,
+               status="partial" if missing and evs else "failed" if not evs else "ok")
+
+
+def etf_turnover_live_map(result: dict, ctx: dict) -> dict:
+    evs = [ev(ctx, "amount_yi", x["amount_yi"], "亿元", result["date"], record_key=x["code"])
+           for x in result["items"] if x.get("amount_yi") is not None]
+    missing = [{"field": x["code"], "period": result["date"], "reason": x["reason"]} for x in result["missing"]]
+    return out(evs, extra={"result": result}, missing=missing,
+               status="partial" if missing and evs else "failed" if not evs else "ok")

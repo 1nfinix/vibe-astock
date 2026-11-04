@@ -3,6 +3,7 @@
  * 由 `../register_tasks.ts` 导入一次(提供 API 的入口才需要视图)。
  */
 import { registerView } from "../../views.ts";
+import { etfTurnoverAct, etfTurnoverRun } from "./etf_turnover.ts";
 import { shortlineHistory } from "./history.ts";
 import { shortlineIntraday, shortlineIntradayAct } from "./intraday.ts";
 import { shortlineReview, shortlineReviewAct } from "./review.ts";
@@ -22,3 +23,5 @@ registerView({ id: "shortline_weekly", label: "近 5 天热度与龙头谱系", 
 registerView({ id: "shortline_weekly_review", label: "AI 周报", run: shortlineWeeklyReview, act: shortlineWeeklyReviewAct });
 registerView({ id: "shortline_intraday", label: "竞价与盘中路径", run: shortlineIntraday, act: (ctx, body, signal) => shortlineIntradayAct(ctx, body, signal) });
 registerView({ id: "shortline_watch", label: "盯盘 · 实时动态", run: shortlineWatchAlerts, act: (ctx, body, signal) => shortlineWatchAct(ctx, body, signal) });
+
+registerView({ id: "shortline_etf_turnover", label: "宽基 ETF 量价跟踪", run: etfTurnoverRun, act: etfTurnoverAct });

@@ -317,6 +317,11 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
       run: async (j) => (await import("./shortline/close_fetch.ts")).shortlineCloseFetch(j),
     },
     {
+      id: "etf_turnover_close", label: "宽基 ETF 基准与份额", at: "15:35", defaultEnabled: true,
+      description: "收盘后更新 20 日成交额基准和公开基金份额快照，不进台账。",
+      run: async (j) => (await import("./shortline/etf_turnover.ts")).etfTurnoverClose(j),
+    },
+    {
       id: "close_digest", label: "收盘摘要", at: "15:40", defaultEnabled: true,
       description: "A 股收盘后:主要指数涨跌、涨停 / 炸板 / 跌停家数、最高连板、主力资金净流入和净流出前三的行业、龙虎榜上榜数。只列事实。",
       run: closeDigest,

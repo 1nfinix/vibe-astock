@@ -4478,6 +4478,59 @@
       },
       "cache_max_age_sec": 21600,
       "notes": "免 key 的 CSV 下载(不用要 key 的 API);只收单位核对过的 12 个系列(另有 GDP / M2SL / INDPRO / ICSA / T10Y2Y),版权受限的系列不收;默认取近 10 年;全序列存为提取 CSV,环比同比交给 calc"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "sina+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "module": "etf_turnover",
+      "id": "cn_etf_turnover_baseline",
+      "title": "宽基 ETF 20 日成交额与同时点基准",
+      "layer": "10 情绪",
+      "function": "build_etf_turnover_baseline",
+      "mapper": "etf_turnover_baseline_map",
+      "endpoint_label": "新浪日 K 与 5 分钟 K",
+      "args": {
+        "trade_date": null,
+        "extra_codes": null
+      },
+      "cache_max_age_sec": 86400,
+      "notes": "历史 20 日基准；缺数明确标记，收盘作业 fresh 更新"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "tencent",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "module": "etf_turnover",
+      "id": "cn_etf_turnover_live",
+      "title": "宽基 ETF 实时量价与份额",
+      "layer": "10 情绪",
+      "function": "build_etf_turnover_live",
+      "mapper": "etf_turnover_live_map",
+      "endpoint_label": "腾讯 ETF 批量行情",
+      "args": {
+        "extra_codes": null
+      },
+      "cache_max_age_sec": 15,
+      "notes": "实时行情；仅公开市场数据，不含个人交易"
     }
   ]
 }

@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 182 个)
+# 数据源端点目录(registry v1.0.0,共 184 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -121,7 +121,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `cn_shortline_board_ladder` | 短线连板天梯(某天收盘时每个高度的涨停股:首封 / 末封时间、开板次数、封单、涨停原因;前一交易日低一档今天没接上的票去向 —— 炸板 / 跌停 / 没涨停及当天涨跌幅;每一档的晋级数) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG);信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。板位按东财连板数(反包票连板数是 1,标「N天M板」),晋级按昨天这一档的票今天还在涨停池里,与情绪四项同口径;最高标断板那一档今天没人也留一行。没接上的票当天涨跌幅先用定稿记录(东财昨日涨停池),缺了再看炸板 / 跌停池。涨停原因来源同 cn_shortline_themes,取不到时天梯照出、标 partial。已收盘的日子长期缓存;没收盘的那一天一律 partial |
 | `cn_shortline_theme_rotation` | 短线题材轮动(近 N 个交易日每个事件题材每天的涨停只数与当天名次、连续几天有涨停、几天进前三、隔几天回流;昨天还有今天没有的也列出) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG);信封结构同 cn_shortline_themes。题材按涨停原因串里的标签归组(滤掉国企改革、破净等属性词),同义不同名的标签分开算。某天涨停池或原因没取到按缺数(None)处理、标 partial,不当 0;东财涨停池只留约一个月,更早的日子会缺。days 3–10,默认 5(约 2×days 次请求)。已收盘的日子长期缓存;没收盘的那一天一律 partial |
 
-## 10 情绪(15)
+## 10 情绪(17)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -140,6 +140,8 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `cn_shortline_turnover_top` | 某日沪深京 A 股成交额前 N(通达信盘后包,含收盘价、涨跌幅、名次;任意交易日可取) | CN | tdx+calc | cn-public | none | - | 计算型端点,替代 Vibe AStock v2.0.0 盯盘的「昨日成交前十」(VA 用东财列表接口当天收盘自己存快照,首日只能拿实时榜暂代)。date 缺省 = 最近一个盘后包已发布的交易日(当天 17 点后才有);只算沪深京 A 股号段(B 股、指数、基金、债券不算)。下载约 2.7MB、约 10 秒;已发布的日子结果不变、长期缓存。字段名与 em_turnover_rank 相同 |
 | `cn_shortline_bigcaps` | 大市值 A 股名单(总市值不低于门槛,默认 500 亿;新浪按总市值降序) | CN | sina | cn-public | none | - | 计算型端点,替代 Vibe AStock v2.0.0 盯盘的「500 亿大票」池(VA 用东财列表接口,09-22 起成片失败)。只出名单和总市值,价格涨跌由界面另取实时行情。每页 100 只,500 亿约 4 页、20 秒左右;盘中翻页期间排名在变,页边界附近个别票可能漏掉(重复已去掉)。缓存最多 1 小时 |
 | `sse_e_interaction` | 上证e互动问答(沪市公司) | CN | sse | cn-public | cn6 | - | 只服务沪市(60 / 68 / 900 开头),深市互动问答用 cninfo_irm;kind=answered(已答)/ questions(全部提问);投资者提问是不可信文本,只作线索。上游 a-stock-data §10 |
+| `cn_etf_turnover_baseline` | 宽基 ETF 20 日成交额与同时点基准 | CN | sina+calc | cn-public | none | - | 历史 20 日基准；缺数明确标记，收盘作业 fresh 更新 |
+| `cn_etf_turnover_live` | 宽基 ETF 实时量价与份额 | CN | tencent | cn-public | none | - | 实时行情；仅公开市场数据，不含个人交易 |
 
 ## 9 期权(1)
 

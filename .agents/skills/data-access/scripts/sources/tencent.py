@@ -87,7 +87,7 @@ def tencent_quotes(codes) -> dict:
         code = key_of.get(key, key[2:])
         q = {"name": vals[1], "price": _f(vals, 3), "last_close": _f(vals, 4), "open": _f(vals, 5), "change_amt": _f(vals, 31), "change_pct": _f(vals, 32), "high": _f(vals, 33), "low": _f(vals, 34),
              "amount_wan": _f(vals, 37), "turnover_pct": _f(vals, 38), "pe_ttm": _f(vals, 39), "amplitude_pct": _f(vals, 43), "float_mcap_yi": _f(vals, 44), "mcap_yi": _f(vals, 45), "pb": _f(vals, 46),
-             "limit_up": _f(vals, 47), "limit_down": _f(vals, 48), "vol_ratio": _f(vals, 49), "pe_static": _f(vals, 52), "quote_time": vals[30].strip(), "query": key}
+             "limit_up": _f(vals, 47), "limit_down": _f(vals, 48), "vol_ratio": _f(vals, 49), "pe_static": _f(vals, 52), "quote_time": vals[30].strip(), "query": key, "outer_lots": _f(vals, 7), "inner_lots": _f(vals, 8), "shares": _f(vals, 72)}
         layout = _GLOBAL_LAYOUT.get(key[:2].lower())
         if layout:
             q["pb"] = _opt(vals, layout["pb"], zero_is_missing=True)   # 真实公司市净率不会恰好是 0

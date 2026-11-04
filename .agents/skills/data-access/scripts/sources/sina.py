@@ -264,3 +264,19 @@ def sina_board_flow(board_type: str = "industry") -> dict:
                      "net": _f(x.get("netamount")), "inflow": _f(x.get("inamount")), "outflow": _f(x.get("outamount")), "net_ratio": pct(x.get("ratioamount")),
                      "leader": str(x.get("ts_name") or ""), "leader_pct": pct(x.get("ts_changeratio")), "_raw": ref})
     return {"board_type": board_type, "rows": rows}
+
+
+def sina_kline(symbol: str, scale: int, datalen: int) -> list[dict]:
+    """新浪 ETF 日线或 5 分钟线，保留原始时间。"""
+    if scale not in (5, 240) or not 1 <= datalen <= 1023:
+        raise ValueError("scale 只支持 5/240，datalen 为 1..1023")
+    code = _sina_symbol(symbol)
+    url = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
+    response = http_get(url, params={"symbol": code, "scale": scale, "ma": "no", "datalen": datalen},
+                        headers=_HDR, timeout=15, ext="json")
+    rows = json.loads(response.text)
+    if not isinstance(rows, list) or not rows:
+        raise DataNotAvailable(f"{code} 新浪 K 线为空")
+    return [{"day": str(x["day"]), "open": float(x["open"]), "high": float(x["high"]),
+             "low": float(x["low"]), "close": float(x["close"]), "volume": float(x["volume"])}
+            for x in rows]
