@@ -5,32 +5,53 @@ import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
 import { FINANCE_SCHEDULE } from "../src/finance/schedule.ts";
-import { CORE_CODES, calcItem, dayProgress, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, saveShares, saveWatch, shapeAt, sharesSuspect, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
+import { CORE_CODES, calcItem, dayProgress, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
 
 const signal = new AbortController().signal;
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "etf-turnover-"));
 const ctx = (dataRoot: string): ServiceContext => ({ repoRoot: process.cwd(), dataRoot, python: "python3", node: process.execPath });
 const env = (result: unknown) => ({ status: "ok", evidence: [], extra: { result } });
-const fetch = async (_ctx: ServiceContext, req: { endpoint: string }) => {
+const fetch = async (_ctx: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
   if (req.endpoint === "fetch_trade_calendar") return { envelope: { status: "failed" } };
   if (req.endpoint === "cn_etf_turnover_baseline") return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", avg20_yi: 10, shape: Array(48).fill(0.5), hist: [] })), missing: [] }) };
-  if (req.endpoint === "cn_etf_turnover_live") return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", price: 2, pct: -1, amount_yi: 20, mktcap_yi: 100, shares: 2, outer_lots: 60, inner_lots: 40, quote_time: "20261009150000" })), missing: [] }) };
+  if (req.endpoint === "cn_etf_turnover_live") { assert.equal(req.args?.trade_date, undefined); return { envelope: env({ items: CORE_CODES.map((code) => ({ code, name: code, group: "core", price: 2, pct: -1, amount_yi: 20, mktcap_yi: 100, shares: 2, outer_lots: 60, inner_lots: 40, quote_time: "20261009150000" })), missing: [] }) }; }
   throw new Error(req.endpoint);
 };
 
-test("五档判断与附句", () => {
+test("五档判断带数字，附句只出现在偏买档", () => {
   assert.deepEqual([[1.8, 1], [1.3, 1], [1.8, -1], [1.3, -1], [1.29, 1]].map(([r, n]) => verdict(r!, n!, null, null, null).level), ["strong", "medium", "sell", "unclear", "quiet"]);
-  const reason = verdict(2, 3, 0.3, 0.2, -0.6).reason;
-  assert.match(reason, /1.25 倍/); assert.match(reason, /价格回落/); assert.match(reason, /不能证明任何机构当日交易/);
+  const starts = ["固定名单成交额达到", "成交额放大到", "成交额放大到", "成交额达到", "成交额只有"];
+  [[2, 3], [1.5, 3], [2, -3], [1.5, -3], [1, 3]].forEach(([r, n], i) => {
+    const reason = verdict(r!, n!, 0.3, 0.2, -0.6).reason;
+    assert.match(reason, new RegExp(starts[i]!)); assert.match(reason, new RegExp(r!.toFixed(2)));
+    assert.match(reason, new RegExp(n!.toFixed(2))); assert.match(reason, /这是量价现象，不能证明任何机构当日交易/);
+    if (i < 2) { assert.match(reason, /尾盘半小时成交占全天 30.0%/); assert.match(reason, /池内规模加权涨跌 -0.60%/); }
+    else { assert.doesNotMatch(reason, /尾盘半小时|下跌日放量/); }
+  });
+  assert.match(verdict(1.5, 3, null, null, null).reason, /1.8×/);
+  assert.match(verdict(2, -3, null, null, null).reason, /更像换手或卖出/);
+  assert.match(verdict(1.5, -3, null, null, null).reason, /方向不清晰/);
+  assert.match(verdict(1, 3, null, null, null).reason, /量价平静/);
+});
+
+test("时点括注覆盖旧日、午休、盘中与非交易时段", () => {
+  assert.match(timeAnnotation("stale", "2026-11-03", "15:00", 100), /实时行情不是今日数据.*2026-11-03 周二.*全天基准/);
+  assert.match(timeAnnotation("lunch", "2026-11-04", "11:30", 50), /午间休市.*11:30.*50.0%/);
+  assert.match(timeAnnotation("intraday", "2026-11-04", "10:30", 27), /10:30.*27.0%.*分母已同比例缩小/);
+  assert.match(timeAnnotation("closed", "2026-11-03", "15:00", 100), /非交易时段.*2026-11-03 周二.*开盘后自动切换实时/);
 });
 
 test("午休锁与旧日全天比", () => {
   const shape = Array.from({ length: 48 }, (_, i) => (i + 1) / 48);
   assert.equal(shapeAt(shape, "11:30"), shapeAt(shape, "12:30"));
   assert.equal(dayProgress("09:30", null), 0.12);
+  assert.equal(dayProgress("09:35", Array(48).fill(0.05)), 0.05);
+  assert.equal(dayProgress("09:35", Array(48).fill(0.01)), 0.12);
   assert.equal(dayProgress("10:00", shape, true), 1);
   const item = calcItem({ code: "510300", group: "core", avg20_yi: 10, shape }, { code: "510300", price: 2, amount_yi: 20, outer_lots: 60, inner_lots: 40 }, null, "10:00", true);
   assert.equal(item.ratio, 2); assert.equal(item.net_yi, 4);
+  assert.equal(calcItem({ code: "510300", name: "沪深300ETF华泰柏瑞", group: "core" }, { code: "510300", name: "腾讯简称" }, null, "10:00", false).name, "沪深300ETF华泰柏瑞");
+  assert.equal(calcItem({ code: "512345", name: "512345", group: "watch" }, { code: "512345", name: "新增标的名称" }, null, "10:00", false).name, "新增标的名称");
 });
 
 test("份额自检与快照读写", () => {
@@ -38,7 +59,8 @@ test("份额自检与快照读写", () => {
   try {
     saveShares(folder, "2026-10-09", [{ code: "510300", shares: 2 }, { code: "510310", shares: 3 }]);
     assert.deepEqual(previousShares(folder, "2026-10-12"), { date: "2026-10-09", shares: { "510300": 2, "510310": 3 } });
-    assert.deepEqual([...sharesSuspect([{ code: "510300", shares: 2.001, prev_shares: 2 }, { code: "510310", shares: 3.002, prev_shares: 3 }])], ["5"]);
+    assert.deepEqual([...sharesSuspect([{ code: "510300", shares: 2.001, prev_shares: 2 }, { code: "510310", shares: 3.002, prev_shares: 3 }])], []);
+    assert.deepEqual([...sharesSuspect([{ code: "510300", shares: 2.001, prev_shares: 2 }, { code: "510310", shares: 3.002, prev_shares: 3 }, { code: "510050", shares: 4.002, prev_shares: 4 }])], ["5"]);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
@@ -51,6 +73,19 @@ test("固定名单不可编辑，观察组不入合计", async () => {
     const view = await etfTurnoverPoll(ctx(folder), signal, fetch, new Date("2026-10-12T02:00:00Z"));
     assert.equal(view.totals.amount_yi, 400); assert.equal(view.totals.ratio, 2);
     assert.equal(view.items.filter((x) => x.group === "watch").length, 1);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("实时端点返回失败时保留上一轮读数并标记连接断开", async () => {
+  const folder = root();
+  try {
+    const first = await etfTurnoverPoll(ctx(folder), signal, fetch, new Date("2026-10-12T02:00:00Z"));
+    const failed = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_live"
+      ? { envelope: { status: "failed", errors: [{ message: "接口失败" }] } } : fetch(c, req);
+    const second = await etfTurnoverPoll(ctx(folder), signal, failed, new Date("2026-10-12T02:01:00Z"));
+    assert.equal(second.totals.amount_yi, first.totals.amount_yi);
+    assert.equal(second.data_connected, false);
+    assert.match(second.notes.at(-1) ?? "", /实时行情未取到/);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 

@@ -65,3 +65,22 @@ def test_tencent_new_fields_and_short_share_field(monkeypatch):
     assert (quote["outer_lots"], quote["inner_lots"], quote["shares"]) == (19850941, 10622976, 44587387700)
     monkeypatch.setattr(tencent, "http_get", lambda *_a, **_k: Reply(values[:53]))
     assert tencent.tencent_quotes(["510300"])["510300"]["shares"] is None
+
+
+def test_fixed_names_and_daily_amount_ohlc4(monkeypatch):
+    pool = etf_turnover._pool()
+    names = {x["code"]: (x["name"], x["index"]) for x in pool}
+    assert names["510300"] == ("沪深300ETF华泰柏瑞", "沪深300")
+    assert names["510230"] == ("金融ETF国泰", "上证180金融")
+    assert names["159915"] == ("创业板ETF易方达", "创业板指")
+    assert names["588000"] == ("科创50ETF华夏", "科创50")
+    assert names["159338"] == ("中证A500ETF国泰", "中证A500")
+    assert etf_turnover._yi({"volume": 100_000_000, "open": 1, "high": 2, "low": 3, "close": 4}) == 2.5
+    monkeypatch.setattr(etf_turnover, "ETF_POOL", etf_turnover.ETF_POOL[:1])
+    monkeypatch.setattr(etf_turnover, "tencent_quotes", lambda _codes: {
+        "510300": {"name": "腾讯简称", "price": 2, "amount_wan": 10000},
+        "588000": {"name": "腾讯观察简称", "price": 2, "amount_wan": 10000},
+        "512345": {"name": "新增标的名称", "price": 2, "amount_wan": 10000},
+    })
+    got = etf_turnover.build_etf_turnover_live(["588000", "512345"])
+    assert [x["name"] for x in got["items"]] == ["沪深300ETF华泰柏瑞", "科创50ETF华夏", "新增标的名称"]

@@ -19,7 +19,6 @@ export function EtfTurnoverTab() {
     finally { setSaving(false); }
   };
   return <section aria-label="宽基 ETF 量价跟踪" className="mt-4">
-    <h2 className="mb-3 text-base font-semibold text-foreground">宽基 ETF 量价跟踪</h2>
     {!view ? <p role="status" className="text-sm text-muted-foreground">正在读取宽基 ETF 量价…{poll.error ? ` ${poll.error}` : ""}</p> :
       <EtfTurnoverView view={view} onRefresh={() => { setOverride(null); poll.refresh(); }} autoRefresh={auto} onAutoRefresh={setAuto} onSetWatch={(codes) => { void setWatch(codes); }} busy={saving} error={actionError ?? poll.error} />}
   </section>;

@@ -10,18 +10,24 @@ from sources.sina import sina_kline
 from sources.tencent import tencent_prefix, tencent_quotes
 
 _CORE = [
-    ("510300", "沪深300ETF", "沪深300", 735.13), ("510310", "沪深300ETF易方达", "沪深300", 558.94),
-    ("510050", "上证50ETF", "上证50", 487.59), ("510330", "沪深300ETF华夏", "沪深300", 420.28),
-    ("159919", "沪深300ETF嘉实", "沪深300", 354.98), ("512100", "中证1000ETF", "中证1000", 221.69),
-    ("588080", "科创50ETF易方达", "科创50", 216.07), ("159915", "创业板ETF", "创业板", 170.2),
-    ("510500", "中证500ETF", "中证500", 142.17), ("159845", "中证1000ETF易方达", "中证1000", 137.26),
-    ("560010", "中证1000ETF广发", "中证1000", 105.5), ("510180", "上证180ETF", "上证180", 52.32),
-    ("159629", "中证1000ETF富国", "中证1000", 36.34), ("510230", "金融ETF", "沪深300金融", 25.64),
+    ("510300", "沪深300ETF华泰柏瑞", "沪深300", 735.13), ("510310", "沪深300ETF易方达", "沪深300", 558.94),
+    ("510050", "上证50ETF华夏", "上证50", 487.59), ("510330", "沪深300ETF华夏", "沪深300", 420.28),
+    ("159919", "沪深300ETF嘉实", "沪深300", 354.98), ("512100", "中证1000ETF南方", "中证1000", 221.69),
+    ("588080", "科创50ETF易方达", "科创50", 216.07), ("159915", "创业板ETF易方达", "创业板指", 170.2),
+    ("510500", "中证500ETF南方", "中证500", 142.17), ("159845", "中证1000ETF华夏", "中证1000", 137.26),
+    ("560010", "中证1000ETF广发", "中证1000", 105.5), ("510180", "上证180ETF华安", "上证180", 52.32),
+    ("159629", "中证1000ETF富国", "中证1000", 36.34), ("510230", "金融ETF国泰", "上证180金融", 25.64),
     ("159922", "中证500ETF嘉实", "中证500", 23.11), ("512500", "中证500ETF华夏", "中证500", 20.51),
-    ("515800", "800ETF", "中证800", 13.08), ("159952", "创业板ETF广发", "创业板", 10.91),
-    ("588050", "科创50ETF工银", "科创50", 9.7), ("159901", "深证100ETF", "深证100", 7.19),
+    ("515800", "中证800ETF汇添富", "中证800", 13.08), ("159952", "创业板ETF广发", "创业板指", 10.91),
+    ("588050", "科创50ETF工银", "科创50", 9.7), ("159901", "深证100ETF易方达", "深证100", 7.19),
 ]
-DEFAULT_WATCH = ["588000", "512050", "159338", "159339"]
+_DEFAULT_WATCH_INFO = {
+    "588000": ("科创50ETF华夏", "科创50"),
+    "159338": ("中证A500ETF国泰", "中证A500"),
+    "512050": ("A500ETF华夏", "中证A500"),
+    "159339": ("A500ETF银华", "中证A500"),
+}
+DEFAULT_WATCH = list(_DEFAULT_WATCH_INFO)
 ETF_POOL = [dict(code=c, tcode=tencent_prefix(c), name=n, index=i, group="core", huijin_yi=h) for c, n, i, h in _CORE]
 CORE_CODES = {x["code"] for x in ETF_POOL}
 POOL_NOTE = "汇金组来自 2025 年报前十大持有人历史披露；信披规则变化后，名单不能证明当日持仓或交易。"
@@ -31,7 +37,7 @@ def _pool(extra_codes=None):
     codes = DEFAULT_WATCH if extra_codes is None else extra_codes
     if not isinstance(codes, list) or len(codes) > 30 or any(not isinstance(c, str) or not re.fullmatch(r"[51]\d{5}", c) for c in codes):
         raise ValueError("观察组限 30 只沪深 ETF 六位代码")
-    return ETF_POOL + [dict(code=c, tcode=tencent_prefix(c), name=c, index="—", group="watch", huijin_yi=None)
+    return ETF_POOL + [dict(code=c, tcode=tencent_prefix(c), name=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[0], index=_DEFAULT_WATCH_INFO.get(c, (c, "—"))[1], group="watch", huijin_yi=None)
                        for c in dict.fromkeys(codes) if c not in CORE_CODES]
 
 
@@ -40,6 +46,7 @@ def _day():
 
 
 def _yi(bar):
+    # 原页历史成交额口径：量 × OHLC 四价均值；2026-11-03 的 510300 三个对账锚点误差均为 0%。
     return float(bar["volume"]) * (float(bar["open"]) + float(bar["high"]) + float(bar["low"]) + float(bar["close"])) / 4e8
 
 
@@ -106,7 +113,7 @@ def build_etf_turnover_live(extra_codes=None):
             missing.append({"code": code, "reason": "腾讯行情缺少现价或成交额"})
             items.append({**item, "price": None, "amount_yi": None})
             continue
-        items.append({**item, "name": quote.get("name") or item["name"], "price": quote["price"],
+        items.append({**item, "name": item["name"] if code in CORE_CODES or code in _DEFAULT_WATCH_INFO else quote.get("name") or item["name"], "price": quote["price"],
                       "prev_close": quote.get("last_close"), "pct": quote.get("change_pct"),
                       "amount_yi": quote["amount_wan"] / 10000, "mktcap_yi": quote.get("mcap_yi"),
                       "shares": None if quote.get("shares") is None else quote["shares"] / 1e8, "outer_lots": quote.get("outer_lots"),
