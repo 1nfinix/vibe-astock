@@ -45,6 +45,7 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
   const [newCode, setNewCode] = useState("");
   const [inputError, setInputError] = useState<string | null>(null);
   const active = intraday(view);
+  const waitingOpen = !view.stale && view.verdict.title === "等待开盘";
   const rows = useMemo(() => view.items.filter((x) => (scope === "all" || x.group === scope) && `${x.code} ${x.name} ${x.index}`.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => {
       const key = ({ huijin: "huijin_yi", amount: "amount_yi", ratio: "ratio", net: "net_yi", mktcap: "mktcap_yi" } as const)[sort];
@@ -61,9 +62,9 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
   };
   const status = view.phase === "lunch" && view.trading_day !== false ? "午间休市 · 数据锁定 11:30"
     : ["morning", "afternoon", "closing_auction"].includes(view.phase) && view.trading_day !== false ? error || !view.data_connected ? "实时通道不可用 · 显示上次读数" : "实时 · 跟随刷新"
-    : ["pre_open", "auction"].includes(view.phase) && view.trading_day !== false && clock(view.asof) >= "09:00" ? "等待开盘 · 9:30"
+    : waitingOpen ? "等待开盘 · 9:30"
     : view.phase === "closed" && view.trading_day !== false ? "已收盘 · 今日复盘数据" : "休市 · 最近交易日收盘数据";
-  const tag = view.phase === "lunch" && active ? "今日结论 · 午间半场" : active ? "今日结论 · 实时跟踪" : view.phase === "closed" && !view.stale && view.trading_day !== false ? "今日收盘复盘" : `最近交易日复盘 · ${view.quote_date || view.date}`;
+  const tag = waitingOpen ? "今日结论 · 等待开盘" : view.phase === "lunch" && active ? "今日结论 · 午间半场" : active ? "今日结论 · 实时跟踪" : view.phase === "closed" && !view.stale && view.trading_day !== false ? "今日收盘复盘" : `最近交易日复盘 · ${view.quote_date || view.date}`;
   const tone = view.verdict.level === "strong" ? "!border-primary/50" : ["medium", "sell", "unclear"].includes(view.verdict.level) ? "!border-warning/40" : "";
   const missing = (reason: string) => <span title={reason}>—</span>;
   const cell = (v: number | null, reason: string, digits = 2) => v === null ? missing(reason) : num(v, digits);

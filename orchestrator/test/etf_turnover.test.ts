@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
 import { FINANCE_SCHEDULE } from "../src/finance/schedule.ts";
-import { CORE_CODES, calcItem, dayProgress, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
+import { CORE_CODES, calcItem, dayProgress, etfTurnoverAct, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, resetEtfTurnoverState, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
 
 const signal = new AbortController().signal;
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "etf-turnover-"));
@@ -167,4 +167,129 @@ test("收盘作业 fresh 取数，只写份额快照", async () => {
     assert.equal(previousShares(folder, "2026-10-13").shares["510300"], 2);
     assert.equal(fs.existsSync(path.join(folder, "ledger")), false);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("慢基准按上限返回，后台完成后复用；请求取消不影响基准", async () => {
+  resetEtfTurnoverState();
+  const folder = root(), request = new AbortController();
+  try {
+    let release!: (value: ReturnType<typeof env>) => void;
+    const delayed = new Promise<ReturnType<typeof env>>((resolve) => { release = resolve; });
+    const tracked = async (c: ServiceContext, req: { endpoint: string; signal?: AbortSignal }) => {
+      if (req.endpoint === "cn_etf_turnover_baseline") { assert.equal(req.signal?.aborted, false); return { envelope: await delayed }; }
+      return fetch(c, req);
+    };
+    const started = Date.now();
+    const first = await etfTurnoverPoll(ctx(folder), request.signal, tracked, new Date("2026-10-12T02:00:00Z"), 10);
+    assert.ok(Date.now() - started < 500);
+    assert.equal(first.items[0]?.avg20_yi, null);
+    assert.match(first.notes.join(" "), /近 20 日基准计算中，稍后自动刷新/);
+    request.abort();
+    release(env({ date: "2026-10-12", items: CORE_CODES.map((code) => ({ code, group: "core", avg20_yi: 10 })), missing: [] }));
+    await delayed;
+    const second = await etfTurnoverPoll(ctx(folder), signal, fetch, new Date("2026-10-12T02:01:00Z"), 10);
+    assert.equal(second.items[0]?.avg20_yi, 10);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("partial 基准后台 fresh 重取，十分钟内只重试一次", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    let fresh = 0;
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown>; consistency?: { mode: string } }) => {
+      if (req.endpoint !== "cn_etf_turnover_baseline") return fetch(c, req);
+      const isFresh = req.consistency?.mode === "fresh";
+      if (isFresh) fresh++;
+      const codes = req.args?.include_core === false ? req.args.extra_codes as string[] : [...CORE_CODES];
+      return { envelope: env({ date: req.args?.trade_date, items: codes.map((code) => ({ code, group: req.args?.include_core === false ? "watch" : "core", avg20_yi: isFresh ? 12 : 10 })), missing: isFresh ? [] : [{ code: codes[0], reason: "缺数" }] }) };
+    };
+    await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T02:00:00Z"));
+    await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T02:01:00Z"));
+    assert.equal(fresh, 2);
+    const view = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T02:02:00Z"));
+    assert.equal(view.items[0]?.avg20_yi, 12);
+    assert.equal(fresh, 2);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("取数 reject 与 failed 信封按失败处理", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    await etfTurnoverPoll(ctx(folder), signal, fetch, new Date("2026-10-12T02:00:00Z"));
+    const rejected = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_live" ? Promise.reject(new Error("网络断开")) : fetch(c, req);
+    const fallback = await etfTurnoverPoll(ctx(folder), signal, rejected, new Date("2026-10-12T02:01:00Z"));
+    assert.equal(fallback.data_connected, false);
+    assert.match(fallback.notes.join(" "), /实时行情未取到/);
+    const failed = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_live"
+      ? { envelope: { ...env({ items: [{ code: "510300", amount_yi: 20 }] }), status: "failed" } } : req.endpoint === "cn_etf_turnover_baseline"
+        ? { envelope: { ...env({ items: [{ code: "510300", avg20_yi: 10 }] }), status: "failed" } } : fetch(c, req);
+    const view = await etfTurnoverPoll(ctx(folder), signal, failed, new Date("2026-10-13T02:00:00Z"));
+    assert.equal(view.data_connected, false);
+    assert.match(view.notes.join(" "), /基准未取到.*实时行情未取到/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("基准 reject 不使 poll 失败，已有基准任务超时用上次结果", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    const baselineRejected = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_baseline" ? Promise.reject(new Error("历史源断开")) : fetch(c, req);
+    const missing = await etfTurnoverPoll(ctx(folder), signal, baselineRejected, new Date("2026-10-12T02:00:00Z"), 10);
+    assert.equal(missing.items[0]?.avg20_yi, null);
+    assert.match(missing.notes.join(" "), /基准未取到.*历史源断开/);
+    await etfTurnoverPoll(ctx(folder), signal, fetch, new Date("2026-10-12T02:01:00Z"));
+    const never = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_baseline"
+      ? new Promise<{ envelope: ReturnType<typeof env> }>(() => {}) : fetch(c, req);
+    const cached = await etfTurnoverPoll(ctx(folder), signal, never, new Date("2026-10-12T02:02:00Z"), 10);
+    assert.equal(cached.items[0]?.avg20_yi, 10);
+    assert.match(cached.notes.join(" "), /近 20 日基准计算中，暂用上次结果/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("竞价当天等待开盘，昨日行情保留 stale；周六基准按周五行情日", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    const calls: string[] = [];
+    let quote = "20261012092000";
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_etf_turnover_baseline") calls.push(String(req.args?.trade_date));
+      if (req.endpoint === "cn_etf_turnover_live") return { envelope: env({ items: CORE_CODES.map((code) => ({ code, group: "core", amount_yi: 20, outer_lots: 60, inner_lots: 40, quote_time: quote })) }) };
+      return fetch(c, req);
+    };
+    const auction = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T01:20:00Z"));
+    assert.equal(auction.verdict.title, "等待开盘"); assert.equal(auction.totals.ratio, null); assert.equal(auction.totals.expected_yi, null); assert.equal(auction.items[0]?.ratio, null);
+    quote = "20261009150000";
+    const stale = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-12T01:10:00Z"));
+    assert.equal(stale.stale, true); assert.notEqual(stale.verdict.title, "等待开盘");
+    // 周五收盘作业已写周五快照、更早有周四快照：周六看周五行情时，申赎应对比周四
+    saveShares(folder, "2026-10-08", CORE_CODES.map((code) => ({ code, shares: 1 })));
+    saveShares(folder, "2026-10-09", CORE_CODES.map((code) => ({ code, shares: 1.5 })));
+    const saturday = await etfTurnoverPoll(ctx(folder), signal, tracked, new Date("2026-10-10T02:00:00Z"));
+    assert.equal(saturday.baseline_date, "2026-10-09");
+    assert.ok(calls.includes("2026-10-09"));
+    assert.equal(saturday.previous_shares_date, "2026-10-08");
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("收盘 failed 基准与份额按状态判定，保存观察组后刷新失败仍返回视图", async () => {
+  resetEtfTurnoverState();
+  const folder = root();
+  try {
+    const failedBase = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_baseline"
+      ? { envelope: { ...env({ items: [] }), status: "failed", errors: [{ source: "基准源", error: "失败" }] } } : fetch(c, req);
+    const job = { ctx: ctx(folder), day: "2026-10-12", now: new Date(), signal, state: undefined, manual: true };
+    const partial = await etfTurnoverClose(job, failedBase);
+    assert.match(partial.note ?? "", /基准失败.*基准源 失败.*份额快照 20 只/);
+    const allFailed = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_live"
+      ? { envelope: { ...env({ items: [{ code: "510300", shares: 2 }] }), status: "failed" } } : failedBase(c, req);
+    await assert.rejects(etfTurnoverClose(job, allFailed), /基准与份额均失败/);
+    const failedLive = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_turnover_live" ? Promise.reject(new Error("网络断开")) : fetch(c, req);
+    const saved = await etfTurnoverAct(ctx(folder), { action: "set_watch", codes: ["588000"] }, signal, failedLive, new Date("2026-10-12T02:00:00Z"));
+    assert.deepEqual(saved.watch_codes, ["588000"]);
+    assert.ok(loadWatch(folder).includes("588000"));
+    assert.match(saved.notes.join(" "), /观察组已保存，行情刷新失败：/);
+  } finally { resetEtfTurnoverState(); fs.rmSync(folder, { recursive: true, force: true }); }
 });

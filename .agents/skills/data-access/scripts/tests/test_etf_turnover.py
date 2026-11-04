@@ -99,3 +99,26 @@ def test_baseline_observation_only_does_not_fetch_fixed_pool(monkeypatch):
     assert [item["code"] for item in got["items"]] == ["588000"]
     assert calls == [("588000", 240), ("588000", 5)]
     assert etf_turnover._pool([], include_core=False) == []
+
+
+def test_friday_tail_uses_friday_48_bars_and_avg_excludes_friday(monkeypatch):
+    from datetime import date, timedelta
+
+    monkeypatch.setattr(etf_turnover, "ETF_POOL", etf_turnover.ETF_POOL[:1])
+    friday = "2026-10-09"
+    days = [(date(2026, 9, 10) + timedelta(days=i)).isoformat() for i in range(30)]
+    prior = [day for day in days if date.fromisoformat(day).weekday() < 5 and day < friday][-20:]
+    daily = [bar(day, 100_000_000) for day in prior] + [bar(friday, 900_000_000)]
+    five = [bar(f"{day} {9 + i // 12:02d}:{(i % 12) * 5:02d}:00", 2_000_000 if day == friday and i >= 42 else 1_000_000)
+            for day in [*prior, friday] for i in range(48)]
+    assert len(five) == 1008 <= 1023
+
+    def fake(_code, scale, datalen):
+        assert datalen == (50 if scale == 240 else 1023)
+        return daily if scale == 240 else five
+
+    monkeypatch.setattr(etf_turnover, "sina_kline", fake)
+    got = etf_turnover.build_etf_turnover_baseline(friday, [])
+    assert got["items"][0]["avg20_yi"] == 2.0
+    assert got["items"][0]["tail_ratio"] == round(12 / 54, 6)
+    assert got["items"][0]["tail_ratio_base"] == round(6 / 48, 6)

@@ -54,3 +54,17 @@ test("观察组保存中与失败原因在编辑区可见", async () => {
     assert.match(failed, /扩展观察.*保存失败：本机接口超时/);
   });
 });
+
+test("竞价当日展示等待开盘，昨日行情展示最近交易日", async () => {
+  await withRenderer(async (r) => {
+    const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    const auction = { ...view, phase: "auction", quote_date: view.date, quote_hm: "09:20", stale: false,
+      verdict: { level: "missing", title: "等待开盘", reason: "集合竞价阶段成交额尚未形成" }, totals: { ...view.totals, expected_yi: null, ratio: null } };
+    const text = textOf(r.html(EtfTurnoverView, { view: auction }));
+    assert.match(text, /等待开盘 · 9:30/);
+    assert.match(text, /今日结论 · 等待开盘/);
+    const stale = textOf(r.html(EtfTurnoverView, { view: { ...auction, stale: true, quote_date: "2026-11-03", verdict: view.verdict } }));
+    assert.match(stale, /最近交易日复盘 · 2026-11-03/);
+    assert.doesNotMatch(stale, /今日结论 · 等待开盘/);
+  });
+});
