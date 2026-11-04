@@ -5,12 +5,13 @@ import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
 import { FINANCE_SCHEDULE } from "../src/finance/schedule.ts";
-import { CORE_CODES, calcItem, dayProgress, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
+import { CORE_CODES, calcItem, dayProgress, etfTurnoverClose, etfTurnoverPoll, loadWatch, previousShares, resetEtfTurnoverCalendar, saveShares, saveWatch, shapeAt, sharesSuspect, timeAnnotation, validateWatch, verdict } from "../src/finance/shortline/etf_turnover.ts";
 
 const signal = new AbortController().signal;
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "etf-turnover-"));
 const ctx = (dataRoot: string): ServiceContext => ({ repoRoot: process.cwd(), dataRoot, python: "python3", node: process.execPath });
 const env = (result: unknown) => ({ status: "ok", evidence: [], extra: { result } });
+const calendarEnv = (day: string) => ({ status: "ok", evidence: Object.entries({ last_trading_day: day, previous_trading_day: "2026-10-09", is_today_trading_day: true, session_phase: "trading" }).map(([field, value]) => ({ field, value, period: day })) });
 const fetch = async (_ctx: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
   if (req.endpoint === "fetch_trade_calendar") return { envelope: { status: "failed" } };
   if (req.endpoint === "cn_etf_turnover_baseline") return { envelope: env({ date: "2026-10-12", items: (req.args?.include_core === false ? req.args.extra_codes as string[] : [...CORE_CODES]).map((code) => ({ code, name: code, group: req.args?.include_core === false ? "watch" : "core", avg20_yi: 10, shape: Array(48).fill(0.5), hist: [] })), missing: [] }) };
@@ -99,6 +100,46 @@ test("固定组 baseline 参数稳定，观察组单独取数；同日收盘无�
     assert.equal(second.items.filter((x) => x.group === "watch").length, 2);
     assert.doesNotMatch(second.verdict.reason, /非交易时段|（/);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("ETF 日历同日成功 30 分钟内复用，过期与跨日重新取", async () => {
+  resetEtfTurnoverCalendar();
+  const folder = root();
+  try {
+    let calls = 0;
+    let day = "2026-10-12";
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "fetch_trade_calendar") { calls++; return { envelope: calendarEnv(day) }; }
+      return fetch(c, req);
+    };
+    const poll = (iso: string) => etfTurnoverPoll(ctx(folder), signal, tracked, new Date(iso));
+    await poll("2026-10-12T02:00:00Z");
+    await poll("2026-10-12T02:01:00Z");
+    assert.equal(calls, 1);
+    await poll("2026-10-12T02:30:00Z");
+    assert.equal(calls, 2);
+    day = "2026-10-13";
+    await poll("2026-10-13T02:00:00Z");
+    assert.equal(calls, 3);
+  } finally { resetEtfTurnoverCalendar(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("ETF 日历失败后 60 秒内不重试，过期再取", async () => {
+  resetEtfTurnoverCalendar();
+  const folder = root();
+  try {
+    let calls = 0;
+    const tracked = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "fetch_trade_calendar") { calls++; return { envelope: { status: "failed" } }; }
+      return fetch(c, req);
+    };
+    const poll = (iso: string) => etfTurnoverPoll(ctx(folder), signal, tracked, new Date(iso));
+    await poll("2026-10-12T02:00:00Z");
+    await poll("2026-10-12T02:00:59Z");
+    assert.equal(calls, 1);
+    await poll("2026-10-12T02:01:00Z");
+    assert.equal(calls, 2);
+  } finally { resetEtfTurnoverCalendar(); fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
 test("实时端点返回失败时保留上一轮读数并标记连接断开", async () => {

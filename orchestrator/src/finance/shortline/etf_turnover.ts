@@ -5,6 +5,7 @@ import { writeJson } from "../../fsutil.ts";
 import type { JobContext, JobResult } from "../../notify.ts";
 import { ServiceError, fetchEndpoint, type FetchResult, type ServiceContext } from "../../service.ts";
 import { failedNote } from "../schedule.ts";
+import type { CalendarFacts } from "../session.ts";
 import { clockOf, fetchTodayCalendar } from "./intraday.ts";
 import { phaseOf, pollMsOf, type Phase } from "./watch.ts";
 
@@ -132,13 +133,23 @@ export function previousShares(root: string, day: string): { date: string | null
 
 export interface EtfView { date: string; asof: string; baseline_date: string; baseline_generated: string; quote_time: string; quote_date: string; quote_hm: string; data_connected: boolean; stale: boolean; progress_pct: number | null; avg20_total_yi: number | null; daily_ratio: number | null; core_count: number; phase: Phase; trading_day: boolean | null; poll_ms: number; watch_codes: string[]; previous_shares_date: string | null; shares_suspect: string[]; items: Item[]; totals: { amount_yi: number | null; expected_yi: number | null; ratio: number | null; net_yi: number | null; weighted_pct: number | null }; verdict: Verdict; missing: { code: string; reason: string }[]; notes: string[] }
 const last = new Map<string, EtfView>();
+const calendars = new Map<string, { day: string; at: number; facts: CalendarFacts | null }>();
+/** 测试用：清空 ETF 轮询的当日日历记忆。 */
+export function resetEtfTurnoverCalendar(): void { calendars.clear(); }
+async function calendar(ctx: ServiceContext, day: string, nowMs: number, fetch: Fetch, signal: AbortSignal): Promise<CalendarFacts | null> {
+  const cached = calendars.get(ctx.dataRoot);
+  if (cached?.day === day && nowMs - cached.at < (cached.facts === null ? 60_000 : 30 * 60_000)) return cached.facts;
+  const facts = await fetchTodayCalendar(ctx, day, fetch, signal);
+  calendars.set(ctx.dataRoot, { day, at: nowMs, facts });
+  return facts;
+}
 const emptyView = (now: Date, watch: string[]): EtfView => ({ date: clockOf(now).day, asof: now.toISOString(), baseline_date: "", baseline_generated: "", quote_time: "", quote_date: "", quote_hm: "", data_connected: false, stale: false, progress_pct: null, avg20_total_yi: null, daily_ratio: null, core_count: CORE_CODES.length, phase: phaseOf(now), trading_day: null, poll_ms: 60_000, watch_codes: watch, previous_shares_date: null, shares_suspect: [], items: [], totals: { amount_yi: null, expected_yi: null, ratio: null, net_yi: null, weighted_pct: null }, verdict: verdict(null, null, null, null, null), missing: [], notes: ["等待首次取数"] });
 export async function etfTurnoverRun(ctx: ServiceContext): Promise<EtfView> { return last.get(ctx.dataRoot) ?? emptyView(new Date(), loadWatch(ctx.dataRoot)); }
 
 export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date()): Promise<EtfView> {
   const { day, hm } = clockOf(now), phase = phaseOf(now), watch = loadWatch(ctx.dataRoot);
-  const calendar = await fetchTodayCalendar(ctx, day, fetch, signal);
-  const trading = calendar?.is_today_trading_day ?? (phase === "weekend" ? false : null);
+  const facts = await calendar(ctx, day, now.getTime(), fetch, signal);
+  const trading = facts?.is_today_trading_day ?? (phase === "weekend" ? false : null);
   const notes: string[] = [];
   if (trading === false) notes.push("今日休市，展示最近一场行情；同时点倍数按全天对齐。");
   if (trading === null) notes.push("交易日历未取到，行情日期仅按腾讯时间校验。");
