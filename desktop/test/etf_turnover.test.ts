@@ -55,6 +55,24 @@ test("观察组保存中与失败原因在编辑区可见", async () => {
   });
 });
 
+test("固定名单显示官方公布日的申赎估算，观察组保留快照文案", async () => {
+  await withRenderer(async (r) => {
+    const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
+    const items = view.items.map((item) => item.code === "510300"
+      ? { ...item, shares: 105, prev_shares: 100, subscr_net_yi: 10, official_shares_date: "2026-11-03" }
+      : item.code === "159919"
+        ? { ...item, subscr_net_yi: 0.001, official_shares_date: "2026-11-03" }
+        : { ...item, shares: 9, prev_shares: 8, subscr_net_yi: 2, previous_shares_date: "2026-11-03" });
+    const text = textOf(r.html(EtfTurnoverView, { view: { ...view, items, shares_suspect: [] } }));
+    assert.match(text, /沪深300ETF华泰柏瑞.*105\.00 11-03 较前日 \+10\.00亿/);
+    assert.match(text, /沪深300ETF嘉实.*11-03 较前日 持平/);
+    assert.match(text, /科创50ETF华夏.*较11-03 \+2\.00亿/);
+    assert.match(text, /市值估算，不是基金公司公布的申赎金额/);
+    const stillOfficial = textOf(r.html(EtfTurnoverView, { view: { ...view, items, shares_suspect: ["5"] } }));
+    assert.match(stillOfficial, /沪深300ETF华泰柏瑞.*11-03 较前日 \+10\.00亿/);
+  });
+});
+
 test("竞价当日展示等待开盘，昨日行情展示最近交易日", async () => {
   await withRenderer(async (r) => {
     const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");

@@ -607,5 +607,5 @@ def etf_turnover_live_map(result: dict, ctx: dict) -> dict:
 def etf_share_history_sz_map(result: list[dict], ctx: dict) -> dict:
     evs = [ev(ctx, "etf_shares_yi", row["shares_yi"], "亿份", row["date"], record_key=ctx["args"]["code"])
            for row in result]
-    return out(evs, extra={"result": {"code": ctx["args"]["code"], "rows": result}},
-               status="ok" if evs else "failed", reason=None if evs else "该区间没有深交所基金规模记录")
+    return out(evs, extra={"result": {"code": ctx["args"]["code"], "rows": result},
+                           **({"note": "区间内暂无新记录"} if not result else {})}, status="ok")

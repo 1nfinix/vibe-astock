@@ -42,6 +42,13 @@ export function previousHistoryShares(store: ShareStore, day: string): { date: s
   }
   return { date: iso(key), shares };
 }
+/** 只用该 ETF 实际公布的最近两期，不以其他标的的日期补出虚构的日变化。 */
+export function officialSharePair(store: ShareStore, code: string, onOrBefore: string): { date: string; shares: number; previous: number } | null {
+  const dates = Object.keys(store.dates).filter((d) => d <= compact(onOrBefore) && typeof store.dates[d]?.[code] === "number" && Number.isFinite(store.dates[d]?.[code])).sort();
+  const current = dates.at(-1), prior = dates.at(-2);
+  if (!current || !prior) return null;
+  return { date: iso(current), shares: store.dates[current]![code]!, previous: store.dates[prior]![code]! };
+}
 export function shareSeries(store: ShareStore, requested: number): ShareRange | null {
   const dates = Object.keys(store.dates).sort();
   if (dates.length < 2) return null;
@@ -111,7 +118,10 @@ async function doSync(ctx: ServiceContext, fetch: Fetch, today: string): Promise
           if (sh.includes(code as typeof sh[number]) && typeof value === "number" && Number.isFinite(value)) (store.dates[day] ??= {})[code] = value / 1e4;
         }
         for (const code of sh) if (store.dates[day]?.[code] === undefined) missing.push({ code, date: iso(day), reason: "上交所当天未返回该 ETF 份额" });
-      } catch (e) { missing.push({ code: "SH", date: iso(day), reason: e instanceof Error ? e.message : String(e) }); }
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        if (!/上交所.*没有 ETF 份额数据：非交易日或尚未发布/.test(reason)) missing.push({ code: "SH", date: iso(day), reason });
+      }
       save();
     }
   }));

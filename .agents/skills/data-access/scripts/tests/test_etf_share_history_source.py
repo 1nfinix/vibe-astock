@@ -56,3 +56,27 @@ def test_history_long_range_is_split_to_bounded_windows(monkeypatch):
     rows = etf_turnover.szse_fund_share_history("159919", "2026-01-01", "2026-04-01")
     assert starts == ["2026-01-01", "2026-03-22"]
     assert len(rows) == 2 and all(r["shares_yi"] == 1 for r in rows)
+
+
+def test_history_empty_interval_is_not_failed(monkeypatch):
+    from sources.mappers_shortline import etf_share_history_sz_map
+
+    class Reply:
+        def raise_for_status(self): pass
+        def json(self): return [{"metadata": {"pagecount": 0, "recordcount": 0, "pagesize": 20}, "data": []}]
+
+    monkeypatch.setattr("sources._http.http_get", lambda *_a, **_k: Reply())
+    rows = etf_turnover.szse_fund_share_history("159919", "2026-11-05", "2026-11-05")
+    assert rows == []
+    mapped = etf_share_history_sz_map(rows, {"args": {"code": "159919"}})
+    assert mapped["status"] == "ok"
+    assert mapped["extra"]["result"]["rows"] == []
+    assert mapped["extra"]["note"] == "区间内暂无新记录"
+
+
+def test_history_http_error_still_fails(monkeypatch):
+    class Reply:
+        def raise_for_status(self): raise RuntimeError("HTTP 503")
+    monkeypatch.setattr("sources._http.http_get", lambda *_a, **_k: Reply())
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        etf_turnover.szse_fund_share_history("159919", "2026-11-05", "2026-11-05")

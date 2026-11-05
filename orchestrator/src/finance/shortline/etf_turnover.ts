@@ -8,12 +8,12 @@ import { failedNote } from "../schedule.ts";
 import type { CalendarFacts } from "../session.ts";
 import { clockOf, fetchTodayCalendar } from "./intraday.ts";
 import { phaseOf, pollMsOf, type Phase } from "./watch.ts";
-import { loadShareHistory, previousHistoryShares, shareHistorySyncing, shareSeries, syncShareHistory, resetShareHistoryState, type ShareMissing } from "./etf_share_history.ts";
+import { loadShareHistory, officialSharePair, previousHistoryShares, shareHistorySyncing, shareSeries, syncShareHistory, resetShareHistoryState, type ShareMissing } from "./etf_share_history.ts";
 
 export const CORE_CODES = ["510300", "510310", "510050", "510330", "159919", "512100", "588080", "159915", "510500", "159845", "560010", "510180", "159629", "510230", "159922", "512500", "515800", "159952", "588050", "159901"] as const;
 const CORE = new Set<string>(CORE_CODES);
 export const DEFAULT_WATCH = ["588000", "159338", "512050", "159339"];
-export type Item = { code: string; name: string; index: string; group: "core" | "watch"; huijin_yi: number | null; price: number | null; prev_close: number | null; pct: number | null; amount_yi: number | null; mktcap_yi: number | null; shares: number | null; outer_lots: number | null; inner_lots: number | null; quote_time: string; avg20_yi: number | null; hist: number[]; shape: number[] | null; tail_ratio: number | null; tail_ratio_base: number | null; net_yi: number | null; ratio: number | null; subscr_net_yi: number | null; prev_shares: number | null; reason: string | null };
+export type Item = { code: string; name: string; index: string; group: "core" | "watch"; huijin_yi: number | null; price: number | null; prev_close: number | null; pct: number | null; amount_yi: number | null; mktcap_yi: number | null; shares: number | null; outer_lots: number | null; inner_lots: number | null; quote_time: string; avg20_yi: number | null; hist: number[]; shape: number[] | null; tail_ratio: number | null; tail_ratio_base: number | null; net_yi: number | null; ratio: number | null; subscr_net_yi: number | null; prev_shares: number | null; official_shares_date?: string; previous_shares_date?: string | null; reason: string | null };
 type Raw = Record<string, unknown>;
 type Fetch = (ctx: ServiceContext, req: Parameters<typeof fetchEndpoint>[1]) => Promise<Pick<FetchResult, "envelope"> & Partial<Pick<FetchResult, "fetched_at">>>;
 const n = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -249,8 +249,10 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const byLive = new Map(records(live?.items).map((x) => [s(x.code), x]));
   // 申赎对比的是「行情日」之前的最近一份快照：休市日看的是上一交易日行情，不能拿它和它自己当天的快照比
   const snapshot = previousShares(ctx.dataRoot, baselineDay);
-  const history = previousHistoryShares(loadShareHistory(ctx.dataRoot), baselineDay);
-  const prev = snapshot.date ? snapshot : history;
+  const shareHistory = loadShareHistory(ctx.dataRoot);
+  const history = previousHistoryShares(shareHistory, baselineDay);
+  // 取日期更近的一份；同一天时用交易所官方历史（本地快照来自行情商份额字段，沪市常不按日更新）
+  const prev = snapshot.date && (!history.date || snapshot.date > history.date) ? snapshot : history;
   const missing = [...missingOf(base), ...missingOf(live)];
   const allCodes = [...CORE_CODES, ...watch];
   let staleCount = 0;
@@ -259,13 +261,22 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
     const quoteDay = s(l.quote_time).slice(0, 8);
     const stale = trading === false || (quoteDay && quoteDay !== day.replaceAll("-", "")) || phase === "closed" || phase === "weekend";
     if (quoteDay && quoteDay !== day.replaceAll("-", "")) staleCount++;
-    const item = calcItem(b, l, n(prev.shares[code]), hm, !!stale);
+    const item = calcItem(b, l, n(CORE.has(code) ? prev.shares[code] : snapshot.shares[code]), hm, !!stale);
+    item.previous_shares_date = CORE.has(code) ? prev.date : snapshot.date;
+    if (CORE.has(code)) {
+      const official = officialSharePair(shareHistory, code, baselineDay);
+      if (official) {
+        item.prev_shares = official.previous;
+        item.subscr_net_yi = subscr(official.shares, official.previous, item.price);
+        item.official_shares_date = official.date;
+      }
+    }
     if (trading !== false && (phase === "pre_open" || phase === "auction") && quoteDateFromLive === day) item.ratio = null;
     return item;
   });
   if (trading !== false && phase === "morning" && isOpeningMinutes(hm) && !staleCount) notes.push("开盘不足 5 分钟，同时点基准很小，放量倍数对单笔大额成交很敏感。");
   if (staleCount) notes.push(`${staleCount} 只行情日期不是今天；放量倍数按全天成交额比较，不代表今日盘中变化。`);
-  const suspect = sharesSuspect(items);
+  const suspect = sharesSuspect(items.filter((item) => item.group === "watch"));
   for (const item of items) if (suspect.has(item.code[0]!)) item.subscr_net_yi = null;
   if (suspect.size) notes.push("份额源未日更：对应市场申赎暂不显示。");
   const core = items.filter((x) => x.group === "core");
