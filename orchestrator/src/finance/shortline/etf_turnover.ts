@@ -8,6 +8,7 @@ import { failedNote } from "../schedule.ts";
 import type { CalendarFacts } from "../session.ts";
 import { clockOf, fetchTodayCalendar } from "./intraday.ts";
 import { phaseOf, pollMsOf, type Phase } from "./watch.ts";
+import { loadShareHistory, previousHistoryShares, shareHistorySyncing, shareSeries, syncShareHistory, resetShareHistoryState, type ShareMissing } from "./etf_share_history.ts";
 
 export const CORE_CODES = ["510300", "510310", "510050", "510330", "159919", "512100", "588080", "159915", "510500", "159845", "560010", "510180", "159629", "510230", "159922", "512500", "515800", "159952", "588050", "159901"] as const;
 const CORE = new Set<string>(CORE_CODES);
@@ -181,7 +182,7 @@ function baseline(ctx: ServiceContext, args: Record<string, unknown>, fetch: Fet
 /** 服务关停或测试隔离时调用；中止模块持有的后台基准请求。 */
 export function resetEtfTurnoverState(): void {
   for (const state of baselines.values()) state.controller?.abort();
-  baselines.clear(); calendars.clear(); last.clear();
+  baselines.clear(); calendars.clear(); last.clear(); resetShareHistoryState();
 }
 async function bounded<T>(promise: Promise<T>, ms: number): Promise<{ done: true; value: T } | { done: false }> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -247,7 +248,9 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   const byBase = new Map(records(base?.items).map((x) => [s(x.code), x]));
   const byLive = new Map(records(live?.items).map((x) => [s(x.code), x]));
   // 申赎对比的是「行情日」之前的最近一份快照：休市日看的是上一交易日行情，不能拿它和它自己当天的快照比
-  const prev = previousShares(ctx.dataRoot, baselineDay);
+  const snapshot = previousShares(ctx.dataRoot, baselineDay);
+  const history = previousHistoryShares(loadShareHistory(ctx.dataRoot), baselineDay);
+  const prev = snapshot.date ? snapshot : history;
   const missing = [...missingOf(base), ...missingOf(live)];
   const allCodes = [...CORE_CODES, ...watch];
   let staleCount = 0;
@@ -295,7 +298,23 @@ export async function etfTurnoverPoll(ctx: ServiceContext, signal: AbortSignal, 
   return view;
 }
 
-export async function etfTurnoverAct(ctx: ServiceContext, body: Record<string, unknown>, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date()): Promise<EtfView> {
+export type ShareHistoryView = { status: "ready" | "syncing" | "empty" | "failed"; reason?: string; from: string | null; to: string | null; days: number; missing: ShareMissing[]; ranges: Record<"60" | "120" | "242", ReturnType<typeof shareSeries>> };
+const shareFailures = new Map<string, string>();
+const shareMissing = new Map<string, ShareMissing[]>();
+export function etfTurnoverAct(ctx: ServiceContext, body: { action: "share_history" }, signal: AbortSignal, fetch?: Fetch, now?: Date): Promise<ShareHistoryView>;
+export function etfTurnoverAct(ctx: ServiceContext, body: Record<string, unknown>, signal: AbortSignal, fetch?: Fetch, now?: Date): Promise<EtfView>;
+export async function etfTurnoverAct(ctx: ServiceContext, body: Record<string, unknown>, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date()): Promise<EtfView | ShareHistoryView> {
+  if (body.action === "share_history") {
+    const day = clockOf(now).day;
+    const task = syncShareHistory(ctx, fetch, day);
+    void task.then((missing) => { shareMissing.set(ctx.dataRoot, missing); shareFailures.delete(ctx.dataRoot); }, (e) => { shareFailures.set(ctx.dataRoot, e instanceof Error ? e.message : String(e)); });
+    await bounded(task, 2_500);
+    const store = loadShareHistory(ctx.dataRoot);
+    const dates = Object.keys(store.dates).sort();
+    const ranges = { "60": shareSeries(store, 60), "120": shareSeries(store, 120), "242": shareSeries(store, 242) };
+    const status = shareHistorySyncing(ctx.dataRoot) ? "syncing" : ranges["242"] ? "ready" : shareFailures.has(ctx.dataRoot) ? "failed" : "empty";
+    return { status, reason: shareFailures.get(ctx.dataRoot), from: dates[0] ? `${dates[0].slice(0,4)}-${dates[0].slice(4,6)}-${dates[0].slice(6)}` : null, to: dates.at(-1) ? `${dates.at(-1)!.slice(0,4)}-${dates.at(-1)!.slice(4,6)}-${dates.at(-1)!.slice(6)}` : null, days: dates.length, missing: shareMissing.get(ctx.dataRoot) ?? [], ranges };
+  }
   if (body.action === "poll") return etfTurnoverPoll(ctx, signal, fetch, now);
   if (body.action === "set_watch") {
     const watch = validateWatch(body.codes);
@@ -308,7 +327,7 @@ export async function etfTurnoverAct(ctx: ServiceContext, body: Record<string, u
       return fallback;
     }
   }
-  throw new ServiceError("bad_request", "action 只能是 poll 或 set_watch");
+  throw new ServiceError("bad_request", "action 只能是 poll、set_watch 或 share_history");
 }
 
 export async function etfTurnoverClose(j: JobContext, fetch: Fetch = fetchEndpoint): Promise<JobResult> {
@@ -326,5 +345,13 @@ export async function etfTurnoverClose(j: JobContext, fetch: Fetch = fetchEndpoi
   const count = shareRows.length ? saveShares(j.ctx.dataRoot, j.day, shareRows) : 0;
   if (!baseOk && !count) throw new Error(`ETF 收盘基准与份额均失败：${[...bases, live].map((x) => failedNote(x.envelope)).join("；")}`);
   const baseFailure = !baseOk ? `：${bases.filter((x) => !okResult(x.envelope)).map((x) => failedNote(x.envelope) || "源无数据").join("；")}` : "";
-  return { messages: [], note: `ETF 收盘基准${baseOk ? "已更新" : "失败"}${baseFailure}；份额快照 ${count} 只` };
+  let historyNote = "份额历史同步中";
+  try {
+    const missing = await syncShareHistory(j.ctx, fetch, j.day);
+    const today = loadShareHistory(j.ctx.dataRoot).dates[j.day.replaceAll("-", "")];
+    historyNote = missing.length ? `份额历史有 ${missing.length} 处缺口` : "份额历史已同步";
+    if (!today || CORE_CODES.some((code) => today[code] === undefined)) historyNote += "；今日官方份额尚未全部发布，待交易所更新";
+  }
+  catch (e) { historyNote = `份额历史暂未取到：${e instanceof Error ? e.message : String(e)}`; }
+  return { messages: [], note: `ETF 收盘基准${baseOk ? "已更新" : "失败"}${baseFailure}；份额快照 ${count} 只；${historyNote}` };
 }

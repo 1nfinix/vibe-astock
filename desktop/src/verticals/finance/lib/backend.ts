@@ -439,6 +439,8 @@ export const backend = {
     call<T>("/view/shortline_watch", { method: "POST", signal, body: JSON.stringify({ action: "poll" }) }),
   etfTurnoverPoll: <T>(signal?: AbortSignal) =>
     call<T>("/view/shortline_etf_turnover", { method: "POST", signal, body: JSON.stringify({ action: "poll" }) }),
+  etfTurnoverShareHistory: <T>() =>
+    call<T>("/view/shortline_etf_turnover", { method: "POST", body: JSON.stringify({ action: "share_history" }) }),
   etfTurnoverSetWatch: <T>(codes: string[]) =>
     call<T>("/view/shortline_etf_turnover", { method: "POST", body: JSON.stringify({ action: "set_watch", codes }) }),
   /** 盯盘 · 竞价与盘中路径:某天的时点快照、09:25 竞价、昨晚验证条件的盘中读数(不给日期 = 今天) */

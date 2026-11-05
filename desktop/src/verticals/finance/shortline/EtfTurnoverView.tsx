@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
+import { EtfShareCharts, type ShareHistoryData } from "./EtfShareCharts";
 
 export interface EtfItem {
   code: string; name: string; index: string; group: "core" | "watch"; huijin_yi: number | null;
@@ -49,8 +50,8 @@ function Bars({ values }: { values: number[] }) {
   </div>;
 }
 
-export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRefresh, onSetWatch, busy = false, saveError = null, error = null }: {
-  view: EtfTurnoverViewData; onRefresh?: () => void; autoRefresh?: boolean; onAutoRefresh?: (on: boolean) => void;
+export function EtfTurnoverView({ view, shareHistory = null, onRefresh, autoRefresh = true, onAutoRefresh, onSetWatch, busy = false, saveError = null, error = null }: {
+  view: EtfTurnoverViewData; shareHistory?: ShareHistoryData | null; onRefresh?: () => void; autoRefresh?: boolean; onAutoRefresh?: (on: boolean) => void;
   onSetWatch?: (codes: string[]) => void; busy?: boolean; saveError?: string | null; error?: string | null;
 }) {
   const [sort, setSort] = useState<Sort>("huijin");
@@ -116,6 +117,7 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
         <div><p className="text-[12px] text-muted-foreground">加权涨跌</p><strong className={`font-mono text-lg font-semibold tabular-nums ${colored(view.totals.weighted_pct)}`}>{view.totals.weighted_pct === null ? "—" : `${signed(view.totals.weighted_pct)}%`}</strong><p className="text-[11px] text-muted-foreground">规模加权 · {weekday(view.quote_date || view.date)}</p></div>
       </div><p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">名单为 2025 年报历史标签，非当前持仓；所有结论均为量价推测。 <a href="#etf-methodology" className="underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-primary/50">查看口径说明</a></p>
     </section>
+    <EtfShareCharts data={shareHistory} />
     <div className="flex flex-wrap items-center gap-2 text-[12px]">
       <div role="group" aria-label="范围" className="inline-flex h-8 w-full max-w-full items-center gap-1 rounded-lg border border-border/60 p-0.5 text-[12px] sm:w-auto">{([["all", "全部"], ["core", "仅汇金历史组"], ["watch", "仅扩展观察"]] as const).map(([key, label]) => <button key={key} type="button" aria-pressed={scope === key} onClick={() => setScope(key)} className={`h-full rounded-md px-2 focus-visible:ring-2 focus-visible:ring-primary/50 ${scope === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}</div>
       <div className="flex w-full min-w-0 items-center gap-2 sm:contents"><label className="inline-flex h-8 min-w-0 items-center gap-1 whitespace-nowrap">排序 <select aria-label="排序" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="h-8 max-w-[11rem] rounded-md border border-border bg-background px-2 text-[12px] focus-visible:ring-2 focus-visible:ring-primary/50 sm:max-w-[15rem]"><option value="huijin">汇金历史持仓 → 规模优先</option><option value="amount">今日成交额</option><option value="ratio">放量倍数</option><option value="net">主动净买入</option><option value="mktcap">最新规模</option></select></label>
@@ -135,7 +137,7 @@ export function EtfTurnoverView({ view, onRefresh, autoRefresh = true, onAutoRef
       <p>名单是绝版历史数据。汇金历史组依据 Wind 2025 年报前十大持有人口径，相关年报于 2026 年 3 月披露。证监会于 2026-03-13 发布修订后的<a href="https://www.csrc.gov.cn/csrc/c101954/c7619929/content.shtml" target="_blank" rel="noreferrer" className="underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-primary/50">定期报告内容与格式准则</a>，2026-05-01 施行，删除列示前十名持有人的强制条款。2026 中报、三季报不再按旧口径披露实名名单，仅保留匿名「单一投资者持有比例达到或超过 20%」的提示。这份名单不能用于判断当前持仓。</p>
       <p>主动净买入是二级市场主动买卖盘的替代指标，不代表汇金或任何机构的交易；一级市场申赎依赖基金份额变化，通常需 T+1 才能观察。</p>
       <h4 className="mt-4 text-[13px] font-medium text-foreground">数据口径</h4><p>日内成交额分布：从前 20 个完整交易日的 5 分钟 K 线，逐日计算累计成交额占全天比例，再对每个时点取均值；午休维持 11:30 的进度。</p><p>成交额、涨跌、规模和份额来自腾讯实时行情。成交额由万元换算为亿元；规模、份额及涨跌以接口返回字段为准，可能延迟或缺失。</p><p>20 日均额：取新浪日 K 的成交量 × (开盘价 + 最高价 + 最低价 + 收盘价) ÷ 4，再将前 20 个完整交易日成交额平均，单位亿元。2026-11-03 的 510300 对账中，该口径与原页均额及末两日历史值一致。</p><p>盘中怎么比才可比：分母 = 各标的 20 日均额 × 其历史同时点进度，再加总；收盘或旧日行情与全天均额直接比较。放量 1.8× 为强信号阈值，1.3× 为温和放量阈值，只描述已发生的现象。</p><p>尾盘占比：尾盘半小时成交额占全天成交额，与前 20 个完整交易日的平均尾盘占比比较；只有已取得完整当日 5 分钟 K 线时才展示。</p>
-      <h4 className="mt-4 text-[13px] font-medium text-foreground">名单补充依据</h4><p>固定 20 只名单参考国信证券《中国机构配置手册(2026版)之ETF篇》整理；510300「735.13 亿份、占 82.76%」的历史报道可作为交叉核对。新规第三十一条要求披露持有人户数、机构与个人持有份额及比例等汇总信息，不再强制列示前十大持有人。「1.3–1.4 万亿元」为不同公开资料的交叉测算，并非官方汇金持仓数据。</p>
+      <p>每日份额变化 / 份额指数（图表）：使用上交所 ETF 规模、深交所基金规模的官方每日份额，通常 T 日晚或 T+1 更新。每日变化为固定 20 只份额变化之和，指数以所选区间首日总份额为 100；缺数按前值顺延。份额变化可能来自任何投资者，不能推断汇金或任何机构的操作；定期报告已停止披露前十大持有人，期初持仓不可验证。</p><h4 className="mt-4 text-[13px] font-medium text-foreground">名单补充依据</h4><p>固定 20 只名单参考国信证券《中国机构配置手册(2026版)之ETF篇》整理；510300「735.13 亿份、占 82.76%」的历史报道可作为交叉核对。新规第三十一条要求披露持有人户数、机构与个人持有份额及比例等汇总信息，不再强制列示前十大持有人。「1.3–1.4 万亿元」为不同公开资料的交叉测算，并非官方汇金持仓数据。</p>
       <p>扩展观察组可编辑，仅用于对照，不计入固定名单的合计与判断；2025 年报未见其汇金持仓，名单之后停止更新，不能据此推断当前持仓。</p><p>更新方式：交易日收盘后 15:35 自动更新历史基准与份额快照；盘中按盯盘刷新节奏读取本机 API。</p><p>本页结论基于公开行情的量价特征推测，不能证明任何机构当日是否交易；数据来自第三方公开接口，可能存在延迟、缺失或口径差异，以基金公司公告与交易所披露为准；不构成投资建议。</p>
       </div>
     </section>

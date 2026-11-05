@@ -370,7 +370,10 @@
       "title": "全市场龙虎榜",
       "layer": "3 信号",
       "function": "daily_dragon_tiger",
-      "args": { "trade_date": null, "min_net_buy": null },
+      "args": {
+        "trade_date": null,
+        "min_net_buy": null
+      },
       "mapper": "em_daily_dragon_tiger",
       "endpoint_label": "datacenter/RPT_DAILYBILLBOARD_DETAILSNEW 全市场"
     },
@@ -3818,7 +3821,9 @@
       "function": "build_ladder",
       "mapper": "shortline_ladder_map",
       "endpoint_label": "push2ex 前一交易日涨停池 → previous_ladder",
-      "args": { "date": null },
+      "args": {
+        "date": null
+      },
       "notes": "计算型端点,移植自 Vibe AStock v2.0.0 vr/previous_ladder;date = 盯的那一场(行情日),不给 = 今天(非交易日用最近一个交易日)。不改用其他日期的名单;涨停池为空不当 0 只(东财只留约一个月)。约 1 次东财请求;样本日已收盘,结果不变、长期缓存。界面「盯盘」用它圈昨日梯队,行情和封板状态由界面另取"
     },
     {
@@ -3844,7 +3849,10 @@
       "function": "build_turnover_top",
       "mapper": "shortline_turnover_top_map",
       "endpoint_label": "通达信官网盘后包(全市场日线) → 按成交额排序",
-      "args": { "date": null, "top": 10 },
+      "args": {
+        "date": null,
+        "top": 10
+      },
       "notes": "计算型端点,替代 Vibe AStock v2.0.0 盯盘的「昨日成交前十」(VA 用东财列表接口当天收盘自己存快照,首日只能拿实时榜暂代)。date 缺省 = 最近一个盘后包已发布的交易日(当天 17 点后才有);只算沪深京 A 股号段(B 股、指数、基金、债券不算)。下载约 2.7MB、约 10 秒;已发布的日子结果不变、长期缓存。字段名与 em_turnover_rank 相同"
     },
     {
@@ -3867,7 +3875,9 @@
       "function": "build_bigcaps",
       "mapper": "shortline_bigcaps_map",
       "endpoint_label": "新浪 Market_Center.getHQNodeData hs_a 按 mktcap 降序翻页",
-      "args": { "min_cap_yi": 500 },
+      "args": {
+        "min_cap_yi": 500
+      },
       "cache_max_age_sec": 3600,
       "notes": "计算型端点,替代 Vibe AStock v2.0.0 盯盘的「500 亿大票」池(VA 用东财列表接口,09-22 起成片失败)。只出名单和总市值,价格涨跌由界面另取实时行情。每页 100 只,500 亿约 4 页、20 秒左右;盘中翻页期间排名在变,页边界附近个别票可能漏掉(重复已去掉)。缓存最多 1 小时"
     },
@@ -4532,6 +4542,33 @@
       },
       "cache_max_age_sec": 15,
       "notes": "实时行情；仅公开市场数据，不含个人交易"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "szse",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mappers_shortline",
+      "module": "etf_turnover",
+      "id": "cn_etf_share_history_sz",
+      "title": "深交所 ETF 历史份额",
+      "layer": "10 情绪",
+      "function": "szse_fund_share_history",
+      "mapper": "etf_share_history_sz_map",
+      "endpoint_label": "深交所基金规模历史",
+      "args": {
+        "code": null,
+        "start": null,
+        "end": null
+      },
+      "cache_max_age_sec": 3600,
+      "notes": "159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份"
     }
   ]
 }

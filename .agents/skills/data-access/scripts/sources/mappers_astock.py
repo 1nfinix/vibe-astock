@@ -243,7 +243,7 @@ def etf_shares_map(result, ctx: dict) -> dict:
         evs += _fields(c, r, [("shares_10k", "etf_shares", "万份")], day, record_key=f"{ex}:{r.get('code')}", note=f"{r.get('name')}{sz_note}")
     unmatched = attrs.get("unmatched_codes") or []
     return out(evs, status="partial" if unmatched else None, degraded=f"没有匹配:{','.join(unmatched)}" if unmatched else None,
-               extra={"exchange": ex, "total_rows": attrs.get("total_rows", len(rows)), "unmatched_codes": unmatched})
+               extra={"exchange": ex, "total_rows": attrs.get("total_rows", len(rows)), "unmatched_codes": unmatched, **({"result": {"rows": rows}} if ctx["args"].get("codes") else {})})
 
 
 def margin_trading_backup_map(result, ctx: dict) -> dict:

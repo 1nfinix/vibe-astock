@@ -41,7 +41,7 @@ test("宽基 ETF 量价：默认顺序、合计、份额状态与缺数可见", 
     assert.match(text, /科创50ETF华夏.*—/);
     assert.match(text, /腾讯接口超时/);
     assert.match(text, /扩展观察组可编辑，仅用于对照，不计入固定名单的合计与判断/);
-    assert.doesNotMatch(text, /汪汪队|上班|国家队买了|投顾内部/);
+    assert.doesNotMatch(text, /汪汪队|国家队|上班|加仓|护盘/);
   });
 });
 
@@ -98,5 +98,25 @@ test("合计行在有标的缺数时写明覆盖只数", async () => {
     const { EtfTurnoverView } = await r.load("/src/verticals/finance/shortline/EtfTurnoverView.tsx");
     assert.match(textOf(r.html(EtfTurnoverView, { view: { ...view, covered_count: 19 } })), /汇金历史组合计\s*19\/20 只有数/);
     assert.match(textOf(r.html(EtfTurnoverView, { view: { ...view, covered_count: 20 } })), /汇金历史组合计\s*20 只/);
+  });
+});
+
+test("份额图展示标题、口径、区间及同步和失败状态", async () => {
+  await withRenderer(async (r) => {
+    const { EtfShareCharts } = await r.load("/src/verticals/finance/shortline/EtfShareCharts.tsx");
+    const base = { from: "2026-11-02", to: "2026-11-03", days: 2, missing: [], ranges: { "60": null, "120": null, "242": null } };
+    const syncing = textOf(r.html(EtfShareCharts, { data: { ...base, status: "syncing" } }));
+    assert.match(syncing, /固定名单每日份额变化.*近3月.*近6月.*近1年/);
+    assert.match(syncing, /份额历史同步中，首次约需 1–2 分钟/);
+    assert.match(syncing, /固定名单份额指数/);
+    assert.match(syncing, /区间首日 = 100/);
+    assert.match(textOf(r.html(EtfShareCharts, { data: { ...base, status: "failed", reason: "官方接口超时" } })), /官方接口超时/);
+    assert.match(textOf(r.html(EtfShareCharts, { data: { ...base, status: "empty" } })), /至少需要两个交易日/);
+    const points = { deltas: [{ date: "2026-11-03", d: 1 }], index: [{ date: "2026-11-02", v: 100 }, { date: "2026-11-03", v: 101 }] };
+    const ready = textOf(r.html(EtfShareCharts, { data: { ...base, status: "ready", ranges: { "60": points, "120": points, "242": points } } }));
+    assert.match(ready, /区间 2026-11-03 ~ 2026-11-03（1 个交易日）/);
+    const partial = textOf(r.html(EtfShareCharts, { data: { ...base, status: "ready", missing: [{ code: "510300", date: "2026-11-03", reason: "官方接口超时" }], ranges: { "60": points, "120": points, "242": points } } }));
+    assert.match(partial, /缺数 1 处：2026-11-03 510300 官方接口超时/);
+    assert.doesNotMatch(ready, /汪汪队|国家队|上班|加仓|护盘/);
   });
 });

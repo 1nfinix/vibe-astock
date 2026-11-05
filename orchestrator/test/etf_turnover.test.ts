@@ -165,7 +165,7 @@ test("实时端点返回失败时保留上一轮读数并标记连接断开", as
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
-test("收盘作业 fresh 取数，只写份额快照", async () => {
+test("收盘作业 fresh 取数并同步官方份额历史", async () => {
   assert.ok(FINANCE_SCHEDULE.jobs.some((x) => x.id === "etf_turnover_close" && x.at === "15:35"));
   const folder = root();
   try {
@@ -173,7 +173,9 @@ test("收盘作业 fresh 取数，只写份额快照", async () => {
     const tracked = async (c: ServiceContext, req: { endpoint: string; consistency?: { mode: string } }) => { calls.push(`${req.endpoint}:${req.consistency?.mode}`); return fetch(c, req); };
     const result = await etfTurnoverClose({ ctx: ctx(folder), day: "2026-10-12", now: new Date(), signal, state: undefined, manual: true }, tracked);
     assert.match(result.note ?? "", /份额快照 20 只/);
-    assert.deepEqual(calls, ["cn_etf_turnover_baseline:fresh", "cn_etf_turnover_baseline:fresh", "cn_etf_turnover_live:fresh"]);
+    assert.match(result.note ?? "", /今日官方份额尚未全部发布/);
+    assert.deepEqual(calls.slice(0, 3), ["cn_etf_turnover_baseline:fresh", "cn_etf_turnover_baseline:fresh", "cn_etf_turnover_live:fresh"]);
+    assert.equal(calls.filter((x) => x.startsWith("cn_etf_share_history_sz:")).length, CORE_CODES.filter((x) => x.startsWith("159")).length);
     assert.equal(previousShares(folder, "2026-10-13").shares["510300"], 2);
     assert.equal(fs.existsSync(path.join(folder, "ledger")), false);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }

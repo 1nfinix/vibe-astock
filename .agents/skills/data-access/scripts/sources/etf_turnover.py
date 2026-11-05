@@ -123,3 +123,73 @@ def build_etf_turnover_live(extra_codes=None):
                       "shares": None if quote.get("shares") is None else quote["shares"] / 1e8, "outer_lots": quote.get("outer_lots"),
                       "inner_lots": quote.get("inner_lots"), "quote_time": quote.get("quote_time")})
     return {"date": _day(), "items": items, "missing": missing}
+
+
+
+def szse_fund_share_history(code=None, start=None, end=None):
+    """深交所基金规模历史，按 80 天分段、逐页核对，返回升序亿份。"""
+    import math
+    import time
+    from datetime import date, timedelta
+    from sources._http import http_get
+
+    if not isinstance(code, str) or not re.fullmatch(r"159\d{3}", code):
+        raise ValueError("深交所份额历史只接受 159 开头的六位代码")
+    try:
+        begin, finish = date.fromisoformat(start), date.fromisoformat(end)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("日期必须为 YYYY-MM-DD") from exc
+    if begin.isoformat() != start or finish.isoformat() != end or begin > finish:
+        raise ValueError("日期范围无效")
+    rows, requests = [], 0
+    window_start = begin
+    while window_start <= finish:
+        window_end = min(finish, window_start + timedelta(days=79))
+        first, page, part = None, 1, []
+        while True:
+            if requests:
+                time.sleep(0.3)
+            requests += 1
+            response = http_get("https://fund.szse.cn/api/report/ShowReport/data",
+                                params={"SHOWTYPE": "JSON", "CATALOGID": "fund_jjgm", "TABKEY": "tab1",
+                                        "loading": "first", "txtDm": code, "txtStart": window_start.isoformat(),
+                                        "txtEnd": window_end.isoformat(), "PAGENO": page},
+                                headers={"Referer": "https://fund.szse.cn/"}, timeout=20, ext="json")
+            response.raise_for_status()
+            payload = response.json()
+            table = payload[0] if isinstance(payload, list) and len(payload) == 1 else None
+            meta = table.get("metadata") if isinstance(table, dict) else None
+            data = table.get("data") if isinstance(table, dict) else None
+            if not isinstance(meta, dict) or not isinstance(data, list):
+                raise RuntimeError(f"深交所基金规模第 {page} 页结构异常")
+            try:
+                counts = tuple(int(meta[k]) for k in ("pagecount", "recordcount", "pagesize"))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise RuntimeError("深交所基金规模分页信息异常") from exc
+            if counts[0] < 0 or counts[1] < 0 or counts[2] < 1 or (counts[1] and (counts[0] < 1 or not data)):
+                raise RuntimeError("深交所基金规模分页信息与数据不符")
+            if first is None:
+                first = counts
+            elif counts != first:
+                raise RuntimeError("深交所基金规模翻页期间记录数变化")
+            for row in data:
+                if not isinstance(row, dict) or row.get("fund_code") != code:
+                    raise RuntimeError("深交所基金规模返回其他代码或异常记录")
+                try:
+                    day = date.fromisoformat(row["size_date"]).isoformat()
+                    shares = float(str(row["current_size"]).replace(",", "")) / 1e4
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise RuntimeError("深交所基金规模日期或份额格式异常") from exc
+                if day < window_start.isoformat() or day > window_end.isoformat() or not math.isfinite(shares) or shares < 0:
+                    raise RuntimeError("深交所基金规模日期或份额越界")
+                part.append({"date": day, "shares_yi": shares})
+            if page >= max(first[0], 1):
+                break
+            page += 1
+        if len(part) != first[1]:
+            raise RuntimeError(f"深交所基金规模取到 {len(part)} 条，与自报 {first[1]} 条不符")
+        rows.extend(part)
+        window_start = window_end + timedelta(days=1)
+    if len({r["date"] for r in rows}) != len(rows):
+        raise RuntimeError("深交所基金规模日期重复")
+    return sorted(rows, key=lambda r: r["date"])
