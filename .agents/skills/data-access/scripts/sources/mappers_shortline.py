@@ -16,6 +16,7 @@ import sys
 from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common import today_str  # noqa: E402
 from sources.mappers import empty, ev, out  # noqa: E402
 from sources.shortline_boards import render_board_ladder, render_theme_rotation  # noqa: E402
 from sources.shortline_emotion import render_cycle, render_daily, render_metrics, render_settled  # noqa: E402
@@ -609,3 +610,59 @@ def etf_share_history_sz_map(result: list[dict], ctx: dict) -> dict:
            for row in result]
     return out(evs, extra={"result": {"code": ctx["args"]["code"], "rows": result},
                            **({"note": "区间内暂无新记录"} if not result else {})}, status="ok")
+
+
+def etf_minute_batch_map(result: dict, ctx: dict) -> dict:
+    day = result["date"]
+    evs = [ev(ctx, "etf_minute_success_count", result["success_count"], "只", day)]
+    for code, item in result["items"].items():
+        evs.append(ev(ctx, "etf_turnover_yi", round(sum(item["amount_yi"]), 6), "亿元", day, record_key=code,
+                      note="分钟成交量×OHLC均价之和"))
+    total = result["total"]["amount_yi"]
+    if total is not None and all(v is not None for v in total):
+        evs.append(ev(ctx, "etf_basket_turnover_yi", round(sum(v for v in total if v is not None), 6), "亿元", day,
+                      note=result["total"]["reason"] or "20只篮子全部成功"))
+    missing = [{"field": x["code"], "period": day, "reason": x["reason"]} for x in result["missing"]]
+    if total is None or any(v is None for v in total):
+        missing.append({"field": "etf_basket_turnover_yi", "period": day, "reason": result["total"]["reason"]})
+    elif result["total"]["reason"]:
+        missing.append({"field": "etf_basket_coverage", "period": day, "reason": result["total"]["reason"]})
+    computation = {"kind": "computed_endpoint", "library": "sources.etf_flow.cn_etf_minute_batch",
+                   "formula": "成交量×OHLC均价，ETF逐分钟相加；低于80%不出合计",
+                   "input_raw_refs": [r["raw_ref"] for r in ctx.get("raws", []) if r.get("raw_ref")]}
+    return out(evs, extra={"result": result, "computation": computation}, missing=missing,
+               status="failed" if result["success_count"] == 0 else "partial" if missing else "ok")
+
+
+def etf_minute_hist_map(result: dict, ctx: dict) -> dict:
+    evs, missing = [], []
+    for day in result["days"]:
+        total = day["total"]["amount_yi"]
+        if total is not None and all(v is not None for v in total):
+            evs.append(ev(ctx, "etf_basket_turnover_yi", round(sum(v for v in total if v is not None), 6), "亿元",
+                          day["date"], note=day["total"]["reason"] or "篮子全部成功"))
+        else:
+            missing.append({"field": "etf_basket_turnover_yi", "period": day["date"], "reason": day["total"]["reason"]})
+        if total is not None and day["total"]["reason"]:
+            missing.append({"field": "etf_basket_coverage", "period": day["date"], "reason": day["total"]["reason"]})
+        missing.extend({"field": x["code"], "period": day["date"], "reason": x["reason"]} for x in day["missing"])
+    computation = {"kind": "computed_endpoint", "library": "sources.etf_flow.cn_etf_minute_hist",
+                   "formula": "成交量×OHLC均价，ETF逐5分钟相加；低于80%不出合计",
+                   "input_raw_refs": [r["raw_ref"] for r in ctx.get("raws", []) if r.get("raw_ref")]}
+    return out(evs, extra={"result": result, "computation": computation}, missing=missing,
+               status="partial" if missing and evs else "failed" if not evs else "ok")
+
+
+def broad_etf_universe_map(result: dict, ctx: dict) -> dict:
+    evs = [ev(ctx, "broad_etf_count", count, "只", today_str(), record_key=category)
+           for category, count in result["counts"].items()]
+    return out(evs, extra={"result": result}, status="ok")
+
+
+def etf_share_history_sh_map(result: dict, ctx: dict) -> dict:
+    from collections import Counter
+    counts = Counter(row["date"] for row in result["rows"])
+    evs = [ev(ctx, "etf_share_count", count, "只", day) for day, count in sorted(counts.items())]
+    missing = [{"field": "etf_shares", "period": x["date"], "reason": x["reason"]} for x in result["failed"]]
+    return out(evs, extra={"result": result}, missing=missing,
+               status="partial" if missing and evs else "failed" if not evs else "ok")

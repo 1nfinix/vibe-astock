@@ -4559,6 +4559,38 @@
       },
       "cache_max_age_sec": 3600,
       "notes": "159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份"
+    },
+    {
+      "id": "cn_etf_minute_batch", "title": "宽基 ETF 篮子当日 1 分钟成交额与上证综指", "layer": "10 情绪",
+      "market": ["CN"], "source": "sina+calc", "compliance": "cn-public", "symbol_kind": "none",
+      "stages": {}, "enabled": true, "computed": true, "libs": [], "mapper_module": "mappers_shortline",
+      "module": "etf_flow", "function": "cn_etf_minute_batch", "mapper": "etf_minute_batch_map",
+      "endpoint_label": "新浪 1 分钟 K", "args": {"extra_codes": null}, "cache_max_age_sec": 60,
+      "notes": "固定 20 只篮子；亿元；指数最新 K 线日期为准；ETF 成功率低于 80% 不给合计"
+    },
+    {
+      "id": "cn_etf_minute_hist", "title": "宽基 ETF 篮子历史 5 分钟成交额", "layer": "10 情绪",
+      "market": ["CN"], "source": "sina+calc", "compliance": "cn-public", "symbol_kind": "none",
+      "stages": {}, "enabled": true, "computed": true, "libs": [], "mapper_module": "mappers_shortline",
+      "module": "etf_flow", "function": "cn_etf_minute_hist", "mapper": "etf_minute_hist_map",
+      "endpoint_label": "新浪 5 分钟 K", "args": {"days": 20, "extra_codes": null}, "cache_max_age_sec": 3600,
+      "notes": "最多回溯新浪 1023 根 5 分钟 K；按交易日分组；逐日 ETF 成功率低于 80% 不给合计"
+    },
+    {
+      "id": "cn_broad_etf_universe", "title": "沪深交易所宽基 ETF 名录", "layer": "10 情绪",
+      "market": ["CN"], "source": "sse+szse", "compliance": "cn-public", "symbol_kind": "none",
+      "stages": {}, "enabled": true, "computed": false, "libs": [], "mapper_module": "mappers_shortline",
+      "module": "etf_flow", "function": "cn_broad_etf_universe", "mapper": "broad_etf_universe_map",
+      "endpoint_label": "沪深交易所基金列表", "args": {}, "cache_max_age_sec": 86400,
+      "notes": "跟踪指数精确白名单分类 12 类；无匹配指数的行业、主题、策略、跨境、债券等排除；名录不完整时报错"
+    },
+    {
+      "id": "cn_etf_share_history_sh", "title": "上交所 ETF 历史份额批量回填", "layer": "10 情绪",
+      "market": ["CN"], "source": "sse", "compliance": "cn-public", "symbol_kind": "none",
+      "stages": {}, "enabled": true, "computed": false, "libs": [], "mapper_module": "mappers_shortline",
+      "module": "etf_flow", "function": "cn_etf_share_history_sh", "mapper": "etf_share_history_sh_map",
+      "endpoint_label": "上交所逐日 ETF 份额", "args": {"start": null, "end": null}, "cache_max_age_sec": 86400,
+      "notes": "工作日逐日查询；节假日或单日失败记录 failed，不中断整个区间；份额万份"
     }
   ]
 }

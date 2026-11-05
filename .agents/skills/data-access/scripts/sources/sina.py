@@ -267,9 +267,9 @@ def sina_board_flow(board_type: str = "industry") -> dict:
 
 
 def sina_kline(symbol: str, scale: int, datalen: int) -> list[dict]:
-    """新浪 ETF 日线或 5 分钟线，保留原始时间。"""
-    if scale not in (5, 240) or not 1 <= datalen <= 1023:
-        raise ValueError("scale 只支持 5/240，datalen 为 1..1023")
+    """新浪 ETF/指数 1 分钟、5 分钟或日线，保留原始时间。"""
+    if scale not in (1, 5, 240) or not 1 <= datalen <= 1023:
+        raise ValueError("scale 只支持 1/5/240，datalen 为 1..1023")
     code = _sina_symbol(symbol)
     url = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
     response = http_get(url, params={"symbol": code, "scale": scale, "ma": "no", "datalen": datalen},
