@@ -4597,8 +4597,8 @@
       "market": ["CN"], "source": "sina+baostock", "compliance": "cn-public", "symbol_kind": "none",
       "stages": {}, "enabled": true, "computed": true, "libs": [], "mapper_module": "mappers_shortline",
       "module": "etf_flow", "function": "cn_etf_daily_batch", "mapper": "etf_daily_batch_map",
-      "endpoint_label": "新浪日 K + baostock 日成交额", "args": {"codes": null, "start": null, "end": null, "include_index": false}, "cache_max_age_sec": 86400,
-      "notes": "每批最多 50 只 ETF；收盘价来自新浪，真实日成交额来自 baostock 不复权日线 amount（元÷1亿）；逐只逐日缺额标空，不以 OHLC 估算回填"
+      "endpoint_label": "新浪日 K + baostock 日成交额", "args": {"codes": null, "start": null, "end": null, "include_index": false, "with_amount_codes": null}, "cache_max_age_sec": 86400,
+      "notes": "每批最多 50 只 ETF；全部取新浪收盘价，仅 with_amount_codes（默认全部 codes）取 baostock 不复权日线真实 amount（元÷1亿）；指定代码逐日缺额标空，不以 OHLC 估算回填"
     }
   ]
 }

@@ -27,7 +27,6 @@ const compact = (d: string) => d.replaceAll("-", "");
 const dailyMemory = new Map<string, { date: string; at: number; value: DailyResult }>();
 const dailyPending = new Map<string, Promise<DailyResult>>();
 const DAILY_SOURCE = "baostock 不复权日线真实成交额；新浪日 K 收盘价；交易所份额变动×当日收盘价";
-let dailyBasisPrimed = false;
 type DailyResult = Awaited<ReturnType<typeof computeDaily>>;
 
 /** 上午 121 槽含 09:30，下午 120 槽从 13:01 开始。 */
@@ -92,12 +91,19 @@ function archives(root: string): Raw[] {
   });
 }
 async function requireResult(ctx: ServiceContext, endpoint: string, fetch: Fetch, signal: AbortSignal, args?: Record<string, unknown>, fresh = false): Promise<Raw> {
-  const r = await fetch(ctx, { endpoint, ...(args ? { args } : {}), signal,
-    consistency: fresh ? { mode: "fresh" } : { mode: "prefer_cache", max_age_ms: endpoint === "cn_broad_etf_universe" ? 86_400_000
-      : endpoint === "cn_etf_daily_batch" ? 6 * 60 * 60_000 : 60_000 } });
-  const data = result(r.envelope);
-  if (!data) throw new Error(`${endpoint}：${failedNote(r.envelope) || "源无数据"}`);
-  return data;
+  const get = async (force: boolean) => {
+    const r = await fetch(ctx, { endpoint, ...(args ? { args } : {}), signal,
+      consistency: force ? { mode: "fresh" } : { mode: "prefer_cache", max_age_ms: endpoint === "cn_broad_etf_universe" ? 86_400_000
+        : endpoint === "cn_etf_daily_batch" ? 6 * 60 * 60_000 : 60_000 } });
+    const data = result(r.envelope);
+    if (!data) throw new Error(`${endpoint}：${failedNote(r.envelope) || "源无数据"}`);
+    return data;
+  };
+  const data = await get(fresh);
+  if (endpoint !== "cn_etf_daily_batch" || data.amount_basis) return data;
+  const updated = fresh ? data : await get(true);
+  if (!updated.amount_basis) throw new Error("cn_etf_daily_batch：缺少真实成交额口径标记");
+  return updated;
 }
 function sessionPollMs(phase: ReturnType<typeof phaseOf>, trading: boolean): number {
   return trading && ["morning", "afternoon", "closing_auction"].includes(phase) ? 60_000 : 300_000;
@@ -109,7 +115,7 @@ export async function etfFlowPoll(ctx: ServiceContext, signal: AbortSignal, fetc
     requireResult(ctx, "cn_etf_minute_batch", fetch, signal),
     requireResult(ctx, "cn_broad_etf_universe", fetch, signal).catch(() => null),
     requireResult(ctx, "cn_etf_turnover_live", fetch, signal, { extra_codes: [...BASKET] }).catch(() => null),
-    requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: [...BASKET], include_index: true }).catch(() => null),
+    requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: [...BASKET], with_amount_codes: [...BASKET], include_index: true }).catch(() => null),
   ]);
   const date = str(minute.date), isToday = !!facts?.is_today_trading_day && date === clock.day && !["pre_open", "auction", "weekend"].includes(phase);
   const total = obj(minute.total), times = strings(total?.times), amounts = nums(total?.amount_yi);
@@ -258,11 +264,14 @@ async function computeDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fet
   const universe = arr(universeRaw.items).map((r) => ({ code: str(r.code), name: str(r.name), category: str(r.category), exchange: str(r.exchange) }))
     .filter((r) => r.code && (CATEGORIES as readonly string[]).includes(r.category));
   const codes = [...new Set([...BASKET, ...universe.map((r) => r.code)])];
+  const basket = new Set<string>(BASKET);
   const source = new Map<string, Map<string, DailyBar>>();
   const failedCodes = new Set<string>();
   let indexRows: Raw[] = [];
   for (let i = 0; i < codes.length; i += 50) {
-    const data = await requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: codes.slice(i, i + 50), include_index: i === 0 }, fresh || !dailyBasisPrimed);
+    const batch = codes.slice(i, i + 50);
+    const data = await requireResult(ctx, "cn_etf_daily_batch", fetch, signal,
+      { codes: batch, with_amount_codes: batch.filter((code) => basket.has(code)), include_index: i === 0 }, fresh);
     if (i === 0) indexRows = arr(data.index);
     for (const missing of arr(data.missing)) if (str(missing.code) && !str(missing.date)) failedCodes.add(str(missing.code));
     for (const [code, raw] of Object.entries(obj(data.items) ?? {})) {
@@ -274,7 +283,6 @@ async function computeDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fet
       source.set(code, bars);
     }
   }
-  dailyBasisPrimed = true;
   const index = new Map(indexRows.flatMap((r) => { const d = str(r.date), v = num(r.close); return d && v !== null ? [[d, v] as const] : []; }));
   const dates = [...index.keys()].filter((d) => d <= today).sort().slice(-750);
   if (!dates.length) throw new Error("上证综指日线没有可用交易日");

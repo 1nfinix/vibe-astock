@@ -273,8 +273,8 @@ def cn_etf_share_history_sh(start=None, end=None, dates=None):
     return result
 
 
-def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
-    """新浪日 K 收盘价 + baostock 不复权日线真实成交额；缺额逐日标空。"""
+def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False, with_amount_codes=None):
+    """新浪日 K 收盘价；指定代码另取 baostock 真实日成交额。"""
     if (not isinstance(codes, list) or not codes or len(codes) > 50
             or any(not isinstance(c, str) or not re.fullmatch(r"(?:5\d{5}|15\d{4})", c) for c in codes)):
         raise ValueError("codes 必须是 1..50 只沪深 ETF 六位代码")
@@ -289,6 +289,13 @@ def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
         raise ValueError("start/end 日期范围无效")
     if not isinstance(include_index, bool):
         raise ValueError("include_index 必须是布尔值")
+    if with_amount_codes is None:
+        with_amount_codes = codes
+    if (not isinstance(with_amount_codes, list)
+            or any(not isinstance(c, str) or c not in codes for c in with_amount_codes)
+            or len(set(with_amount_codes)) != len(with_amount_codes)):
+        raise ValueError("with_amount_codes 必须是不重复的 codes 子集")
+    amount_codes = set(with_amount_codes)
     items, missing = {}, []
     for code in codes:
         try:
@@ -297,6 +304,9 @@ def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
                     for b in bars if (not start or b["day"][:10] >= start) and (not end or b["day"][:10] <= end)]
             if not rows:
                 raise ValueError("日期区间无日 K")
+            if code not in amount_codes:
+                items[code] = rows
+                continue
             try:
                 dates = [r["date"] for r in rows]
                 amounts = {r["date"]: r["amount"] for r in baostock_kdata(

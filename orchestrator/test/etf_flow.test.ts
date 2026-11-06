@@ -28,6 +28,7 @@ const fake = (day = "2026-11-05", trading = true) => async (_ctx: ServiceContext
   if (req.endpoint === "cn_broad_etf_universe") return { envelope: env({ items: BASKET.map((code) => ({ code, name: `基金${code}`, category: "沪深300", exchange: "SH" })) }) };
   if (req.endpoint === "cn_etf_turnover_live") return { envelope: env({ items: BASKET.map((code) => ({ code, name: code, pct: 1, quote_time: "20261105093100" })) }) };
   if (req.endpoint === "cn_etf_daily_batch") return { envelope: env({
+    amount_basis: "baostock 不复权日线成交额（元）",
     index: ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 3000 })),
     items: Object.fromEntries(BASKET.map((code) => [code, ["2026-11-03", "2026-11-04"].map((date) => ({ date, close: 1, amount_yi: 1 }))])), missing: [],
   }) };
@@ -79,7 +80,7 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.equal(old.is_today, false);
     assert.equal(old.ranking[0]?.pct, 100, "盘前保留上一交易日的实际涨跌幅");
     const noPrior = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_daily_batch"
-      ? { envelope: env({ index: [{ date: "2026-11-05", close: 3000 }], items: {}, missing: [] }) }
+      ? { envelope: env({ amount_basis: "baostock 不复权日线成交额（元）", index: [{ date: "2026-11-05", close: 3000 }], items: {}, missing: [] }) }
       : fake()(c, req);
     const noPriorPoll = await etfFlowPoll(ctx(folder), signal, noPrior as never, now);
     assert.equal(noPriorPoll.ranking[0]?.pct, null);
@@ -93,6 +94,22 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.equal(beforeOpen.comparison.date, "2026-11-04"); assert.equal(beforeOpen.average20.n, 2);
     assert.equal(beforeOpen.today.every((x) => x === null), true);
     await assert.rejects(etfFlowCum(ctx(folder), "2026-11-06", signal, fake() as never, now), /对比日/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("旧日线缓存缺少成交额口径时仅该请求重新取数", async () => {
+  const folder = root();
+  try {
+    const modes: string[] = [];
+    const fetch = async (c: ServiceContext, req: { endpoint: string; consistency?: { mode: string } }) => {
+      if (req.endpoint === "cn_etf_daily_batch") {
+        modes.push(req.consistency?.mode ?? "");
+        if (modes.length === 1) return { envelope: env({ items: {}, index: [], missing: [] }) };
+      }
+      return fake()(c, req);
+    };
+    await etfFlowPoll(ctx(folder), signal, fetch as never, new Date("2026-11-05T02:00:00Z"));
+    assert.deepEqual(modes, ["prefer_cache", "fresh"]);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
@@ -155,10 +172,16 @@ test("daily 与 typical 复用日线结果，收盘档案匹配交易日时优�
   const folder = root();
   try {
     let dailyCalls = 0;
+    const amountRequests: { codes: string[]; with_amount_codes: string[] }[] = [];
     const fetch = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_broad_etf_universe") return { envelope: env({ items: [
+        ...BASKET.map((code) => ({ code, name: code, category: "沪深300", exchange: code.startsWith("15") ? "SZ" : "SH" })),
+        { code: "510999", name: "额外宽基", category: "其他宽基", exchange: "SH" },
+      ] }) };
       if (req.endpoint === "cn_etf_daily_batch") {
         dailyCalls++;
-        return { envelope: env({ items: Object.fromEntries((req.args?.codes as string[]).map((code) => [code,
+        amountRequests.push(req.args as { codes: string[]; with_amount_codes: string[] });
+        return { envelope: env({ amount_basis: "baostock 不复权日线成交额（元）", items: Object.fromEntries((req.args?.codes as string[]).map((code) => [code,
           ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 2, amount_yi: 1 }))])),
           index: ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 3000 })), missing: [] }) };
       }
@@ -168,6 +191,8 @@ test("daily 与 typical 复用日线结果，收盘档案匹配交易日时优�
     };
     const now = new Date("2026-11-05T02:00:00Z");
     await etfFlowDaily(ctx(folder), signal, fetch as never, now);
+    assert.ok(amountRequests.some((r) => r.codes.includes("510999") && !r.with_amount_codes.includes("510999")));
+    assert.deepEqual([...new Set(amountRequests.flatMap((r) => r.with_amount_codes))].sort(), [...BASKET].sort());
     for (let i = 0; i < 20 && backfillProgress(folder).syncing; i++) await new Promise((r) => setTimeout(r, 1));
     await etfFlowDaily(ctx(folder), signal, fetch as never, now);
     const first = dailyCalls;
@@ -200,7 +225,11 @@ test("旧 share_history.json 可读，宽基回填断点续传并报告交易日
     const calls: string[] = [];
     const fetch = async (_ctx: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
       calls.push(`${req.endpoint}:${JSON.stringify(req.args)}`);
-      if (req.endpoint === "cn_etf_share_history_sh") return { envelope: env({ rows: [{ date: "2026-11-03", code: "510300", shares_10k: 100000 }, { date: "2026-11-04", code: "510300", shares_10k: 110000 }], failed: [] }) };
+      if (req.endpoint === "cn_etf_share_history_sh") return { envelope: env({ rows: [
+        { date: "2026-11-03", code: "510300", shares_10k: 100000 },
+        { date: "2026-11-04", code: "510300", shares_10k: 110000 },
+        { date: "2026-11-03", code: "510500", shares_10k: 50000 },
+      ], failed: [] }) };
       if (req.endpoint === "cn_etf_share_history_sz") return { envelope: env({ rows: [{ date: "2026-11-04", shares_yi: 20 }] }) };
       throw new Error(req.endpoint);
     };
@@ -217,6 +246,11 @@ test("旧 share_history.json 可读，宽基回填断点续传并报告交易日
     assert.deepEqual([backfillProgress(folder).completed, backfillProgress(folder).total], [3, 3]);
     assert.equal(calls.length, first + 2, "新增一天只补上交所这天和深交所这天");
     assert.ok(calls.at(-1)?.includes('"start":"2026-11-05"'));
+    const legacy = loadShareHistory(folder);
+    legacy.dates["20261103"]!["510300"] = 777;
+    legacy.backfill!.doneTasks.push("SH:20261103:510500");
+    fs.writeFileSync(file, JSON.stringify(legacy));
+    assert.equal(loadShareHistory(folder).backfill!.doneTasks.includes("SH:20261103:510500"), false);
     const priorCalls = calls.length;
     startBroadShareBackfill(ctx(folder), ["2026-11-03", "2026-11-04", "2026-11-05"],
       ["510300", "159915", "510500", "159949"], fetch as never);
@@ -229,6 +263,12 @@ test("旧 share_history.json 可读，宽基回填断点续传并报告交易日
       "原深市代码的已完成历史不重跑");
     assert.ok(addedCalls.some((x) => x.includes('"code":"159949"')));
     assert.deepEqual([backfillProgress(folder).completed, backfillProgress(folder).total], [3, 3]);
+    const updated = loadShareHistory(folder);
+    assert.equal(updated.dates["20261103"]?.["510300"], 777, "已保存份额不覆盖");
+    assert.equal(updated.dates["20261103"]?.["510500"], 5);
+    assert.equal(updated.backfill!.doneTasks.filter((x) => x.startsWith("SH:")).length, 3);
+    assert.equal(updated.backfill!.doneTasks.some((x) => /^SH:\d{8}:.+/.test(x)), false);
+    assert.equal(JSON.stringify(updated).includes("SH:20261103:510500"), false, "旧格式条目落盘时被清理");
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
@@ -253,6 +293,7 @@ test("15:40 收盘任务写日度缓存和当日分钟档案，不重跑旧份�
       calls.push(req.endpoint);
       if (req.endpoint === "cn_broad_etf_universe") return { envelope: env({ items: BASKET.map((code) => ({ code, name: code, category: "沪深300", exchange: code.startsWith("15") ? "SZ" : "SH" })) }) };
       if (req.endpoint === "cn_etf_daily_batch") return { envelope: env({
+        amount_basis: "baostock 不复权日线成交额（元）",
         items: Object.fromEntries((req.args?.codes as string[]).map((code) => [code, ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 2, amount_yi: 1 }))])),
         index: req.args?.include_index ? ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 3000 })) : null, missing: [] }) };
       if (req.endpoint === "cn_etf_minute_hist") return { envelope: env({ days: [{ date: "2026-11-05", total: { times: fiveTimes, amount_yi: Array(48).fill(1), coverage: Array(48).fill(20), reason: null } }] }) };

@@ -240,3 +240,19 @@ def test_etf_daily_batch_keeps_close_and_marks_missing_real_amount(monkeypatch):
         {"date": "2026-11-05", "close": 3, "amount_yi": None}]
     assert got["missing"] == [{"code": "510300", "date": "2026-11-05",
                                "reason": "baostock 当日真实成交额未取到"}]
+
+
+def test_etf_daily_batch_only_fetches_requested_amounts(monkeypatch):
+    calls = []
+    monkeypatch.setattr(etf_flow, "sina_kline", lambda *_: [_bar("2026-11-05", 2)])
+    def amount(code, *_args, **_kwargs):
+        calls.append(code)
+        return [{"date": "2026-11-05", "amount": 250_000_000}]
+    monkeypatch.setattr(etf_flow, "baostock_kdata", amount)
+    got = etf_flow.cn_etf_daily_batch(["510300", "510500"], with_amount_codes=["510300"])
+    assert calls == ["510300"]
+    assert got["items"]["510300"][0]["amount_yi"] == 2.5
+    assert got["items"]["510500"] == [{"date": "2026-11-05", "close": 2}]
+    assert got["missing"] == []
+    with pytest.raises(ValueError, match="子集"):
+        etf_flow.cn_etf_daily_batch(["510300"], with_amount_codes=["510500"])

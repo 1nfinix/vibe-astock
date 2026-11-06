@@ -147,7 +147,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `cn_etf_minute_hist` | 宽基 ETF 篮子历史 5 分钟成交额 | CN | sina+calc | cn-public | none | - | 最多回溯新浪 1023 根 5 分钟 K；按交易日分组；逐日 ETF 成功率低于 80% 不给合计 |
 | `cn_broad_etf_universe` | 沪深交易所宽基 ETF 名录 | CN | sse+szse | cn-public | none | - | 跟踪指数精确白名单分类 12 类；无匹配指数的行业、主题、策略、跨境、债券等排除；名录不完整时报错 |
 | `cn_etf_share_history_sh` | 上交所 ETF 历史份额批量回填 | CN | sse | cn-public | none | - | 可传交易日 dates 列表或 start/end 工作日区间；单日失败记录 failed，不中断整个区间；份额万份 |
-| `cn_etf_daily_batch` | 沪深 ETF 日线收盘与成交额批量 | CN | sina+baostock | cn-public | none | - | 每批最多 50 只 ETF；收盘价来自新浪，真实日成交额来自 baostock 不复权日线 amount（元÷1亿）；逐只逐日缺额标空，不以 OHLC 估算回填 |
+| `cn_etf_daily_batch` | 沪深 ETF 日线收盘与成交额批量 | CN | sina+baostock | cn-public | none | - | 每批最多 50 只 ETF；全部取新浪收盘价，仅 with_amount_codes（默认全部 codes）取 baostock 不复权日线真实 amount（元÷1亿）；指定代码逐日缺额标空，不以 OHLC 估算回填 |
 
 ## 9 期权(1)
 
