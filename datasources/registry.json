@@ -4589,8 +4589,16 @@
       "market": ["CN"], "source": "sse", "compliance": "cn-public", "symbol_kind": "none",
       "stages": {}, "enabled": true, "computed": false, "libs": [], "mapper_module": "mappers_shortline",
       "module": "etf_flow", "function": "cn_etf_share_history_sh", "mapper": "etf_share_history_sh_map",
-      "endpoint_label": "上交所逐日 ETF 份额", "args": {"start": null, "end": null}, "cache_max_age_sec": 86400,
-      "notes": "工作日逐日查询；节假日或单日失败记录 failed，不中断整个区间；份额万份"
+      "endpoint_label": "上交所逐日 ETF 份额", "args": {"start": null, "end": null, "dates": null}, "cache_max_age_sec": 86400,
+      "notes": "可传交易日 dates 列表或 start/end 工作日区间；单日失败记录 failed，不中断整个区间；份额万份"
+    },
+    {
+      "id": "cn_etf_daily_batch", "title": "沪深 ETF 日线收盘与成交额批量", "layer": "10 情绪",
+      "market": ["CN"], "source": "sina+calc", "compliance": "cn-public", "symbol_kind": "none",
+      "stages": {}, "enabled": true, "computed": true, "libs": [], "mapper_module": "mappers_shortline",
+      "module": "etf_flow", "function": "cn_etf_daily_batch", "mapper": "etf_daily_batch_map",
+      "endpoint_label": "新浪日 K", "args": {"codes": null, "start": null, "end": null, "include_index": false}, "cache_max_age_sec": 86400,
+      "notes": "每批最多 50 只 ETF；日收盘价与成交量×OHLC 均价的估算成交额（亿元）；单只缺失列明原因"
     }
   ]
 }

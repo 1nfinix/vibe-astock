@@ -6,10 +6,12 @@ import { fetchEndpoint, type FetchResult, type ServiceContext } from "../../serv
 import { CORE_CODES } from "./etf_turnover.ts";
 
 type Fetch = (ctx: ServiceContext, req: Parameters<typeof fetchEndpoint>[1]) => Promise<Pick<FetchResult, "envelope">>;
-export type ShareStore = { version: 1; dates: Record<string, Record<string, number>> };
+export type BackfillState = { targetDates: string[]; codes: string[]; doneTasks: string[]; doneDates: string[]; failed: ShareMissing[] };
+export type ShareStore = { version: 1; dates: Record<string, Record<string, number>>; backfill?: BackfillState };
 export type ShareMissing = { code: string; date?: string; reason: string };
 export type ShareRange = { deltas: { date: string; d: number }[]; index: { date: string; v: number }[] };
 const pending = new Map<string, Promise<ShareMissing[]>>();
+const broadPending = new Map<string, Promise<void>>();
 export const shareHistoryFile = (root: string) => path.join(root, "shortline", "etf_turnover", "share_history.json");
 const iso = (day: string) => `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`;
 const compact = (day: string) => day.replaceAll("-", "");
@@ -30,6 +32,15 @@ export function loadShareHistory(root: string): ShareStore {
     if (x.version === 1 && x.dates && typeof x.dates === "object") return x;
   } catch { /* 尚未回补 */ }
   return { version: 1, dates: {} };
+}
+function saveStore(root: string, store: ShareStore): void {
+  // 旧视图同步与宽基回填可能交错：每次落盘前合并同一份文件，避免各自的旧内存快照覆盖对方。
+  const disk = loadShareHistory(root);
+  const dates: ShareStore["dates"] = { ...disk.dates };
+  for (const [day, values] of Object.entries(store.dates)) dates[day] = { ...dates[day], ...values };
+  store.dates = dates;
+  store.backfill ??= disk.backfill;
+  writeJson(shareHistoryFile(root), store);
 }
 export function previousHistoryShares(store: ShareStore, day: string): { date: string | null; shares: Record<string, number> } {
   const dates = Object.keys(store.dates).filter((d) => d < compact(day)).sort();
@@ -82,9 +93,9 @@ async function doSync(ctx: ServiceContext, fetch: Fetch, today: string): Promise
   const start = dayOffset(today, -370), lower = compact(start);
   const days = new Set(Object.keys(store.dates).filter((d) => d >= lower));
   const save = () => {
-    const cutoff = compact(dayOffset(today, -400));
+    const cutoff = compact(dayOffset(today, -1150));
     store.dates = Object.fromEntries(Object.entries(store.dates).filter(([d]) => d >= cutoff));
-    writeJson(shareHistoryFile(ctx.dataRoot), store);
+    saveStore(ctx.dataRoot, store);
   };
   await Promise.all(deep.map(async (code) => {
     const last = Object.keys(store.dates).filter((d) => d >= lower && store.dates[d]?.[code] !== undefined).sort().at(-1);
@@ -135,4 +146,97 @@ export function syncShareHistory(ctx: ServiceContext, fetch: Fetch = fetchEndpoi
   return task;
 }
 export function shareHistorySyncing(root: string): boolean { return pending.has(root); }
-export function resetShareHistoryState(): void { pending.clear(); }
+export function resetShareHistoryState(): void { pending.clear(); broadPending.clear(); }
+
+/** 同一份 version 1 文件内记录任务进度；旧文件没有 backfill 字段仍可直接读取。 */
+export function backfillProgress(root: string): { completed: number; total: number; from: string | null; to: string | null; syncing: boolean; failed: ShareMissing[] } {
+  const store = loadShareHistory(root), state = store.backfill;
+  return { completed: state?.doneDates.length ?? 0, total: state?.targetDates.length ?? 0,
+    from: state?.doneDates.length ? iso([...state.doneDates].sort()[0]!) : null,
+    to: state?.doneDates.length ? iso([...state.doneDates].sort().at(-1)!) : null,
+    syncing: broadPending.has(root), failed: state?.failed ?? [] };
+}
+
+/** 先补近期，再向前推到约三年；每次成功的交易日与单只代码任务立即落盘，重启后续跑。 */
+export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], codes: string[], fetch: Fetch = fetchEndpoint): void {
+  if (broadPending.has(ctx.dataRoot) || !dates.length || !codes.length) return;
+  const task = (async () => {
+    if (pending.has(ctx.dataRoot)) await pending.get(ctx.dataRoot)?.catch(() => undefined);
+    const store = loadShareHistory(ctx.dataRoot);
+    const targetDates = [...new Set(dates)].sort().slice(-750).map(compact);
+    const allCodes = [...new Set(codes)].sort();
+    const sameCodes = JSON.stringify(store.backfill?.codes) === JSON.stringify(allCodes);
+    if (!store.backfill || JSON.stringify(store.backfill.targetDates) !== JSON.stringify(targetDates) || !sameCodes) {
+      const prior = store.backfill;
+      store.backfill = { targetDates, codes: allCodes,
+        doneTasks: sameCodes ? prior?.doneTasks ?? [] : [],
+        doneDates: sameCodes ? prior?.doneDates.filter((d) => targetDates.includes(d)) ?? [] : [],
+        failed: sameCodes ? prior?.failed ?? [] : [] };
+    }
+    const state = store.backfill;
+    const save = () => saveStore(ctx.dataRoot, store);
+    save();
+    const sh = allCodes.filter((c) => !c.startsWith("15")), sz = allCodes.filter((c) => c.startsWith("15"));
+    // 固定的 80 个自然日桶，新增交易日不会移动旧桶边界；深市每次查询不超过源端窗口。
+    const buckets = new Map<number, string[]>();
+    for (const day of targetDates) {
+      const bucket = Math.floor(Date.parse(`${iso(day)}T00:00:00Z`) / (80 * 86400_000));
+      const dates = buckets.get(bucket) ?? [];
+      dates.push(day); buckets.set(bucket, dates);
+    }
+    for (const [bucket, window] of [...buckets].reverse()) {
+      if (window.every((d) => state.doneDates.includes(d))) continue;
+      for (let i = 0; i < window.length; i += 10) {
+        const batch = window.slice(i, i + 10), needed = batch.filter((d) => !state.doneTasks.includes(`SH:${d}`));
+        if (!needed.length || !sh.length) continue;
+        try {
+          const env = (await fetch(ctx, { endpoint: "cn_etf_share_history_sh", args: { dates: needed.map(iso) } })).envelope;
+          const r = result(env);
+          if (!r || !Array.isArray(r.rows) || !Array.isArray(r.failed)) throw new Error(reasonOf(env));
+          const failed = new Set((r.failed as unknown[]).map((x) => compact(String(obj(x)?.date ?? ""))));
+          for (const row of r.rows) {
+            const x = obj(row), d = compact(String(x?.date ?? "")), code = String(x?.code ?? ""), v = x?.shares_10k;
+            if (needed.includes(d) && sh.includes(code) && typeof v === "number" && Number.isFinite(v)) (store.dates[d] ??= {})[code] = v / 1e4;
+          }
+          for (const day of needed) {
+            if (failed.has(day)) state.failed.push({ code: "SH", date: iso(day), reason: "上交所单日份额未取到" });
+            else state.doneTasks.push(`SH:${day}`);
+          }
+        } catch (e) {
+          for (const day of needed) state.failed.push({ code: "SH", date: iso(day), reason: e instanceof Error ? e.message : String(e) });
+        }
+        save();
+      }
+      for (const code of sz) {
+        const prefix = `SZ:${bucket}:${code}:`;
+        const covered = state.doneTasks.find((x) => x.startsWith(prefix))?.slice(prefix.length) ?? "";
+        const needed = window.filter((d) => d > covered);
+        if (!needed.length) continue;
+        try {
+          const env = (await fetch(ctx, { endpoint: "cn_etf_share_history_sz", args: { code, start: iso(needed[0]!), end: iso(needed.at(-1)!) } })).envelope;
+          const r = result(env);
+          if (!r || !Array.isArray(r.rows)) throw new Error(reasonOf(env));
+          for (const row of r.rows) {
+            const x = obj(row), d = compact(String(x?.date ?? "")), v = x?.shares_yi;
+            if (window.includes(d) && typeof v === "number" && Number.isFinite(v)) (store.dates[d] ??= {})[code] = v;
+          }
+          state.doneTasks = state.doneTasks.filter((x) => !x.startsWith(prefix));
+          state.doneTasks.push(`${prefix}${needed.at(-1)}`);
+        } catch (e) {
+          state.failed.push({ code, date: iso(needed[0]!), reason: e instanceof Error ? e.message : String(e) });
+        }
+        save();
+      }
+      const complete = window.filter((day) => (!sh.length || state.doneTasks.includes(`SH:${day}`))
+        && sz.every((code) => {
+          const prefix = `SZ:${bucket}:${code}:`;
+          return (state.doneTasks.find((x) => x.startsWith(prefix))?.slice(prefix.length) ?? "") >= day;
+        }));
+      for (const day of complete) if (!state.doneDates.includes(day)) state.doneDates.push(day);
+      state.failed = state.failed.filter((x) => !x.date || !complete.includes(compact(x.date)));
+      save();
+    }
+  })().finally(() => { broadPending.delete(ctx.dataRoot); });
+  broadPending.set(ctx.dataRoot, task);
+  void task.catch(() => undefined);
+}

@@ -170,3 +170,34 @@ def test_sh_share_backfill_keeps_daily_failures(monkeypatch):
     assert got["failed"] == [{"date": "2026-11-04", "reason": "HTTP 503"}]
     with pytest.raises(ValueError):
         etf_flow.cn_etf_share_history_sh(date(2026, 11, 5), "2026-11-05")
+
+
+def test_sh_share_backfill_accepts_calendar_dates(monkeypatch):
+    from sources import astock_ported
+    seen = []
+    class Frame:
+        def to_dict(self, _kind): return []
+    def fake(day, exchange):
+        seen.append(day)
+        assert exchange == "SH"
+        return Frame()
+    monkeypatch.setattr(astock_ported, "etf_shares", fake)
+    monkeypatch.setattr(etf_flow.time, "sleep", lambda _s: None)
+    got = etf_flow.cn_etf_share_history_sh(dates=["2026-10-09", "2026-10-12"])
+    assert seen == got["dates"] == ["2026-10-09", "2026-10-12"]
+    with pytest.raises(ValueError, match="工作日"):
+        etf_flow.cn_etf_share_history_sh(dates=["2026-10-10"])
+    with pytest.raises(ValueError, match="二选一"):
+        etf_flow.cn_etf_share_history_sh(start="2026-10-09", dates=["2026-10-09"])
+
+
+def test_etf_daily_batch_parses_close_and_amount(monkeypatch):
+    calls = []
+    def fake(code, scale, count):
+        calls.append((code, scale, count))
+        return [_bar("2026-11-05", 2)]
+    monkeypatch.setattr(etf_flow, "sina_kline", fake)
+    got = etf_flow.cn_etf_daily_batch(["510300"], include_index=True)
+    assert got["items"]["510300"] == [{"date": "2026-11-05", "close": 2, "amount_yi": 2}]
+    assert got["index"] == [{"date": "2026-11-05", "close": 2}]
+    assert calls == [("510300", 240, 1023), ("sh000001", 240, 1023)]

@@ -4,6 +4,7 @@
  */
 import { registerView } from "../../views.ts";
 import { etfTurnoverAct, etfTurnoverRun } from "./etf_turnover.ts";
+import { etfFlowAct, etfFlowRun } from "./etf_flow.ts";
 import { shortlineHistory } from "./history.ts";
 import { shortlineIntraday, shortlineIntradayAct } from "./intraday.ts";
 import { shortlineReview, shortlineReviewAct } from "./review.ts";
@@ -25,3 +26,4 @@ registerView({ id: "shortline_intraday", label: "竞价与盘中路径", run: sh
 registerView({ id: "shortline_watch", label: "盯盘 · 实时动态", run: shortlineWatchAlerts, act: (ctx, body, signal) => shortlineWatchAct(ctx, body, signal) });
 
 registerView({ id: "shortline_etf_turnover", label: "宽基 ETF 量价跟踪", run: etfTurnoverRun, act: etfTurnoverAct });
+registerView({ id: "shortline_etf_flow", label: "ETF 资金看板", run: etfFlowRun, act: etfFlowAct });

@@ -8,7 +8,7 @@ import re
 import time
 
 from sources._http import http_get
-from sources.etf_turnover import ETF_CODE_RE, _yi, szse_fund_share_history
+from sources.etf_turnover import ETF_CODE_RE, _yi
 from sources.sina import sina_kline
 
 
@@ -227,17 +227,29 @@ def cn_broad_etf_universe():
             "counts": dict(Counter(r["category"] for r in result)), "source_count": len(rows)}
 
 
-def cn_etf_share_history_sh(start=None, end=None):
+def cn_etf_share_history_sh(start=None, end=None, dates=None):
     """上交所按工作日逐日回填；单日失败记录下来，不中断整个区间。"""
     from sources.astock_ported import etf_shares
 
-    try:
-        begin, finish = date.fromisoformat(start), date.fromisoformat(end)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("日期必须为 YYYY-MM-DD") from exc
-    if begin.isoformat() != start or finish.isoformat() != end or begin > finish:
-        raise ValueError("日期范围无效")
-    days = [begin + timedelta(days=i) for i in range((finish - begin).days + 1)]
+    if dates is not None:
+        if not isinstance(dates, list) or not dates or len(dates) > 100 or any(not isinstance(x, str) for x in dates):
+            raise ValueError("dates 必须是 1..100 个 YYYY-MM-DD 交易日")
+        try:
+            days = [date.fromisoformat(x) for x in dates]
+        except ValueError as exc:
+            raise ValueError("dates 日期必须为 YYYY-MM-DD") from exc
+        if any(x.isoformat() != raw for x, raw in zip(days, dates)) or len(set(days)) != len(days) or any(x.weekday() >= 5 for x in days):
+            raise ValueError("dates 必须是互不重复的工作日")
+        if start is not None or end is not None:
+            raise ValueError("dates 与 start/end 只能二选一")
+    else:
+        try:
+            begin, finish = date.fromisoformat(start), date.fromisoformat(end)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("日期必须为 YYYY-MM-DD") from exc
+        if begin.isoformat() != start or finish.isoformat() != end or begin > finish:
+            raise ValueError("日期范围无效")
+        days = [begin + timedelta(days=i) for i in range((finish - begin).days + 1)]
     rows, failed = [], []
     for day in days:
         if day.weekday() >= 5:
@@ -248,4 +260,43 @@ def cn_etf_share_history_sh(start=None, end=None):
         except Exception as exc:
             failed.append({"date": day.isoformat(), "reason": str(exc)[:180]})
         time.sleep(0.2)
-    return {"start": start, "end": end, "rows": rows, "failed": failed}
+    result = {"start": start, "end": end, "rows": rows, "failed": failed}
+    if dates is not None:
+        result["dates"] = [x.isoformat() for x in days]
+    return result
+
+
+def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
+    """新浪日 K：按指定代码输出收盘与估算成交额，供申赎净额按当天收盘价计。"""
+    if (not isinstance(codes, list) or not codes or len(codes) > 50
+            or any(not isinstance(c, str) or not re.fullmatch(r"(?:5\d{5}|15\d{4})", c) for c in codes)):
+        raise ValueError("codes 必须是 1..50 只沪深 ETF 六位代码")
+    if len(set(codes)) != len(codes):
+        raise ValueError("codes 不能重复")
+    try:
+        begin = date.fromisoformat(start) if start else None
+        finish = date.fromisoformat(end) if end else None
+    except ValueError as exc:
+        raise ValueError("start/end 必须为 YYYY-MM-DD") from exc
+    if (begin and begin.isoformat() != start) or (finish and finish.isoformat() != end) or (begin and finish and begin > finish):
+        raise ValueError("start/end 日期范围无效")
+    if not isinstance(include_index, bool):
+        raise ValueError("include_index 必须是布尔值")
+    items, missing = {}, []
+    for code in codes:
+        try:
+            bars = sina_kline(code, 240, 1023)
+            rows = [{"date": b["day"][:10], "close": b["close"], "amount_yi": round(_yi(b), 6)}
+                    for b in bars if (not start or b["day"][:10] >= start) and (not end or b["day"][:10] <= end)]
+            if not rows:
+                raise ValueError("日期区间无日 K")
+            items[code] = rows
+        except Exception as exc:
+            missing.append({"code": code, "reason": str(exc)[:180]})
+    index = None
+    if include_index:
+        index = [{"date": b["day"][:10], "close": b["close"]} for b in sina_kline(INDEX_CODE, 240, 1023)
+                 if (not start or b["day"][:10] >= start) and (not end or b["day"][:10] <= end)]
+        if not index:
+            raise RuntimeError("上证综指日 K 为空")
+    return {"items": items, "missing": missing, "index": index, "unit": "亿元"}

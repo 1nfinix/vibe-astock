@@ -322,6 +322,11 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
       run: async (j) => (await import("./shortline/etf_turnover.ts")).etfTurnoverClose(j),
     },
     {
+      id: "etf_flow_close", label: "ETF 资金日度与分钟档案", at: "15:40", defaultEnabled: true,
+      description: "收盘后缓存日度量价、复用官方份额历史并留存当日 5 分钟成交额，不推送消息。",
+      run: async (j) => (await import("./shortline/etf_flow.ts")).etfFlowClose(j),
+    },
+    {
       id: "close_digest", label: "收盘摘要", at: "15:40", defaultEnabled: true,
       description: "A 股收盘后:主要指数涨跌、涨停 / 炸板 / 跌停家数、最高连板、主力资金净流入和净流出前三的行业、龙虎榜上榜数。只列事实。",
       run: closeDigest,

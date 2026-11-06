@@ -666,3 +666,13 @@ def etf_share_history_sh_map(result: dict, ctx: dict) -> dict:
     missing = [{"field": "etf_shares", "period": x["date"], "reason": x["reason"]} for x in result["failed"]]
     return out(evs, extra={"result": result}, missing=missing,
                status="partial" if missing and evs else "failed" if not evs else "ok")
+
+
+def etf_daily_batch_map(result: dict, ctx: dict) -> dict:
+    evs = [ev(ctx, "etf_daily_bar_count", len(rows), "根", rows[-1]["date"], record_key=code)
+           for code, rows in result["items"].items()]
+    missing = [{"field": x["code"], "period": today_str(), "reason": x["reason"]} for x in result["missing"]]
+    return out(evs, extra={"result": result,
+                           "computation": {"kind": "computed_endpoint", "library": "sources.etf_flow.cn_etf_daily_batch",
+                                           "formula": "成交量×OHLC均价", "input_raw_refs": [r["raw_ref"] for r in ctx.get("raws", []) if r.get("raw_ref")]}},
+               missing=missing, status="partial" if missing and evs else "failed" if not evs else "ok")
