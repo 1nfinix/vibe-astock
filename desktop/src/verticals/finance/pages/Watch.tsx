@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CalendarDays, CandlestickChart, Gavel, RefreshCw, RotateCcw, Zap } from "lucide-react";
+import { Activity, CalendarDays, CandlestickChart, Gavel, RefreshCw, RotateCcw, Zap } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageTabs, type PageTab } from "@/components/ui/PageTabs";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { cn } from "@/lib/utils";
 import { LiveTab } from "@/shortline/LiveTab";
 import { EtfTurnoverTab } from "@/shortline/EtfTurnoverTab";
+import { EtfFlowTab } from "@/shortline/EtfFlowTab";
 import { IntradayTab } from "@/shortline/IntradayTab";
 
-type Tab = "live" | "intraday" | "etf";
+type Tab = "live" | "intraday" | "etf" | "etf-flow";
 const TABS: PageTab<Tab>[] = [
   { key: "live", label: "实时动态", icon: Zap },
   { key: "intraday", label: "竞价与盘中路径", icon: Gavel },
   { key: "etf", label: "宽基 ETF", icon: CandlestickChart },
+  { key: "etf-flow", label: "ETF 资金", icon: Activity },
 ];
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,7 +26,8 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function Watch() {
   const { pathname } = useLocation();
-  const tab: Tab = pathname.replace(/\/+$/, "") === "/watch/intraday" ? "intraday" : pathname.replace(/\/+$/, "") === "/watch/etf" ? "etf" : "live";
+  const cleanPath = pathname.replace(/\/+$/, "");
+  const tab: Tab = cleanPath === "/watch/intraday" ? "intraday" : cleanPath === "/watch/etf" ? "etf" : cleanPath === "/watch/etf-flow" ? "etf-flow" : "live";
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const picked = params.get("date");
@@ -46,6 +49,7 @@ export function Watch() {
         subtitle={tab === "live"
           ? "持仓与自选、昨日梯队、大票的当下读数和盘中异动 · 页面开着就自动刷新,实际时效以行情时间为准"
           : tab === "etf" ? "固定历史名单的公开 ETF 量价读数；观察组仅作对照，不计入判断"
+          : tab === "etf-flow" ? "宽基 ETF 分钟成交额与交易所申赎份额变化"
           : "昨日涨停股的竞价强弱、全天几个时点的情绪路径、昨晚验证条件的盘中读数"}
         actions={tab === "intraday" ? (
           <>
@@ -69,7 +73,7 @@ export function Watch() {
         ) : null}
       />
       <PageTabs label="盯盘的分页" value={tab} onChange={pickTab} options={TABS} />
-      {tab === "live" ? <LiveTab /> : tab === "etf" ? <EtfTurnoverTab /> : <IntradayTab key={date ?? "today"} date={date} refreshNonce={refreshNonce} onBusy={setBusy} />}
+      {tab === "live" ? <LiveTab /> : tab === "etf" ? <EtfTurnoverTab /> : tab === "etf-flow" ? <EtfFlowTab /> : <IntradayTab key={date ?? "today"} date={date} refreshNonce={refreshNonce} onBusy={setBusy} />}
       <Disclaimer />
     </div>
   );

@@ -42,6 +42,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { to: "/watch", label: "实时动态", icon: "Zap" },
     { to: "/watch/intraday", label: "竞价与盘中", icon: "Gavel" },
     { to: "/watch/etf", label: "宽基 ETF", icon: "CandlestickChart" },
+    { to: "/watch/etf-flow", label: "ETF 资金", icon: "Activity" },
   ] },
   { label: "复盘", icon: "Flame", pages: [
     { to: "/shortline", label: "情绪复盘", icon: "Flame" },
