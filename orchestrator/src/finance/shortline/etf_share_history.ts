@@ -174,6 +174,11 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
         failed: sameCodes ? prior?.failed ?? [] : [] };
     }
     const state = store.backfill;
+    state.failed = [...new Map(state.failed.map((x) => [`${x.code}:${x.date ?? ""}`, x])).values()];
+    const fail = (entry: ShareMissing) => {
+      state.failed = state.failed.filter((x) => x.code !== entry.code || x.date !== entry.date);
+      state.failed.push(entry);
+    };
     const save = () => saveStore(ctx.dataRoot, store);
     save();
     const sh = allCodes.filter((c) => !c.startsWith("15")), sz = allCodes.filter((c) => c.startsWith("15"));
@@ -199,11 +204,11 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
             if (needed.includes(d) && sh.includes(code) && typeof v === "number" && Number.isFinite(v)) (store.dates[d] ??= {})[code] = v / 1e4;
           }
           for (const day of needed) {
-            if (failed.has(day)) state.failed.push({ code: "SH", date: iso(day), reason: "上交所单日份额未取到" });
+            if (failed.has(day)) fail({ code: "SH", date: iso(day), reason: "上交所单日份额未取到" });
             else state.doneTasks.push(`SH:${day}`);
           }
         } catch (e) {
-          for (const day of needed) state.failed.push({ code: "SH", date: iso(day), reason: e instanceof Error ? e.message : String(e) });
+          for (const day of needed) fail({ code: "SH", date: iso(day), reason: e instanceof Error ? e.message : String(e) });
         }
         save();
       }
@@ -223,7 +228,7 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
           state.doneTasks = state.doneTasks.filter((x) => !x.startsWith(prefix));
           state.doneTasks.push(`${prefix}${needed.at(-1)}`);
         } catch (e) {
-          state.failed.push({ code, date: iso(needed[0]!), reason: e instanceof Error ? e.message : String(e) });
+          fail({ code, date: iso(needed[0]!), reason: e instanceof Error ? e.message : String(e) });
         }
         save();
       }

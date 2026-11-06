@@ -24,6 +24,9 @@ const strings = (x: unknown): string[] => Array.isArray(x) ? x.filter((v): v is 
 const result = (env: unknown): Raw | null => obj(env)?.status === "failed" ? null : obj(obj(obj(env)?.extra)?.result);
 const iso = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 const compact = (d: string) => d.replaceAll("-", "");
+const dailyMemory = new Map<string, { date: string; at: number; value: DailyResult }>();
+const dailyPending = new Map<string, Promise<DailyResult>>();
+type DailyResult = Awaited<ReturnType<typeof computeDaily>>;
 
 /** 上午 121 槽含 09:30，下午 120 槽从 13:01 开始。 */
 export const MINUTE_SLOTS = [
@@ -88,7 +91,8 @@ function archives(root: string): Raw[] {
 }
 async function requireResult(ctx: ServiceContext, endpoint: string, fetch: Fetch, signal: AbortSignal, args?: Record<string, unknown>, fresh = false): Promise<Raw> {
   const r = await fetch(ctx, { endpoint, ...(args ? { args } : {}), signal,
-    consistency: fresh ? { mode: "fresh" } : { mode: "prefer_cache", max_age_ms: endpoint === "cn_broad_etf_universe" ? 86_400_000 : 60_000 } });
+    consistency: fresh ? { mode: "fresh" } : { mode: "prefer_cache", max_age_ms: endpoint === "cn_broad_etf_universe" ? 86_400_000
+      : endpoint === "cn_etf_daily_batch" ? 6 * 60 * 60_000 : 60_000 } });
   const data = result(r.envelope);
   if (!data) throw new Error(`${endpoint}：${failedNote(r.envelope) || "源无数据"}`);
   return data;
@@ -116,10 +120,10 @@ export async function etfFlowPoll(ctx: ServiceContext, signal: AbortSignal, fetc
       pct: quoteDay === compact(date) ? num(quote?.pct) : null,
       reason: item ? null : "分钟数据未取到" };
   });
-  const denominator = total?.amount_yi === null || !amounts.length || amounts.some((v) => v === null)
-    || num(minute.success_count) !== BASKET.length || nums(total?.coverage).some((v) => v !== BASKET.length) ? null
+  const denominator = num(minute.success_count) !== BASKET.length || sums.some((x) => x.amount_yi === null) ? null
     : sums.reduce((a, x) => a + (x.amount_yi ?? 0), 0);
-  const ranking = sums.map((x) => ({ ...x, share_pct: x.amount_yi !== null && denominator && denominator > 0 ? 100 * x.amount_yi / denominator : null }))
+  const ranking = sums.map((x) => ({ ...x, share_pct: x.amount_yi !== null && denominator && denominator > 0 ? 100 * x.amount_yi / denominator : null,
+    reason: x.reason ?? (denominator === null ? "20 只 ETF 未全部取到，无法计算占比" : null) }))
     .sort((a, b) => (b.amount_yi ?? -Infinity) - (a.amount_yi ?? -Infinity));
   const missing = arr(minute.missing).map((x) => ({ code: str(x.code), reason: str(x.reason) }));
   return { date, asof: now.toISOString(), is_today: isToday, phase, trading_day: facts?.is_today_trading_day ?? null,
@@ -172,6 +176,7 @@ type UniverseItem = { code: string; name: string; category: string; exchange: st
 export function calculateDaily(dates: string[], index: Map<string, number>, prices: Map<string, Map<string, DailyBar>>,
   universe: UniverseItem[], shares: ReturnType<typeof loadShareHistory>, today: string, failedCodes = new Set<string>()) {
   const categories = [...CATEGORIES];
+  const latestPrior = dates.filter((d) => d < today).at(-1);
   const firstPriceDay = new Map([...prices].map(([code, bars]) => [code, [...bars.keys()].sort()[0] ?? ""]));
   const rows = dates.map((date, i) => {
     const previous = dates[i - 1], todayPending = date >= today;
@@ -203,7 +208,7 @@ export function calculateDaily(dates: string[], index: Map<string, number>, pric
         missing_count: x.shareMissing + x.priceMissing + absent, share_missing_count: x.shareMissing,
         price_missing_count: x.priceMissing, active_count: x.active,
         status: todayPending ? "待公布" : absent ? "篮子不完整" : x.priceMissing ? "日线缺失"
-          : x.shareMissing ? "份额缺失" : !x.active ? "无有效 ETF" : "已公布" };
+          : x.shareMissing ? date === latestPrior ? "待公布" : "份额缺失" : !x.active ? "无有效 ETF" : "已公布" };
     };
     const byCategory = Object.fromEntries(categories.map((c) => [c, render(sums.get(c)!) ]));
     return { date, turnover_yi: turnover, turnover_missing_count: turnoverMissing,
@@ -227,7 +232,7 @@ export function calculateDaily(dates: string[], index: Map<string, number>, pric
     recent_month_categories: rows.slice(-22).map((r) => ({ date: r.date, categories: r.categories })) };
 }
 
-export async function etfFlowDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date(), fresh = false) {
+async function computeDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch, now: Date, fresh: boolean) {
   const today = clockOf(now).day;
   const universeRaw = await requireResult(ctx, "cn_broad_etf_universe", fetch, signal);
   const universe = arr(universeRaw.items).map((r) => ({ code: str(r.code), name: str(r.name), category: str(r.category), exchange: str(r.exchange) }))
@@ -261,6 +266,38 @@ export async function etfFlowDaily(ctx: ServiceContext, signal: AbortSignal, fet
     spike_complete: progress.total > 0 && progress.completed === progress.total
       && eligible.length > 0 && eligible.every((r) => r.basket.status === "已公布"),
     backfill: progress };
+}
+
+/** 收盘档案优先；同一交易日内复用计算结果，回填进度变化时重新计算。 */
+export async function etfFlowDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date(), fresh = false) {
+  const today = clockOf(now).day;
+  if (!fresh) {
+    const calendar = await fetchTodayCalendar(ctx, today, fetch, signal);
+    const latest = calendar?.last_trading_day ?? today;
+    const progress = backfillProgress(ctx.dataRoot);
+    const valid = (value: DailyResult) => value.rows.at(-1)?.date === latest
+      && value.backfill.completed === progress.completed && value.backfill.total === progress.total;
+    const file = path.join(ctx.dataRoot, "shortline", "etf_flow", "daily.json");
+    try {
+      const cached = JSON.parse(fs.readFileSync(file, "utf8")) as DailyResult;
+      if (valid(cached)) return { ...cached, backfill: progress };
+    } catch { /* 尚无收盘档案 */ }
+    const memory = dailyMemory.get(ctx.dataRoot);
+    if (memory && memory.date === latest && now.getTime() - memory.at < 30 * 60_000 && valid(memory.value))
+      return { ...memory.value, backfill: progress };
+    const pending = dailyPending.get(ctx.dataRoot);
+    if (pending) return pending;
+    const task = computeDaily(ctx, signal, fetch, now, false);
+    dailyPending.set(ctx.dataRoot, task);
+    try {
+      const value = await task;
+      dailyMemory.set(ctx.dataRoot, { date: latest, at: now.getTime(), value });
+      return value;
+    } finally { if (dailyPending.get(ctx.dataRoot) === task) dailyPending.delete(ctx.dataRoot); }
+  }
+  const value = await computeDaily(ctx, signal, fetch, now, true);
+  dailyMemory.set(ctx.dataRoot, { date: value.rows.at(-1)?.date ?? today, at: now.getTime(), value });
+  return value;
 }
 
 function percentile(values: number[], p: number): number {

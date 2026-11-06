@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import type { ServiceContext } from "../src/service.ts";
-import { BASKET, MINUTE_SLOTS, SPIKE_THRESHOLD_YI, barAxisMax, calculateDaily, etfFlowClose, etfFlowCum, etfFlowPoll, interpolateFive, minuteCumulative, netFlow, typicalGroup } from "../src/finance/shortline/etf_flow.ts";
+import { BASKET, MINUTE_SLOTS, SPIKE_THRESHOLD_YI, barAxisMax, calculateDaily, etfFlowClose, etfFlowCum, etfFlowDaily, etfFlowPoll, etfFlowTypical, interpolateFive, minuteCumulative, netFlow, typicalGroup } from "../src/finance/shortline/etf_flow.ts";
 import { backfillProgress, loadShareHistory, officialSharePair, shareHistoryFile, startBroadShareBackfill } from "../src/finance/shortline/etf_share_history.ts";
 
 const signal = new AbortController().signal;
@@ -56,6 +56,18 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.equal(poll.is_today, true); assert.equal(poll.poll_ms, 60_000);
     assert.equal(poll.ranking.length, 20); assert.equal(poll.ranking[0]?.name, `基金${BASKET[0]}`);
     assert.equal(poll.ranking[0]?.share_pct, 5);
+    const oneThinMinute = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_minute_batch"
+      ? { envelope: env({ ...minute(), total: { ...minute().total, coverage: [19] } }) }
+      : fake()(c, req);
+    const thin = await etfFlowPoll(ctx(folder), signal, oneThinMinute as never, now);
+    assert.equal(thin.ranking[0]?.share_pct, 5);
+    const oneMissingMinute = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_minute_batch"
+      ? { envelope: env({ ...minute(), success_count: 19, total: { ...minute().total, amount_yi: null },
+        items: Object.fromEntries(BASKET.slice(1).map((code) => [code, minute().items[code]])) }) }
+      : fake()(c, req);
+    const missingShare = await etfFlowPoll(ctx(folder), signal, oneMissingMinute as never, now);
+    assert.equal(missingShare.ranking[0]?.share_pct, null);
+    assert.match(missingShare.ranking[0]?.reason ?? "", /无法计算占比/);
     const old = await etfFlowPoll(ctx(folder), signal, fake("2026-11-04") as never, now);
     assert.equal(old.is_today, false);
     const holiday = await etfFlowPoll(ctx(folder), signal, fake("2026-11-04", false) as never, now);
@@ -85,6 +97,7 @@ test("申赎 T-1、缺份额不按零、放量阈值和近期三日同组", () =
   assert.deepEqual(out.spike_dates, ["2026-11-03"]);
   assert.equal(out.rows[2]?.basket.net_yi, null); assert.equal(out.rows[2]?.basket.missing_count, 1);
   assert.equal(out.rows[2]?.categories["沪深300"]?.net_yi, null);
+  assert.equal(out.rows[2]?.basket.status, "待公布");
   assert.equal(out.rows[3]?.basket.status, "待公布"); assert.equal(out.rows[3]?.basket.net_yi, null);
   assert.deepEqual(out.recent_dates, ["2026-11-03", "2026-11-04", "2026-11-05"]);
   assert.deepEqual(out.recent_month_categories.slice(-3).map((r) => r.date), out.recent_dates);
@@ -94,6 +107,51 @@ test("申赎 T-1、缺份额不按零、放量阈值和近期三日同组", () =
   assert.equal(noPrice.rows[1]?.basket.net_yi, null);
   assert.equal(noPrice.rows[1]?.basket.price_missing_count, 1);
   assert.equal(noPrice.rows[1]?.categories["沪深300"]?.net_yi, null);
+});
+
+test("较早交易日缺份额标缺失，最近交易日仅缺份额标待公布", () => {
+  const dates = ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"];
+  const prices = new Map(BASKET.map((code) => [code, new Map(dates.map((date) => [date, { date, close: 2, amount_yi: 1 }]))] as const));
+  const full = Object.fromEntries(BASKET.map((code) => [code, 10]));
+  const shares = { version: 1 as const, dates: { "20261102": full, "20261103": { ...full, [BASKET[0]]: undefined as unknown as number },
+    "20261104": { ...full, [BASKET[1]]: undefined as unknown as number } } };
+  const rows = calculateDaily(dates, new Map(), prices,
+    BASKET.map((code) => ({ code, name: code, category: "沪深300", exchange: "SH" })), shares, "2026-11-05").rows;
+  assert.equal(rows[1]?.basket.status, "份额缺失");
+  assert.equal(rows[2]?.basket.status, "待公布");
+  assert.equal(rows[2]?.basket.net_yi, null);
+});
+
+test("daily 与 typical 复用日线结果，收盘档案匹配交易日时优先读取", async () => {
+  const folder = root();
+  try {
+    let dailyCalls = 0;
+    const fetch = async (c: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_etf_daily_batch") {
+        dailyCalls++;
+        return { envelope: env({ items: Object.fromEntries((req.args?.codes as string[]).map((code) => [code,
+          ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 2, amount_yi: 1 }))])),
+          index: ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 3000 })), missing: [] }) };
+      }
+      if (req.endpoint === "cn_etf_share_history_sh") return { envelope: env({ rows: [], failed: [] }) };
+      if (req.endpoint === "cn_etf_share_history_sz") return { envelope: env({ rows: [] }) };
+      return fake()(c, req);
+    };
+    const now = new Date("2026-11-05T02:00:00Z");
+    await etfFlowDaily(ctx(folder), signal, fetch as never, now);
+    for (let i = 0; i < 20 && backfillProgress(folder).syncing; i++) await new Promise((r) => setTimeout(r, 1));
+    await etfFlowDaily(ctx(folder), signal, fetch as never, now);
+    const first = dailyCalls;
+    await etfFlowTypical(ctx(folder), signal, fetch as never, now);
+    assert.equal(dailyCalls, first);
+    for (let i = 0; i < 20 && backfillProgress(folder).syncing; i++) await new Promise((r) => setTimeout(r, 1));
+    const cachedFile = path.join(folder, "shortline", "etf_flow", "daily.json");
+    fs.mkdirSync(path.dirname(cachedFile), { recursive: true });
+    const cached = await etfFlowDaily(ctx(folder), signal, fetch as never, now);
+    fs.writeFileSync(cachedFile, JSON.stringify(cached));
+    await etfFlowDaily(ctx(folder), signal, fetch as never, now);
+    assert.equal(dailyCalls, first);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
 test("typical 样本不足返回 null 和明确原因", () => {
@@ -130,6 +188,19 @@ test("旧 share_history.json 可读，宽基回填断点续传并报告交易日
     assert.deepEqual([backfillProgress(folder).completed, backfillProgress(folder).total], [3, 3]);
     assert.equal(calls.length, first + 2, "新增一天只补上交所这天和深交所这天");
     assert.ok(calls.at(-1)?.includes('"start":"2026-11-05"'));
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("份额回填重复失败按代码与日期去重并保留最新原因", async () => {
+  const folder = root();
+  try {
+    let attempt = 0;
+    const fetch = async () => { throw new Error(`失败 ${++attempt}`); };
+    for (let i = 0; i < 2; i++) {
+      startBroadShareBackfill(ctx(folder), ["2026-11-04"], ["510300"], fetch as never);
+      for (let j = 0; j < 20 && backfillProgress(folder).syncing; j++) await new Promise((r) => setTimeout(r, 1));
+    }
+    assert.deepEqual(backfillProgress(folder).failed, [{ code: "SH", date: "2026-11-04", reason: "失败 2" }]);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
