@@ -3,7 +3,7 @@ export interface EtfFlowPollData {
   bars: { times: string[]; amount_yi: number[] | null; coverage: (number | null)[]; reason: string | null; barAxisMax: number };
   index: { times: string[]; close: number[] };
   missing: { code: string; reason: string }[];
-  ranking: { code: string; name: string; amount_yi: number | null; share_pct: number | null; pct: number | null; reason: string | null }[];
+  ranking: { code: string; name: string; amount_yi: number | null; share_pct: number | null; pct: number | null; pct_reason?: string | null; reason: string | null }[];
 }
 export interface EtfFlowCumData {
   date: string; slots: string[]; today: (number | null)[];

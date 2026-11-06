@@ -81,6 +81,7 @@ def test_exact_eighty_percent_can_sum_but_reports_coverage(monkeypatch):
     assert got["total"]["amount_yi"] == [32.0]
     assert got["total"]["coverage"] == [16]
     assert "16/20" in got["total"]["reason"]
+    assert "coverage" not in got["total"]["reason"]
 
 
 @pytest.mark.parametrize("bad", ["51031", "600519", "1599150", "sh510310", "1599ab", 159915])

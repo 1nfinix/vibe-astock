@@ -24,7 +24,7 @@ function DailyChart({ title, rows, kind, recent }: { title: string; rows: EtfFlo
     yAxis: { type: "value", name: "亿元", axisLabel: { color: p.text }, splitLine: { lineStyle: { color: p.grid } } },
     series: [{ type: "bar", barMaxWidth: 32, data: rows.map((r) => {
       const value = kind === "turnover" ? r.turnover_yi : r.basket.net_yi;
-      return value === null ? null : { value, itemStyle: { color: kind === "turnover" ? recent.has(r.date) ? "#4d8fb8" : "#9ab8ca" : value >= 0 ? p.rise : p.fall } };
+      return value === null ? null : { value, itemStyle: { color: kind === "turnover" ? recent.has(r.date) ? p.turnover : p.turnoverMuted : value >= 0 ? p.rise : p.fall, opacity: kind === "net" && !recent.has(r.date) ? .48 : 1 } };
     }) }] };
   return <div className={panel}><h3 className="text-sm font-semibold">{title}</h3><EChart option={option} height={250} />
     <div className="grid gap-1 text-center text-[11px]" style={{ gridTemplateColumns: `repeat(${Math.max(1, rows.filter((r) => recent.has(r.date)).length)}, minmax(0, 1fr))` }}>{rows.filter((r) => recent.has(r.date)).map((r) => <div key={r.date} className={`rounded px-1 py-1 ${kind === "net" && r.basket.net_yi === null ? "bg-muted text-muted-foreground" : "text-foreground"}`}><div>{r.date.slice(5)}</div><div className="font-mono tabular-nums">{kind === "turnover" ? r.turnover_yi === null ? "—" : flowNumber(r.turnover_yi) : r.basket.net_yi === null ? r.basket.status : flowSigned(r.basket.net_yi)}</div></div>)}</div>
@@ -33,7 +33,7 @@ function DailyChart({ title, rows, kind, recent }: { title: string; rows: EtfFlo
 
 function LongChart({ title, rows, kind }: { title: string; rows: EtfFlowDay[]; kind: "turnover" | "net" }) {
   const p = usePalette();
-  const option = { animation: false, grid: { left: 58, right: 58, top: 38, bottom: 70 },
+  const option = { animation: false, grid: { left: 58, right: 58, top: 66, bottom: 70 },
     tooltip: { trigger: "axis", backgroundColor: p.tooltipBg, textStyle: { color: p.tooltipText } },
     legend: { top: 0, textStyle: { color: p.text } }, dataZoom: zoom,
     xAxis: { type: "category", data: rows.map((r) => r.date), axisLabel: { color: p.text, interval: Math.max(0, Math.floor(rows.length / 8)) }, axisLine: { lineStyle: { color: p.axis } } },
@@ -43,10 +43,10 @@ function LongChart({ title, rows, kind }: { title: string; rows: EtfFlowDay[]; k
     ],
     series: [
       { name: kind === "turnover" ? "20 只 ETF 成交额" : "20 只 ETF 净流入", type: "bar", barMaxWidth: 12,
-        data: rows.map((r) => { const v = kind === "turnover" ? r.turnover_yi : r.basket.net_yi; return v === null ? null : { value: v, itemStyle: { color: kind === "turnover" ? "#4d8fb8" : v >= 0 ? p.rise : p.fall } }; }) },
+        data: rows.map((r) => { const v = kind === "turnover" ? r.turnover_yi : r.basket.net_yi; return v === null ? null : { value: v, itemStyle: { color: kind === "turnover" ? p.turnover : v >= 0 ? p.rise : p.fall } }; }) },
       { name: "上证综指", type: "line", yAxisIndex: 1, data: rows.map((r) => r.index_close), showSymbol: false, lineStyle: { color: p.primary, width: 2 } },
     ] };
-  return <div className={panel}><h3 className="text-sm font-semibold">{title}</h3><EChart option={option} height={290} /></div>;
+  return <div className={panel}><h3 className="text-sm font-semibold">{title}</h3><EChart option={option} height={318} /></div>;
 }
 
 export function EtfFlowSignal({ data }: { data: EtfFlowDailyData | null }) {

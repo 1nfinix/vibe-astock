@@ -27,6 +27,10 @@ const fake = (day = "2026-11-05", trading = true) => async (_ctx: ServiceContext
   if (req.endpoint === "cn_etf_minute_hist") return { envelope: env(five) };
   if (req.endpoint === "cn_broad_etf_universe") return { envelope: env({ items: BASKET.map((code) => ({ code, name: `基金${code}`, category: "沪深300", exchange: "SH" })) }) };
   if (req.endpoint === "cn_etf_turnover_live") return { envelope: env({ items: BASKET.map((code) => ({ code, name: code, pct: 1, quote_time: "20261105093100" })) }) };
+  if (req.endpoint === "cn_etf_daily_batch") return { envelope: env({
+    index: ["2026-11-03", "2026-11-04", "2026-11-05"].map((date) => ({ date, close: 3000 })),
+    items: Object.fromEntries(BASKET.map((code) => [code, ["2026-11-03", "2026-11-04"].map((date) => ({ date, close: 1, amount_yi: 1 }))])), missing: [],
+  }) };
   throw new Error(req.endpoint);
 };
 
@@ -56,11 +60,14 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.equal(poll.is_today, true); assert.equal(poll.poll_ms, 60_000);
     assert.equal(poll.ranking.length, 20); assert.equal(poll.ranking[0]?.name, `基金${BASKET[0]}`);
     assert.equal(poll.ranking[0]?.share_pct, 5);
+    assert.equal(poll.ranking[0]?.pct, 100, "涨跌幅按分钟末价和前一交易日收盘价计算");
     const oneThinMinute = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_minute_batch"
       ? { envelope: env({ ...minute(), total: { ...minute().total, coverage: [19] } }) }
       : fake()(c, req);
     const thin = await etfFlowPoll(ctx(folder), signal, oneThinMinute as never, now);
     assert.equal(thin.ranking[0]?.share_pct, 5);
+    assert.equal(thin.bars.reason, "有 1 个分钟点不足 20 只 ETF，按已取到的合计");
+    assert.doesNotMatch(thin.bars.reason ?? "", /coverage/);
     const oneMissingMinute = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_minute_batch"
       ? { envelope: env({ ...minute(), success_count: 19, total: { ...minute().total, amount_yi: null },
         items: Object.fromEntries(BASKET.slice(1).map((code) => [code, minute().items[code]])) }) }
@@ -70,6 +77,13 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.match(missingShare.ranking[0]?.reason ?? "", /无法计算占比/);
     const old = await etfFlowPoll(ctx(folder), signal, fake("2026-11-04") as never, now);
     assert.equal(old.is_today, false);
+    assert.equal(old.ranking[0]?.pct, 100, "盘前保留上一交易日的实际涨跌幅");
+    const noPrior = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_daily_batch"
+      ? { envelope: env({ index: [{ date: "2026-11-05", close: 3000 }], items: {}, missing: [] }) }
+      : fake()(c, req);
+    const noPriorPoll = await etfFlowPoll(ctx(folder), signal, noPrior as never, now);
+    assert.equal(noPriorPoll.ranking[0]?.pct, null);
+    assert.match(noPriorPoll.ranking[0]?.pct_reason ?? "", /上一交易日/);
     const holiday = await etfFlowPoll(ctx(folder), signal, fake("2026-11-04", false) as never, now);
     assert.equal(holiday.is_today, false); assert.equal(holiday.poll_ms, 300_000);
     const cum = await etfFlowCum(ctx(folder), undefined, signal, fake() as never, now);

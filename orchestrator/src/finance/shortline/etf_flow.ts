@@ -102,22 +102,34 @@ function sessionPollMs(phase: ReturnType<typeof phaseOf>, trading: boolean): num
 }
 export async function etfFlowPoll(ctx: ServiceContext, signal: AbortSignal, fetch: Fetch = fetchEndpoint, now = new Date()) {
   const clock = clockOf(now), phase = phaseOf(now);
-  const [facts, minute, universe, live] = await Promise.all([
+  const [facts, minute, universe, live, daily] = await Promise.all([
     fetchTodayCalendar(ctx, clock.day, fetch, signal),
     requireResult(ctx, "cn_etf_minute_batch", fetch, signal),
     requireResult(ctx, "cn_broad_etf_universe", fetch, signal).catch(() => null),
     requireResult(ctx, "cn_etf_turnover_live", fetch, signal, { extra_codes: [...BASKET] }).catch(() => null),
+    requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: [...BASKET], include_index: true }).catch(() => null),
   ]);
   const date = str(minute.date), isToday = !!facts?.is_today_trading_day && date === clock.day && !["pre_open", "auction", "weekend"].includes(phase);
   const total = obj(minute.total), times = strings(total?.times), amounts = nums(total?.amount_yi);
   const byMinute = obj(minute.items) ?? {}, names = new Map(arr(universe?.items).map((r) => [str(r.code), str(r.name)]));
   const byLive = new Map(arr(live?.items).map((r) => [str(r.code), r]));
+  const previousDay = arr(daily?.index).map((r) => str(r.date)).filter((d) => d && d < date).sort().at(-1);
+  const dailyItems = obj(daily?.items) ?? {};
+  const dailyMissing = new Map(arr(daily?.missing).map((r) => [str(r.code), str(r.reason)]));
   const sums = [...BASKET].map((code) => {
     const item = obj(byMinute[code]), values = nums(item?.amount_yi), quote = byLive.get(code);
     const amount = item ? values.reduce<number>((a, v) => a + (v ?? 0), 0) : null;
-    const quoteDay = str(quote?.quote_time).slice(0, 8);
+    const close = nums(item?.close).at(-1) ?? null;
+    const prior = previousDay ? arr(dailyItems[code]).find((r) => str(r.date) === previousDay) : null;
+    const previousClose = num(prior?.close);
+    const pct = close !== null && previousClose !== null && previousClose > 0
+      ? Number(((close / previousClose - 1) * 100).toFixed(2)) : null;
+    const pctReason = pct !== null ? null : !item || close === null ? "分钟收盘价未取到"
+      : !daily ? "上一交易日收盘价暂不可用"
+      : !previousDay ? "上一交易日未取到"
+      : dailyMissing.get(code) ? `上一交易日收盘价未取到：${dailyMissing.get(code)}` : "上一交易日收盘价未取到";
     return { code, name: names.get(code) || str(quote?.name) || code, amount_yi: amount,
-      pct: quoteDay === compact(date) ? num(quote?.pct) : null,
+      pct, pct_reason: pctReason,
       reason: item ? null : "分钟数据未取到" };
   });
   const denominator = num(minute.success_count) !== BASKET.length || sums.some((x) => x.amount_yi === null) ? null
@@ -126,10 +138,16 @@ export async function etfFlowPoll(ctx: ServiceContext, signal: AbortSignal, fetc
     reason: x.reason ?? (denominator === null ? "20 只 ETF 未全部取到，无法计算占比" : null) }))
     .sort((a, b) => (b.amount_yi ?? -Infinity) - (a.amount_yi ?? -Infinity));
   const missing = arr(minute.missing).map((x) => ({ code: str(x.code), reason: str(x.reason) }));
+  const minuteCoverage = nums(total?.coverage);
+  const partialMinutes = minuteCoverage.filter((v) => v !== null && v < BASKET.length).length;
+  const uncountedMinutes = amounts.filter((v) => v === null).length;
+  const barReason = total?.amount_yi !== null && partialMinutes
+    ? `有 ${partialMinutes} 个分钟点不足 ${BASKET.length} 只 ETF，按已取到的合计${uncountedMinutes ? `；其中 ${uncountedMinutes} 个分钟点未达到最低覆盖要求，不显示合计` : ""}`
+    : str(total?.reason) || null;
   return { date, asof: now.toISOString(), is_today: isToday, phase, trading_day: facts?.is_today_trading_day ?? null,
     poll_ms: sessionPollMs(phase, !!facts?.is_today_trading_day), unit: "亿元", amount_basis: "新浪分钟成交量×OHLC均价",
     bars: { times, amount_yi: total?.amount_yi === null ? null : amounts, coverage: nums(total?.coverage),
-      reason: str(total?.reason) || null, barAxisMax: barAxisMax(amounts) },
+      reason: barReason, barAxisMax: barAxisMax(amounts) },
     index: minute.index, success_count: num(minute.success_count) ?? 0, missing, ranking };
 }
 

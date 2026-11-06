@@ -5,12 +5,12 @@ import type { EtfFlowCumData, EtfFlowDailyData, EtfFlowPollData, EtfFlowTypicalD
 
 const poll: EtfFlowPollData = {
   date: "2026-11-05", asof: "2026-11-05T02:00:00Z", is_today: true, poll_ms: 60_000, success_count: 20,
-  bars: { times: ["09:31"], amount_yi: [20], coverage: [19], reason: "部分分钟覆盖不足", barAxisMax: 25 },
+  bars: { times: ["09:31"], amount_yi: [20], coverage: [19], reason: "有 1 个分钟点不足 20 只 ETF，按已取到的合计", barAxisMax: 25 },
   index: { times: ["09:31"], close: [3010] }, missing: [],
   ranking: [
     { code: "510300", name: "沪深300ETF", amount_yi: 3, share_pct: 15, pct: 1, reason: null },
     { code: "588000", name: "科创50ETF", amount_yi: 8, share_pct: 40, pct: -1, reason: null },
-    { code: "159915", name: "创业板ETF", amount_yi: null, share_pct: null, pct: null, reason: "分钟成交额未取到" },
+    { code: "159915", name: "创业板ETF", amount_yi: null, share_pct: null, pct: null, pct_reason: "上一交易日收盘价未取到", reason: "分钟成交额未取到" },
   ],
 };
 const cum: EtfFlowCumData = { date: "2026-11-05", slots: ["09:30", "09:31"], today: [0, 20],
@@ -38,20 +38,25 @@ test("ETF 资金三部分、待公布、样本不足、回填进度与排行缺�
   await withRenderer(async (r) => {
     const { EtfFlowIntraday } = await r.load("/src/verticals/finance/shortline/EtfFlowIntraday.tsx");
     const { EtfFlowSignal } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");
-    const { EtfFlowBroad } = await r.load("/src/verticals/finance/shortline/EtfFlowBroad.tsx");
+    const { EtfFlowBroad, CATEGORY_COLORS } = await r.load("/src/verticals/finance/shortline/EtfFlowBroad.tsx");
     const intraday = textOf(r.html(EtfFlowIntraday, { poll, cum, typical, comparisonDate: "", onComparisonDate: () => {}, onRefresh: () => {}, auto: true, onAuto: () => {}, error: null, previousIndexClose: 2990 }));
     const signal = textOf(r.html(EtfFlowSignal, { data: daily }));
     const broad = textOf(r.html(EtfFlowBroad, { data: daily }));
     assert.match(intraday, /第一部分 · 盘中分钟观测/);
     assert.match(signal, /第二部分 · 放量记录/);
     assert.match(broad, /第三部分 · 日度资金全景/);
+    assert.equal(new Set(CATEGORY_COLORS).size, 12, "12 类宽基各有固定颜色");
     assert.match(intraday, /样本不足（n=2）/);
     assert.match(intraday, /近 20 日均值：实际 18 天 · 2026-10-09 至 2026-11-04/);
     assert.ok(intraday.indexOf("科创50ETF") < intraday.indexOf("沪深300ETF"));
     assert.match(intraday, /159915 创业板ETF 分钟成交额未取到/);
+    assert.match(intraday, /上一交易日收盘价未取到/);
+    assert.match(intraday, /有 1 个分钟点不足 20 只 ETF，按已取到的合计/);
     assert.doesNotMatch(intraday, /159915 创业板ETF 0\.00/);
     assert.match(signal, /待公布/);
     assert.match(broad, /待公布/);
+    const monthTable = broad.split("最近一个月 · 12 类日度净流入")[1] ?? "";
+    assert.ok(monthTable.indexOf("2026-11-05") < monthTable.indexOf("2026-11-04"), "月度明细按最新日期在前");
     assert.match(signal, /官方份额回填中：已完成 12 \/ 750 个交易日/);
     assert.match(broad, /当前可用范围：2026-10-10 至 2026-11-04/);
     assert.doesNotMatch(`${intraday} ${signal} ${broad}`, /Choice|汪汪队|联系人/);

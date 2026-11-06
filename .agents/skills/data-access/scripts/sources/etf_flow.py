@@ -56,7 +56,7 @@ def _aggregate(items, codes, times):
     if count < len(codes):
         notes.append(f"仅汇总成功的 {count}/{len(codes)} 只 ETF")
     if any(at_time[t] < len(codes) for t in times):
-        notes.append("部分分钟缺 ETF 数据，逐分钟覆盖数见 coverage")
+        notes.append("部分分钟缺 ETF 数据，合计按已取到的 ETF 计算")
     if None in values:
         notes.append("部分分钟覆盖不足 80%，该分钟合计为空")
     return {"times": times, "amount_yi": values, "coverage": [at_time[t] for t in times],

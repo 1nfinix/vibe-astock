@@ -10,7 +10,9 @@ function token(style: CSSStyleDeclaration | null, name: string, fallback: string
   return alpha === undefined ? `hsl(${parts.join(", ")})` : `hsla(${parts.join(", ")}, ${alpha})`;
 }
 
-export function readPalette(): ChartPalette {
+type FlowPalette = ChartPalette & { turnover: string; turnoverMuted: string };
+
+export function readPalette(): FlowPalette {
   // 没有页面时（界面测试在 Node 里渲染）一律用下面的兜底色
   const s = typeof document === "undefined" ? null : getComputedStyle(document.documentElement);
   return {
@@ -23,13 +25,15 @@ export function readPalette(): ChartPalette {
     rise: token(s, "--danger", "#ef4444"),
     fall: token(s, "--success", "#22c55e"),
     neutral: token(s, "--muted", "#292524"),
+    turnover: token(s, "--chart-turnover", "#4d8fb8"),
+    turnoverMuted: token(s, "--chart-turnover-muted", "#9ab8ca"),
     tooltipBg: token(s, "--card", "rgba(28,25,23,.92)", 0.96),
     tooltipText: token(s, "--foreground", "#e7e5e4"),
   };
 }
 
 /** 主题切换只改 <html> 的类名；图表配置要跟着重算，否则换了主题图还是旧颜色。 */
-export function usePalette(): ChartPalette {
+export function usePalette(): FlowPalette {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const mo = new MutationObserver(() => setVersion((v) => v + 1));

@@ -38,6 +38,8 @@
     --chart-grid: 220 10% 14%;
     --chart-text: 220 8% 60%;
     --chart-axis: 220 10% 24%;
+    --chart-turnover: 204 44% 51%;
+    --chart-turnover-muted: 203 31% 70%;
   }
 
   .light {
@@ -65,6 +67,8 @@
     --chart-grid: 228 9% 92%;
     --chart-text: 223 7% 40%;
     --chart-axis: 228 9% 80%;
+    --chart-turnover: 204 50% 39%;
+    --chart-turnover-muted: 203 30% 64%;
   }
 
   * { @apply border-border; }
