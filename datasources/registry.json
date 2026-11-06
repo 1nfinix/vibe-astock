@@ -4558,7 +4558,7 @@
         "end": null
       },
       "cache_max_age_sec": 3600,
-      "notes": "159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份"
+      "notes": "158/159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份"
     },
     {
       "id": "cn_etf_minute_batch", "title": "宽基 ETF 篮子当日 1 分钟成交额与上证综指", "layer": "10 情绪",
@@ -4594,11 +4594,11 @@
     },
     {
       "id": "cn_etf_daily_batch", "title": "沪深 ETF 日线收盘与成交额批量", "layer": "10 情绪",
-      "market": ["CN"], "source": "sina+calc", "compliance": "cn-public", "symbol_kind": "none",
+      "market": ["CN"], "source": "sina+baostock", "compliance": "cn-public", "symbol_kind": "none",
       "stages": {}, "enabled": true, "computed": true, "libs": [], "mapper_module": "mappers_shortline",
       "module": "etf_flow", "function": "cn_etf_daily_batch", "mapper": "etf_daily_batch_map",
-      "endpoint_label": "新浪日 K", "args": {"codes": null, "start": null, "end": null, "include_index": false}, "cache_max_age_sec": 86400,
-      "notes": "每批最多 50 只 ETF；日收盘价与成交量×OHLC 均价的估算成交额（亿元）；单只缺失列明原因"
+      "endpoint_label": "新浪日 K + baostock 日成交额", "args": {"codes": null, "start": null, "end": null, "include_index": false}, "cache_max_age_sec": 86400,
+      "notes": "每批最多 50 只 ETF；收盘价来自新浪，真实日成交额来自 baostock 不复权日线 amount（元÷1亿）；逐只逐日缺额标空，不以 OHLC 估算回填"
     }
   ]
 }

@@ -133,8 +133,8 @@ def szse_fund_share_history(code=None, start=None, end=None):
     from datetime import date, timedelta
     from sources._http import http_get
 
-    if not isinstance(code, str) or not re.fullmatch(r"159\d{3}", code):
-        raise ValueError("深交所份额历史只接受 159 开头的六位代码")
+    if not isinstance(code, str) or not re.fullmatch(r"15[89]\d{3}", code):
+        raise ValueError("深交所份额历史只接受 158/159 开头的六位代码")
     try:
         begin, finish = date.fromisoformat(start), date.fromisoformat(end)
     except (TypeError, ValueError) as exc:

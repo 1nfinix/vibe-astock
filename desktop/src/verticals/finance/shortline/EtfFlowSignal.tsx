@@ -61,6 +61,6 @@ export function EtfFlowSignal({ data }: { data: EtfFlowDailyData | null }) {
     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm"><span>{rows.at(-1)?.date === data?.date ? "今日成交额" : "最近交易日成交额"} <strong className="font-mono tabular-nums">{rows.at(-1)?.turnover_yi === null || !rows.length ? "—" : `${flowNumber(rows.at(-1)?.turnover_yi)} 亿`}</strong></span><span>最新已公布净流入（T-1 · {latest?.date ?? "待公布"}） <strong className="font-mono tabular-nums">{latest ? `${flowSigned(latest.basket.net_yi)} 亿` : "待公布"}</strong></span></div>
     <div className="grid gap-4 lg:grid-cols-2"><DailyChart title="放量日与近期成交额" rows={picked} kind="turnover" recent={recent} /><DailyChart title="放量日与近期净流入" rows={picked} kind="net" recent={recent} /></div>
     <div className="grid gap-4 lg:grid-cols-2"><LongChart title="20 只 ETF 日度成交额与上证综指" rows={rows} kind="turnover" /><LongChart title="20 只 ETF 日度净流入与上证综指" rows={rows} kind="net" /></div>
-    <p className="border-t border-border pt-2 text-xs text-muted-foreground">数据来源：新浪日 K、沪深交易所官方份额；净流入 = 份额变动 × 当日收盘价，以收盘价近似净值。未公布的日期保留空值。</p>
+    <p className="border-t border-border pt-2 text-xs text-muted-foreground">数据来源：新浪日 K 收盘价、baostock 真实日成交额、沪深交易所官方份额；净流入 = 份额变动 × 当日收盘价，以收盘价近似净值。缺失数据保留空值。</p>
   </section>;
 }

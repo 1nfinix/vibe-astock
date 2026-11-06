@@ -111,6 +111,30 @@ def test_twelve_categories_and_exclusions(index, category):
     assert etf_flow._category(index) == category
 
 
+@pytest.mark.parametrize("index", [
+    "上证科创板综合指数", "000680", "上证科创板综合价格指数", "000681",
+    "上证科创板100指数", "上证科创板 100 指数", "000698",
+    "上证科创板200指数", "000699", "399102 创业板综", "399102",
+    "399019 创业200", "399019",
+    "中证A股指数", "930903", "富时中国A50指数", "XIN9",
+    "MSCI中国A股人民币指数", "718711",
+    "MSCI中国A股国际通人民币指数", "716567",
+    "MSCI中国A50互联互通人民币指数", "746059",
+    "399850 深证50", "399850", "399005 中小100", "399005",
+])
+def test_selected_other_broad_indices(index):
+    assert etf_flow._category(index) == "其他宽基"
+
+
+@pytest.mark.parametrize("index", [
+    "中证A500红利低波动指数", "纳斯达克100指数", "港股通信息技术指数",
+    "AAA科技创新公司债指数", "中证100指数", "399903 中证100", "399007 深证300",
+    "MSCI中国A股国际质量指数",
+])
+def test_other_broad_exclusions(index):
+    assert etf_flow._category(index) is None
+
+
 def test_universe_requires_both_sources(monkeypatch):
     monkeypatch.setattr(etf_flow, "_sse_etfs", lambda: [
         {"code": "510300", "name": "300ETF", "index": "沪深300指数", "exchange": "SH"},
@@ -198,7 +222,21 @@ def test_etf_daily_batch_parses_close_and_amount(monkeypatch):
         calls.append((code, scale, count))
         return [_bar("2026-11-05", 2)]
     monkeypatch.setattr(etf_flow, "sina_kline", fake)
+    monkeypatch.setattr(etf_flow, "baostock_kdata", lambda code, start, end, **kw: [
+        {"date": "2026-11-05", "amount": 250_000_000}])
     got = etf_flow.cn_etf_daily_batch(["510300"], include_index=True)
-    assert got["items"]["510300"] == [{"date": "2026-11-05", "close": 2, "amount_yi": 2}]
+    assert got["items"]["510300"] == [{"date": "2026-11-05", "close": 2, "amount_yi": 2.5}]
     assert got["index"] == [{"date": "2026-11-05", "close": 2}]
     assert calls == [("510300", 240, 1023), ("sh000001", 240, 1023)]
+
+
+def test_etf_daily_batch_keeps_close_and_marks_missing_real_amount(monkeypatch):
+    monkeypatch.setattr(etf_flow, "sina_kline", lambda *_: [_bar("2026-11-04", 2), _bar("2026-11-05", 3)])
+    monkeypatch.setattr(etf_flow, "baostock_kdata", lambda *a, **kw: [
+        {"date": "2026-11-04", "amount": 120_000_000}])
+    got = etf_flow.cn_etf_daily_batch(["510300"])
+    assert got["items"]["510300"] == [
+        {"date": "2026-11-04", "close": 2, "amount_yi": 1.2},
+        {"date": "2026-11-05", "close": 3, "amount_yi": None}]
+    assert got["missing"] == [{"code": "510300", "date": "2026-11-05",
+                               "reason": "baostock 当日真实成交额未取到"}]

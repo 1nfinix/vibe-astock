@@ -142,12 +142,12 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `sse_e_interaction` | 上证e互动问答(沪市公司) | CN | sse | cn-public | cn6 | - | 只服务沪市(60 / 68 / 900 开头),深市互动问答用 cninfo_irm;kind=answered(已答)/ questions(全部提问);投资者提问是不可信文本,只作线索。上游 a-stock-data §10 |
 | `cn_etf_turnover_baseline` | 宽基 ETF 20 日成交额与同时点基准 | CN | sina+calc | cn-public | none | - | 历史 20 日基准；缺数明确标记，收盘作业 fresh 更新 |
 | `cn_etf_turnover_live` | 宽基 ETF 实时量价与份额 | CN | tencent | cn-public | none | - | 实时行情；仅公开市场数据，不含个人交易 |
-| `cn_etf_share_history_sz` | 深交所 ETF 历史份额 | CN | szse | cn-public | none | - | 159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份 |
+| `cn_etf_share_history_sz` | 深交所 ETF 历史份额 | CN | szse | cn-public | none | - | 158/159 开头 ETF；逐页取深交所官方基金规模，万份换算亿份 |
 | `cn_etf_minute_batch` | 宽基 ETF 篮子当日 1 分钟成交额与上证综指 | CN | sina+calc | cn-public | none | - | 固定 20 只篮子；亿元；指数最新 K 线日期为准；ETF 成功率低于 80% 不给合计 |
 | `cn_etf_minute_hist` | 宽基 ETF 篮子历史 5 分钟成交额 | CN | sina+calc | cn-public | none | - | 最多回溯新浪 1023 根 5 分钟 K；按交易日分组；逐日 ETF 成功率低于 80% 不给合计 |
 | `cn_broad_etf_universe` | 沪深交易所宽基 ETF 名录 | CN | sse+szse | cn-public | none | - | 跟踪指数精确白名单分类 12 类；无匹配指数的行业、主题、策略、跨境、债券等排除；名录不完整时报错 |
 | `cn_etf_share_history_sh` | 上交所 ETF 历史份额批量回填 | CN | sse | cn-public | none | - | 可传交易日 dates 列表或 start/end 工作日区间；单日失败记录 failed，不中断整个区间；份额万份 |
-| `cn_etf_daily_batch` | 沪深 ETF 日线收盘与成交额批量 | CN | sina+calc | cn-public | none | - | 每批最多 50 只 ETF；日收盘价与成交量×OHLC 均价的估算成交额（亿元）；单只缺失列明原因 |
+| `cn_etf_daily_batch` | 沪深 ETF 日线收盘与成交额批量 | CN | sina+baostock | cn-public | none | - | 每批最多 50 只 ETF；收盘价来自新浪，真实日成交额来自 baostock 不复权日线 amount（元÷1亿）；逐只逐日缺额标空，不以 OHLC 估算回填 |
 
 ## 9 期权(1)
 

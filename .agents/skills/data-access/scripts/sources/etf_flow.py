@@ -8,6 +8,7 @@ import re
 import time
 
 from sources._http import http_get
+from sources.baostock_src import baostock_kdata
 from sources.etf_turnover import ETF_CODE_RE, _yi
 from sources.sina import sina_kline
 
@@ -127,6 +128,12 @@ _OTHER = {
     "上证综合": "000001", "上证指数": "000001", "深证成份": "399001",
     "深证成指": "399001", "上证380": "000009", "中证A100": "000903",
     "中证A50": "930050", "中证全指": "000985", "国证A指": "399317",
+    "上证科创板综合": "000680", "上证科创板综合价格": "000681",
+    "上证科创板100": "000698", "上证科创板200": "000699",
+    "创业板综": "399102", "创业200": "399019",
+    "中证A股": "930903", "富时中国A50": "XIN9", "MSCI中国A股人民币": "718711",
+    "MSCI中国A股国际通人民币": "716567", "MSCI中国A50互联互通人民币": "746059",
+    "深证50": "399850", "中小100": "399005",
 }
 _ALIASES = {"上证科创板50成份": "科创50", "上证科创50成份": "科创50",
             "中证小盘500": "中证500", "中证科创创业50": "双创50"}
@@ -134,9 +141,9 @@ _ALIASES = {"上证科创板50成份": "科创50", "上证科创50成份": "科�
 
 def _category(index):
     raw = str(index or "").strip()
-    code_match = re.fullmatch(r"(\d{6})(?:\s+(.+))?", raw)
-    code = code_match.group(1) if code_match else None
-    name = ((code_match.group(2) if code_match else raw) or "").strip().replace(" ", "")
+    code_match = re.fullmatch(r"(\d{6}|XIN9)(?:\s+(.+))?", raw, re.IGNORECASE)
+    code = code_match.group(1).upper() if code_match else None
+    name = re.sub(r"\s+", "", (code_match.group(2) if code_match else raw) or "")
     if name in _OTHER:
         return "其他宽基"
     name = re.sub(r"(?:收益指数|指数)$", "", name)
@@ -267,7 +274,7 @@ def cn_etf_share_history_sh(start=None, end=None, dates=None):
 
 
 def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
-    """新浪日 K：按指定代码输出收盘与估算成交额，供申赎净额按当天收盘价计。"""
+    """新浪日 K 收盘价 + baostock 不复权日线真实成交额；缺额逐日标空。"""
     if (not isinstance(codes, list) or not codes or len(codes) > 50
             or any(not isinstance(c, str) or not re.fullmatch(r"(?:5\d{5}|15\d{4})", c) for c in codes)):
         raise ValueError("codes 必须是 1..50 只沪深 ETF 六位代码")
@@ -286,10 +293,26 @@ def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
     for code in codes:
         try:
             bars = sina_kline(code, 240, 1023)
-            rows = [{"date": b["day"][:10], "close": b["close"], "amount_yi": round(_yi(b), 6)}
+            rows = [{"date": b["day"][:10], "close": b["close"]}
                     for b in bars if (not start or b["day"][:10] >= start) and (not end or b["day"][:10] <= end)]
             if not rows:
                 raise ValueError("日期区间无日 K")
+            try:
+                dates = [r["date"] for r in rows]
+                amounts = {r["date"]: r["amount"] for r in baostock_kdata(
+                    code, min(dates), max(dates), fields="date,amount", adjustflag="3")}
+            except Exception as exc:
+                amounts = {}
+                amount_error = f"baostock 日成交额失败：{str(exc)[:120]}"
+            else:
+                amount_error = "baostock 当日真实成交额未取到"
+            for row in rows:
+                amount = amounts.get(row["date"])
+                if isinstance(amount, (int, float)) and 0 < amount < float("inf"):
+                    row["amount_yi"] = round(amount / 1e8, 6)
+                else:
+                    row["amount_yi"] = None
+                    missing.append({"code": code, "date": row["date"], "reason": amount_error})
             items[code] = rows
         except Exception as exc:
             missing.append({"code": code, "reason": str(exc)[:180]})
@@ -299,4 +322,5 @@ def cn_etf_daily_batch(codes=None, start=None, end=None, include_index=False):
                  if (not start or b["day"][:10] >= start) and (not end or b["day"][:10] <= end)]
         if not index:
             raise RuntimeError("上证综指日 K 为空")
-    return {"items": items, "missing": missing, "index": index, "unit": "亿元"}
+    return {"items": items, "missing": missing, "index": index, "unit": "亿元",
+            "amount_basis": "baostock 不复权日线成交额（元）"}

@@ -136,6 +136,21 @@ test("较早交易日缺份额标缺失，最近交易日仅缺份额标待公�
   assert.equal(rows[2]?.basket.net_yi, null);
 });
 
+test("真实日成交额缺失只影响成交额，收盘价仍用于申赎净额", () => {
+  const dates = ["2026-11-03", "2026-11-04", "2026-11-05"];
+  const prices = new Map(BASKET.map((code) => [code, new Map(dates.map((date) => [date,
+    { date, close: 2, amount_yi: code === BASKET[0] && date === "2026-11-04" ? null : 1 }]))] as const));
+  const shares = { version: 1 as const, dates: {
+    "20261103": Object.fromEntries(BASKET.map((code) => [code, 10])),
+    "20261104": Object.fromEntries(BASKET.map((code) => [code, 11])),
+  } };
+  const row = calculateDaily(dates, new Map(), prices,
+    BASKET.map((code) => ({ code, name: code, category: "沪深300", exchange: "SH" })), shares, "2026-11-05").rows[1]!;
+  assert.equal(row.turnover_yi, null);
+  assert.equal(row.turnover_missing_count, 1);
+  assert.equal(row.basket.net_yi, 40);
+});
+
 test("daily 与 typical 复用日线结果，收盘档案匹配交易日时优先读取", async () => {
   const folder = root();
   try {
@@ -202,6 +217,18 @@ test("旧 share_history.json 可读，宽基回填断点续传并报告交易日
     assert.deepEqual([backfillProgress(folder).completed, backfillProgress(folder).total], [3, 3]);
     assert.equal(calls.length, first + 2, "新增一天只补上交所这天和深交所这天");
     assert.ok(calls.at(-1)?.includes('"start":"2026-11-05"'));
+    const priorCalls = calls.length;
+    startBroadShareBackfill(ctx(folder), ["2026-11-03", "2026-11-04", "2026-11-05"],
+      ["510300", "159915", "510500", "159949"], fetch as never);
+    for (let i = 0; i < 20 && backfillProgress(folder).syncing; i++) await new Promise((r) => setTimeout(r, 1));
+    const addedCalls = calls.slice(priorCalls);
+    assert.equal(addedCalls.filter((x) => x.startsWith("cn_etf_share_history_sh:")).length, 1,
+      "上交所把新增代码所需日期合并成一次查询，已保存的原代码份额不覆盖");
+    assert.ok(addedCalls.some((x) => x.includes('"dates":["2026-11-03","2026-11-04","2026-11-05"]')));
+    assert.equal(addedCalls.filter((x) => x.startsWith("cn_etf_share_history_sz:")).length, 1,
+      "原深市代码的已完成历史不重跑");
+    assert.ok(addedCalls.some((x) => x.includes('"code":"159949"')));
+    assert.deepEqual([backfillProgress(folder).completed, backfillProgress(folder).total], [3, 3]);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 

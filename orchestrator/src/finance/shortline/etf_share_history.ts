@@ -6,7 +6,7 @@ import { fetchEndpoint, type FetchResult, type ServiceContext } from "../../serv
 import { CORE_CODES } from "./etf_turnover.ts";
 
 type Fetch = (ctx: ServiceContext, req: Parameters<typeof fetchEndpoint>[1]) => Promise<Pick<FetchResult, "envelope">>;
-export type BackfillState = { targetDates: string[]; codes: string[]; doneTasks: string[]; doneDates: string[]; failed: ShareMissing[] };
+export type BackfillState = { targetDates: string[]; codes: string[]; shBaseCodes?: string[]; doneTasks: string[]; doneDates: string[]; failed: ShareMissing[] };
 export type ShareStore = { version: 1; dates: Record<string, Record<string, number>>; backfill?: BackfillState };
 export type ShareMissing = { code: string; date?: string; reason: string };
 export type ShareRange = { deltas: { date: string; d: number }[]; index: { date: string; v: number }[] };
@@ -168,12 +168,18 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
     const sameCodes = JSON.stringify(store.backfill?.codes) === JSON.stringify(allCodes);
     if (!store.backfill || JSON.stringify(store.backfill.targetDates) !== JSON.stringify(targetDates) || !sameCodes) {
       const prior = store.backfill;
+      const baseSh = prior?.shBaseCodes ?? prior?.codes.filter((c) => !c.startsWith("15")) ?? allCodes.filter((c) => !c.startsWith("15"));
       store.backfill = { targetDates, codes: allCodes,
-        doneTasks: sameCodes ? prior?.doneTasks ?? [] : [],
+        shBaseCodes: baseSh,
+        doneTasks: prior?.doneTasks ?? [],
         doneDates: sameCodes ? prior?.doneDates.filter((d) => targetDates.includes(d)) ?? [] : [],
-        failed: sameCodes ? prior?.failed ?? [] : [] };
+        failed: prior?.failed ?? [] };
     }
     const state = store.backfill;
+    const doneTaskSet = new Set(state.doneTasks);
+    const markDone = (task: string) => {
+      if (!doneTaskSet.has(task)) { doneTaskSet.add(task); state.doneTasks.push(task); }
+    };
     state.failed = [...new Map(state.failed.map((x) => [`${x.code}:${x.date ?? ""}`, x])).values()];
     const fail = (entry: ShareMissing) => {
       state.failed = state.failed.filter((x) => x.code !== entry.code || x.date !== entry.date);
@@ -182,6 +188,7 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
     const save = () => saveStore(ctx.dataRoot, store);
     save();
     const sh = allCodes.filter((c) => !c.startsWith("15")), sz = allCodes.filter((c) => c.startsWith("15"));
+    const addedSh = sh.filter((c) => !state.shBaseCodes?.includes(c));
     // 固定的 80 个自然日桶，新增交易日不会移动旧桶边界；深市每次查询不超过源端窗口。
     const buckets = new Map<number, string[]>();
     for (const day of targetDates) {
@@ -192,7 +199,8 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
     for (const [bucket, window] of [...buckets].reverse()) {
       if (window.every((d) => state.doneDates.includes(d))) continue;
       for (let i = 0; i < window.length; i += 10) {
-        const batch = window.slice(i, i + 10), needed = batch.filter((d) => !state.doneTasks.includes(`SH:${d}`));
+        const batch = window.slice(i, i + 10), needed = batch.filter((d) => !doneTaskSet.has(`SH:${d}`)
+          || addedSh.some((c) => !doneTaskSet.has(`SH:${d}:${c}`)));
         if (!needed.length || !sh.length) continue;
         try {
           const env = (await fetch(ctx, { endpoint: "cn_etf_share_history_sh", args: { dates: needed.map(iso) } })).envelope;
@@ -201,11 +209,15 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
           const failed = new Set((r.failed as unknown[]).map((x) => compact(String(obj(x)?.date ?? ""))));
           for (const row of r.rows) {
             const x = obj(row), d = compact(String(x?.date ?? "")), code = String(x?.code ?? ""), v = x?.shares_10k;
-            if (needed.includes(d) && sh.includes(code) && typeof v === "number" && Number.isFinite(v)) (store.dates[d] ??= {})[code] = v / 1e4;
+            if (needed.includes(d) && sh.includes(code) && typeof v === "number" && Number.isFinite(v)
+                && store.dates[d]?.[code] === undefined) (store.dates[d] ??= {})[code] = v / 1e4;
           }
           for (const day of needed) {
             if (failed.has(day)) fail({ code: "SH", date: iso(day), reason: "上交所单日份额未取到" });
-            else state.doneTasks.push(`SH:${day}`);
+            else {
+              markDone(`SH:${day}`);
+              for (const code of addedSh) markDone(`SH:${day}:${code}`);
+            }
           }
         } catch (e) {
           for (const day of needed) fail({ code: "SH", date: iso(day), reason: e instanceof Error ? e.message : String(e) });
@@ -232,7 +244,8 @@ export function startBroadShareBackfill(ctx: ServiceContext, dates: string[], co
         }
         save();
       }
-      const complete = window.filter((day) => (!sh.length || state.doneTasks.includes(`SH:${day}`))
+      const complete = window.filter((day) => (!sh.length || doneTaskSet.has(`SH:${day}`)
+        && addedSh.every((code) => doneTaskSet.has(`SH:${day}:${code}`)))
         && sz.every((code) => {
           const prefix = `SZ:${bucket}:${code}:`;
           return (state.doneTasks.find((x) => x.startsWith(prefix))?.slice(prefix.length) ?? "") >= day;

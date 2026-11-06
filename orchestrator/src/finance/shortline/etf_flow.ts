@@ -26,6 +26,8 @@ const iso = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 const compact = (d: string) => d.replaceAll("-", "");
 const dailyMemory = new Map<string, { date: string; at: number; value: DailyResult }>();
 const dailyPending = new Map<string, Promise<DailyResult>>();
+const DAILY_SOURCE = "baostock 不复权日线真实成交额；新浪日 K 收盘价；交易所份额变动×当日收盘价";
+let dailyBasisPrimed = false;
 type DailyResult = Awaited<ReturnType<typeof computeDaily>>;
 
 /** 上午 121 槽含 09:30，下午 120 槽从 13:01 开始。 */
@@ -189,7 +191,7 @@ export async function etfFlowCum(ctx: ServiceContext, dateArg: unknown, signal: 
 export function netFlow(shares: number | null, previous: number | null, close: number | null): number | null {
   return shares === null || previous === null || close === null ? null : (shares - previous) * close;
 }
-type DailyBar = { date: string; close: number; amount_yi: number };
+type DailyBar = { date: string; close: number; amount_yi: number | null };
 type UniverseItem = { code: string; name: string; category: string; exchange: string };
 export function calculateDaily(dates: string[], index: Map<string, number>, prices: Map<string, Map<string, DailyBar>>,
   universe: UniverseItem[], shares: ReturnType<typeof loadShareHistory>, today: string, failedCodes = new Set<string>()) {
@@ -199,8 +201,8 @@ export function calculateDaily(dates: string[], index: Map<string, number>, pric
   const rows = dates.map((date, i) => {
     const previous = dates[i - 1], todayPending = date >= today;
     const basketBars = BASKET.map((code) => prices.get(code)?.get(date));
-    const turnoverMissing = basketBars.filter((x) => !x).length;
-    const turnover = turnoverMissing ? null : basketBars.reduce((a, x) => a + x!.amount_yi, 0);
+    const turnoverMissing = basketBars.filter((x) => !x || x.amount_yi === null).length;
+    const turnover = turnoverMissing ? null : basketBars.reduce((a, x) => a + x!.amount_yi!, 0);
     const sums = new Map<string, { value: number; shareMissing: number; priceMissing: number; active: number }>(categories.map((c) => [c, { value: 0, shareMissing: 0, priceMissing: 0, active: 0 }]));
     const basket = { value: 0, shareMissing: 0, priceMissing: 0, active: 0 };
     for (const item of universe) {
@@ -260,18 +262,19 @@ async function computeDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fet
   const failedCodes = new Set<string>();
   let indexRows: Raw[] = [];
   for (let i = 0; i < codes.length; i += 50) {
-    const data = await requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: codes.slice(i, i + 50), include_index: i === 0 }, fresh);
+    const data = await requireResult(ctx, "cn_etf_daily_batch", fetch, signal, { codes: codes.slice(i, i + 50), include_index: i === 0 }, fresh || !dailyBasisPrimed);
     if (i === 0) indexRows = arr(data.index);
-    for (const missing of arr(data.missing)) if (str(missing.code)) failedCodes.add(str(missing.code));
+    for (const missing of arr(data.missing)) if (str(missing.code) && !str(missing.date)) failedCodes.add(str(missing.code));
     for (const [code, raw] of Object.entries(obj(data.items) ?? {})) {
       const bars = new Map<string, DailyBar>();
       for (const r of arr(raw)) {
         const close = num(r.close), amount = num(r.amount_yi), date = str(r.date);
-        if (date && close !== null && amount !== null) bars.set(date, { date, close, amount_yi: amount });
+        if (date && close !== null) bars.set(date, { date, close, amount_yi: amount });
       }
       source.set(code, bars);
     }
   }
+  dailyBasisPrimed = true;
   const index = new Map(indexRows.flatMap((r) => { const d = str(r.date), v = num(r.close); return d && v !== null ? [[d, v] as const] : []; }));
   const dates = [...index.keys()].filter((d) => d <= today).sort().slice(-750);
   if (!dates.length) throw new Error("上证综指日线没有可用交易日");
@@ -279,7 +282,7 @@ async function computeDaily(ctx: ServiceContext, signal: AbortSignal, fetch: Fet
   const daily = calculateDaily(dates, index, source, universe, loadShareHistory(ctx.dataRoot), today, failedCodes);
   const progress = backfillProgress(ctx.dataRoot);
   const eligible = daily.rows.filter((r) => r.date < today && r.turnover_missing_count === 0);
-  return { date: today, unit: "亿元", source: "新浪日 K 成交量×OHLC 均价；交易所份额变动×当日收盘价",
+  return { date: today, unit: "亿元", source: DAILY_SOURCE,
     ...daily, spike_window_from: eligible[0]?.date ?? null,
     spike_complete: progress.total > 0 && progress.completed === progress.total
       && eligible.length > 0 && eligible.every((r) => r.basket.status === "已公布"),
@@ -293,7 +296,7 @@ export async function etfFlowDaily(ctx: ServiceContext, signal: AbortSignal, fet
     const calendar = await fetchTodayCalendar(ctx, today, fetch, signal);
     const latest = calendar?.last_trading_day ?? today;
     const progress = backfillProgress(ctx.dataRoot);
-    const valid = (value: DailyResult) => value.rows.at(-1)?.date === latest
+    const valid = (value: DailyResult) => value.source === DAILY_SOURCE && value.rows.at(-1)?.date === latest
       && value.backfill.completed === progress.completed && value.backfill.total === progress.total;
     const file = path.join(ctx.dataRoot, "shortline", "etf_flow", "daily.json");
     try {

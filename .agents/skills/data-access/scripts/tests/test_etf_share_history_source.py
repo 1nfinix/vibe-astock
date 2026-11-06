@@ -74,6 +74,16 @@ def test_history_empty_interval_is_not_failed(monkeypatch):
     assert mapped["extra"]["note"] == "区间内暂无新记录"
 
 
+def test_history_accepts_new_158_etf_segment(monkeypatch):
+    class Reply:
+        def raise_for_status(self): pass
+        def json(self): return [{"metadata": {"pagecount": 1, "recordcount": 1, "pagesize": 20},
+                                  "data": [{"fund_code": "158022", "size_date": "2026-11-05", "current_size": "10,000"}]}]
+    monkeypatch.setattr("sources._http.http_get", lambda *_a, **_k: Reply())
+    assert etf_turnover.szse_fund_share_history("158022", "2026-11-05", "2026-11-05") == [
+        {"date": "2026-11-05", "shares_yi": 1}]
+
+
 def test_history_http_error_still_fails(monkeypatch):
     class Reply:
         def raise_for_status(self): raise RuntimeError("HTTP 503")
