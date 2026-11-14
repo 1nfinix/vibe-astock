@@ -3,7 +3,7 @@ import { backend } from "@/lib/backend";
 import { cleanReason } from "./api";
 import { useWatchPoll } from "./useWatchPoll";
 import { EtfFlowIntraday } from "./EtfFlowIntraday";
-import { EtfFlowSignal } from "./EtfFlowSignal";
+import { EtfFlowBackfill, EtfFlowSignal } from "./EtfFlowSignal";
 import { EtfFlowBroad } from "./EtfFlowBroad";
 import type { EtfFlowCumData, EtfFlowDailyData, EtfFlowPollData, EtfFlowTypicalData } from "./EtfFlowTypes";
 
@@ -52,6 +52,7 @@ export function EtfFlowTab() {
       <a href="#etf-flow-broad" className="rounded border border-border px-3 py-1.5 hover:bg-muted">日度资金全景</a>
     </nav>
     {(cumError || dailyError) && <p role="alert" className="text-xs text-warning">部分数据未取到：{[cumError, dailyError].filter(Boolean).join("；")}</p>}
+    <EtfFlowBackfill data={daily} />
     <EtfFlowIntraday poll={poll.data} cum={cum} typical={typical} comparisonDate={comparisonDate} onComparisonDate={setComparisonDate}
       onRefresh={poll.refresh} auto={auto} onAuto={setAuto} error={poll.error} previousIndexClose={previousIndexClose} />
     <EtfFlowSignal data={daily} />

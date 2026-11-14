@@ -1,5 +1,5 @@
 export interface EtfFlowPollData {
-  date: string; asof: string; is_today: boolean; poll_ms: number; success_count: number;
+  date: string; asof: string; is_today: boolean; phase: "weekend" | "pre_open" | "auction" | "morning" | "lunch" | "afternoon" | "closing_auction" | "closed"; trading_day: boolean | null; poll_ms: number; success_count: number;
   bars: { times: string[]; amount_yi: number[] | null; coverage: (number | null)[]; reason: string | null; barAxisMax: number };
   index: { times: string[]; close: number[] };
   missing: { code: string; reason: string }[];

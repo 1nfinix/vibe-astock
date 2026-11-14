@@ -175,23 +175,23 @@ export async function etfFlowCum(ctx: ServiceContext, dateArg: unknown, signal: 
   const complete = (d: FiveDay) => d.times.length === 48 && d.amount_yi.every((v) => v !== null)
     && d.coverage.length === 48 && d.coverage.every((v) => v === BASKET.length);
   const available = days.filter(complete).map((d) => d.date);
-  const currentDay = clockOf(now).day;
-  const comparison = dateArg === undefined ? available.filter((d) => d < currentDay).at(-1) : validDate(dateArg);
-  if (dateArg !== undefined && (!comparison || comparison > currentDay || !available.includes(comparison)))
-    throw new ServiceError("bad_request", "对比日必须是可回溯的交易日，且不能是未来日期");
+  const comparisonDates = available.filter((d) => d < poll.date);
+  const comparison = dateArg === undefined ? comparisonDates.at(-1) : validDate(dateArg);
+  if (dateArg !== undefined && (!comparison || !comparisonDates.includes(comparison)))
+    throw new ServiceError("bad_request", "对比日必须是早于数据日的可回溯交易日");
   const chosen = days.find((d) => d.date === comparison && complete(d));
-  const completed = days.filter((d) => d.date < currentDay && complete(d)).slice(-20);
+  const completed = days.filter((d) => d.date < poll.date && complete(d)).slice(-20);
   const curves = completed.map((d) => interpolateFive(d.times, d.amount_yi));
   const average = MINUTE_SLOTS.map((_, i) => {
     const vals = curves.map((x) => x[i]).filter((v): v is number => v !== null);
     return vals.length === curves.length && vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   });
-  return { date: poll.date, slots: MINUTE_SLOTS, today: poll.is_today && poll.bars.amount_yi
+  return { date: poll.date, slots: MINUTE_SLOTS, today: poll.bars.amount_yi?.some((v) => v !== null)
     ? minuteCumulative(poll.bars.times, poll.bars.amount_yi) : Array(MINUTE_SLOTS.length).fill(null),
     comparison: { date: comparison ?? null, values: chosen ? interpolateFive(chosen.times, chosen.amount_yi) : null,
       coverage: chosen?.coverage ?? null, reason: chosen?.reason ?? null },
     average20: { values: curves.length ? average : null, n: curves.length,
-      from: completed[0]?.date ?? null, to: completed.at(-1)?.date ?? null }, comparison_dates: available };
+      from: completed[0]?.date ?? null, to: completed.at(-1)?.date ?? null }, comparison_dates: comparisonDates };
 }
 
 export function netFlow(shares: number | null, previous: number | null, close: number | null): number | null {

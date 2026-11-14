@@ -6,6 +6,19 @@ import { flowNumber, flowSigned } from "./EtfFlowTypes";
 const panel = "min-w-0 rounded-md border border-border bg-card p-4";
 const zoom = [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }];
 const textTime = (value: string) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date); };
+function marketTime(poll: EtfFlowPollData | null, auto: boolean): string {
+  if (!poll) return "行情数据待取";
+  if (!poll.date) return "行情数据日未取到";
+  const time = poll.bars.times.at(-1);
+  if (!time) return `${poll.date} 分钟行情时间未取到：${poll.bars.reason || "分钟点缺失"}`;
+  const previous = time === "15:00" ? `${poll.date} 收盘数据` : `${poll.date} ${time} 行情（收盘分钟未取到）`;
+  if (poll.trading_day === false || poll.phase === "weekend") return `休市中 · 显示 ${previous}`;
+  if (poll.phase === "pre_open" || poll.phase === "auction") return `未开盘 · 显示 ${previous}`;
+  if (!poll.is_today) return `行情未更新 · 显示 ${previous}`;
+  if (poll.phase === "closed") return `行情 ${poll.date} ${time} · 已收盘`;
+  if (poll.phase === "lunch") return `行情 ${poll.date} ${time} · 午间休市`;
+  return `行情 ${time} · ${auto ? "自动刷新中" : "已暂停"}`;
+}
 
 function TypicalChart({ title, group, other, times }: { title: string; group: EtfFlowTypicalGroup; other: EtfFlowTypicalGroup; times: string[] }) {
   const p = usePalette();
@@ -53,17 +66,17 @@ export function EtfFlowIntraday({ poll, cum, typical, comparisonDate, onComparis
     xAxis: { type: "category", data: cum?.slots ?? [], axisLabel: { color: p.text, interval: 29 }, axisLine: { lineStyle: { color: p.axis } } },
     yAxis: { type: "value", name: "亿元", axisLabel: { color: p.text }, splitLine: { lineStyle: { color: p.grid } } },
     series: [
-      { name: "今日", type: "line", data: cum?.today ?? [], showSymbol: false, lineStyle: { color: p.rise, width: 2 } },
+      { name: poll?.is_today && poll.date === cum?.date ? "今日" : cum?.date || "数据日未取到", type: "line", data: cum?.today ?? [], showSymbol: false, lineStyle: { color: p.rise, width: 2 } },
       { name: `对比日 ${cum?.comparison.date ?? ""}`, type: "line", data: cum?.comparison.values ?? [], showSymbol: false, lineStyle: { color: p.primary, width: 2 } },
       { name: "近 20 日均值", type: "line", data: cum?.average20.values ?? [], showSymbol: false, lineStyle: { color: p.benchmark, width: 2 } },
     ] };
   const rows = [...(poll?.ranking ?? [])].sort((a, b) => (b.amount_yi ?? -Infinity) - (a.amount_yi ?? -Infinity));
   const max = Math.max(0, ...rows.map((r) => r.amount_yi ?? 0));
   return <section id="etf-flow-intraday" className="space-y-4 scroll-mt-24" aria-label="盘中分钟观测">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold">第一部分 · 盘中分钟观测</h2><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>交易日 {poll?.date ?? "—"} · 更新 {poll ? textTime(poll.asof) : "—"}</span><button type="button" onClick={onRefresh} className="rounded border border-border px-2 py-1 text-foreground">立即刷新</button><button type="button" onClick={() => onAuto(!auto)} className="rounded border border-border px-2 py-1 text-foreground">{auto ? "暂停自动刷新" : "恢复自动刷新"}</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold">第一部分 · 盘中分钟观测</h2><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span title={poll ? `取数时间 ${poll.asof ? textTime(poll.asof) : "未取到"}` : undefined}>{marketTime(poll, auto)}</span><button type="button" onClick={onRefresh} className="rounded border border-border px-2 py-1 text-foreground">立即刷新</button><button type="button" onClick={() => onAuto(!auto)} className="rounded border border-border px-2 py-1 text-foreground">{auto ? "暂停自动刷新" : "恢复自动刷新"}</button></div></div>
     {error && <p role="alert" className="text-xs text-warning">本次刷新失败：{error}</p>}
     <div className={panel}><h3 className="text-sm font-semibold">20 只 ETF 分钟成交额与上证综指</h3>{bars?.amount_yi?.length ? <EChart option={intraday} height={330} /> : <p role="status" className="py-16 text-center text-sm text-muted-foreground">{bars?.reason || "分钟数据待取"}</p>}{bars?.reason && bars.amount_yi && <p className="text-xs text-muted-foreground">{bars.reason}</p>}{previousIndexClose === null && <p className="text-xs text-muted-foreground">昨收参考线待日线数据</p>}</div>
-    <div className={panel}><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">当日分钟累计成交额</h3><label className="text-xs text-muted-foreground">对比日 <select aria-label="选择对比日" value={comparisonDate || cum?.comparison.date || ""} onChange={(e) => onComparisonDate(e.target.value)} className="rounded border border-border bg-background px-2 py-1 text-foreground"><option value="">上一交易日</option>{cum?.comparison_dates.map((d) => <option key={d} value={d}>{d}</option>)}</select></label></div>
+    <div className={panel}><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{poll?.is_today && poll.date === cum?.date ? "当日" : cum?.date || "数据日"}分钟累计成交额</h3><label className="text-xs text-muted-foreground">对比日 <select aria-label="选择对比日" value={comparisonDate} onChange={(e) => onComparisonDate(e.target.value)} className="rounded border border-border bg-background px-2 py-1 text-foreground"><option value="">上一交易日（{cum?.comparison.date ?? "暂无可用对比日"}）</option>{cum?.comparison_dates.map((d) => <option key={d} value={d}>{d}</option>)}</select></label></div>
       {cum ? <EChart option={cumulative} height={330} /> : <p role="status" className="py-16 text-center text-sm text-muted-foreground">累计数据待取</p>}
       <p className="text-xs text-muted-foreground">近 20 日均值：实际 {cum?.average20.n ?? "—"} 天{cum?.average20.from ? ` · ${cum.average20.from} 至 ${cum.average20.to}` : ""}</p></div>
     <div className="grid gap-4 lg:grid-cols-2"><TypicalChart title="放量日形态" group={typical?.spike ?? { n: 0, values: null, reason: "样本待取" }} other={typical?.normal ?? { n: 0, values: null, reason: null }} times={typical?.times ?? []} /><TypicalChart title="常态日形态" group={typical?.normal ?? { n: 0, values: null, reason: "样本待取" }} other={typical?.spike ?? { n: 0, values: null, reason: null }} times={typical?.times ?? []} /></div>

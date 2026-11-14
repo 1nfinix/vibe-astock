@@ -91,8 +91,20 @@ test("poll 只在今日交易且分钟日期一致时标今日；cum 对比日�
     assert.equal(cum.today.length, 241); assert.equal(cum.today[0], 0); assert.equal(cum.today[1], 20); assert.equal(cum.today[2], null);
     assert.equal(cum.comparison.date, "2026-11-04"); assert.equal(cum.average20.n, 2);
     const beforeOpen = await etfFlowCum(ctx(folder), undefined, signal, fake("2026-11-04") as never, new Date("2026-11-05T01:00:00Z"));
-    assert.equal(beforeOpen.comparison.date, "2026-11-04"); assert.equal(beforeOpen.average20.n, 2);
-    assert.equal(beforeOpen.today.every((x) => x === null), true);
+    assert.equal(beforeOpen.comparison.date, "2026-11-03"); assert.equal(beforeOpen.average20.n, 1);
+    assert.equal(beforeOpen.average20.to, "2026-11-03");
+    assert.deepEqual(beforeOpen.comparison_dates, ["2026-11-03"]);
+    assert.equal(beforeOpen.today[1], 20);
+    const nonTrading = await etfFlowCum(ctx(folder), undefined, signal, fake("2026-11-04", false) as never, new Date("2026-11-07T02:00:00Z"));
+    assert.equal(nonTrading.comparison.date, "2026-11-03");
+    assert.equal(nonTrading.average20.n, 1);
+    assert.equal(nonTrading.today[1], 20);
+    const emptyMinute = async (c: ServiceContext, req: { endpoint: string }) => req.endpoint === "cn_etf_minute_batch"
+      ? { envelope: env({ ...minute("2026-11-04"), total: { times: ["09:31"], amount_yi: [null], coverage: [0], reason: "分钟数据未取到" } }) }
+      : fake("2026-11-04", false)(c, req);
+    const empty = await etfFlowCum(ctx(folder), undefined, signal, emptyMinute as never, new Date("2026-11-07T02:00:00Z"));
+    assert.equal(empty.today.every((x) => x === null), true, "全缺分钟不能画出假的零点");
+    await assert.rejects(etfFlowCum(ctx(folder), "2026-11-04", signal, fake("2026-11-04", false) as never, new Date("2026-11-07T02:00:00Z")), /对比日/);
     await assert.rejects(etfFlowCum(ctx(folder), "2026-11-06", signal, fake() as never, now), /对比日/);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
