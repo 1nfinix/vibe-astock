@@ -19,6 +19,8 @@ const execFileAsync = promisify(execFile);
 const MAX_ACTIVE_LOCAL_AGENTS = 4;
 let activeLocalAgents = 0;
 const activeLocalAgentProcesses = new Set<ChildProcess>();
+// 还在跑的 Agent 的临时工作区。父服务被信号停掉时 finish() 来不及删，退出前在这里同步删掉。
+const activeLocalAgentWorkspaces = new Set<string>();
 type ParentSignal = "SIGINT" | "SIGTERM" | "SIGHUP";
 const parentSignalHandlers = new Map<ParentSignal, () => void>();
 let parentExitHookInstalled = false;
@@ -70,8 +72,17 @@ function removeParentShutdownHooks(): void {
   parentSignalHandlers.clear();
 }
 
+/** 父服务要退出了：同步删掉还在跑的 Agent 的临时工作区（里面有回答原文、用户图片）。不重试、不等待。 */
+function removeActiveLocalAgentWorkspaces(): void {
+  for (const dir of activeLocalAgentWorkspaces) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 尽力清理 */ }
+  }
+  activeLocalAgentWorkspaces.clear();
+}
+
 function onParentExit(): void {
   terminateActiveLocalAgentProcesses("SIGKILL");
+  removeActiveLocalAgentWorkspaces();
 }
 
 function installParentShutdownHooks(): void {
@@ -83,6 +94,7 @@ function installParentShutdownHooks(): void {
     const handler = () => {
       // 父进程已经收到终止信号；此时不等 CLI 自行收尾，先同步杀整棵树，避免继续消耗订阅额度。
       terminateActiveLocalAgentProcesses("SIGKILL");
+      removeActiveLocalAgentWorkspaces();
       removeParentShutdownHooks();
       // 恢复该信号的默认语义。延后一拍让同一轮中已有的其他监听器先完成同步清理。
       setImmediate(() => { try { process.kill(process.pid, signal); } catch { process.exit(1); } });
@@ -720,14 +732,22 @@ export function localSubscriptionEnv(base: NodeJS.ProcessEnv, agent: LocalAgentI
     allowed.has(process.platform === "win32" ? key.toUpperCase() : key)));
 }
 
+/** WorkBuddy 桌面版安装包里自带的 CLI（不是用户自己装的独立 CLI）。软链接按真实位置判断。 */
+export function isWorkBuddyBundledCli(bin: string): boolean {
+  const bundled = (file: string) => file.replace(/\\/g, "/").toLowerCase().includes("/app.asar.unpacked/cli/bin/");
+  return bundled(bin) || bundled(realpathOr(bin));
+}
+
 interface CodeBuddyRuntime {
   login: CodeBuddyLogin | null;
   legacyEphemeralHome: boolean;
+  /** `--help` 列出了 `--port`：执行时传 `--port 0`，不去抢 ~/.codebuddy 记下的固定端口（#28）。 */
+  ephemeralPort: boolean;
 }
 
 function codeBuddySubscriptionEnv(
   base: NodeJS.ProcessEnv,
-  options: { account?: CodeBuddyAccount | null; ephemeralHome?: string } = {},
+  options: { account?: CodeBuddyAccount | null; ephemeralHome?: string; workBuddyBundled?: boolean } = {},
 ): NodeJS.ProcessEnv {
   const env = localSubscriptionEnv(base, "codebuddy");
   // 这一张卡承诺复用本机登录账号。API key、临时 OAuth token、自定义端点和模型覆盖
@@ -743,7 +763,8 @@ function codeBuddySubscriptionEnv(
     DISABLE_TELEMETRY: "1",
     DISABLE_ERROR_REPORTING: "1",
     // WorkBuddy 2.161.0 仅附带 lite bundle；官方入口在该产物缺失时回退 headless / full。
-    CODEBUDDY_FORCE_LITE_WB_BUNDLE: "1",
+    // 只给桌面版内置的 CLI 指定：独立 CLI 本来走 headless 包，强加这一项会换成给 WorkBuddy 用的精简包。
+    ...(options.workBuddyBundled ? { CODEBUDDY_FORCE_LITE_WB_BUNDLE: "1" } : {}),
     CODEBUDDY_DISABLE_IDE: "1",
     CODEBUDDY_DISABLE_AUTO_MEMORY: "1",
     CODEBUDDY_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -876,7 +897,7 @@ async function codeBuddyLogin(bin: string, env: NodeJS.ProcessEnv, legacyEphemer
 }
 
 async function inspectCodeBuddy(bin: string, env: NodeJS.ProcessEnv): Promise<{ version: string | null; runtime: CodeBuddyRuntime }> {
-  const runEnv = codeBuddySubscriptionEnv(env);
+  const runEnv = codeBuddySubscriptionEnv(env, { workBuddyBundled: isWorkBuddyBundledCli(bin) });
   const versionCall = executableInvocation(bin, ["--version"], runEnv);
   // These read-only CLI probes have no graceful shutdown work. WorkBuddy's embedded
   // CLI can ignore SIGTERM even for --help; execFile would then never settle on timeout.
@@ -893,7 +914,9 @@ async function inspectCodeBuddy(bin: string, env: NodeJS.ProcessEnv): Promise<{ 
   if (legacyEphemeralHome && login?.kind === "native") {
     throw new LocalAgentError("agent_cli_too_old", "CodeBuddy 已登录，但此版本无法安全隔离会话；请升级 WorkBuddy / CodeBuddy 后重试");
   }
-  return { version, runtime: { login, legacyEphemeralHome } };
+  // 只认独立的参数名（前后是空白、逗号、等号或尖括号），不把 `--port-xxx` 一类别的参数当成它。
+  const ephemeralPort = /(?:^|[\s,[])--port(?=[\s=,<\]]|$)/m.test(help);
+  return { version, runtime: { login, legacyEphemeralHome, ephemeralPort } };
 }
 
 /**
@@ -1337,7 +1360,7 @@ export function claudeArgs(systemPrompt: string, outputSchema?: unknown,
 
 /** CodeBuddy 的 `--print` 不携位置 prompt，因此只从 stdin 取用户正文，不进 argv / 进程列表。 */
 export function codeBuddyArgs(systemPrompt: string, outputSchema?: unknown, legacyEphemeralHome = false,
-  controlledMcp?: RunLocalAgentOptions["controlledMcp"]): string[] {
+  controlledMcp?: RunLocalAgentOptions["controlledMcp"], ephemeralPort = false): string[] {
   const isolation = codeBuddyIsolationArgs(legacyEphemeralHome);
   if (controlledMcp) {
     isolation[isolation.indexOf("--tools") + 1] = `NoDefer(mcp__${controlledMcp.serverName}__*)`;
@@ -1349,6 +1372,10 @@ export function codeBuddyArgs(systemPrompt: string, outputSchema?: unknown, lega
   }
   const args = [
     "-p",
+    // 不传时 CLI 去绑 ~/.codebuddy 里记下的固定端口；那个端口被开着的交互会话或并发的另一个请求占着，
+    // CLI 就 EADDRINUSE 直接退出，表现为「检测通过、提问没回答」（#28）。0 = 让系统给一个空闲端口。
+    // 只在 `--help` 列出这个参数时才传，老版本不认识的参数不往里塞。
+    ...(ephemeralPort ? ["--port", "0"] : []),
     "--agent", "cli",
     ...isolation,
     ...(controlledMcp ? ["--allowedTools", ...controlledMcp.allowedTools] : []),
@@ -1562,8 +1589,12 @@ export async function runLocalAgent(
 
   return await new Promise<string>((resolve, reject) => {
     let child: ChildProcess;
-    const codeBuddyOutputFile = agent === "codebuddy" ? path.join(tmpDir, "stdout.json") : null;
-    let outputFd: number | undefined;
+    // Claude / CodeBuddy 的回答写进临时文件，不走管道（#28）。
+    // 它们都是 Node 程序：stdout 是管道时，Node 在 macOS 等系统上异步写；CLI 答完直接 process.exit()，
+    // 管道里没写完的部分（超过约 64 KB 的那段）就丢了，表现为「JSON 被截断、解析失败」；写文件是同步的，不会丢。
+    // Codex 仍走管道：它的 JSONL 要边收边查。
+    const stdoutFile = agent === "codex" ? null : path.join(tmpDir, ".vra-agent-stdout");
+    let stdoutFd: number | null = null;
     try {
     const runEnv = agent === "claude"
       ? subscriptionEnv(baseEnv)
@@ -1572,6 +1603,7 @@ export async function runLocalAgent(
       : codeBuddySubscriptionEnv(baseEnv, {
         account: codeBuddyRuntime!.legacyEphemeralHome && codeBuddyRuntime!.login?.kind === "legacy" ? codeBuddyRuntime!.login.account : null,
         ephemeralHome: codeBuddyRuntime!.legacyEphemeralHome ? tmpDir : undefined,
+        workBuddyBundled: isWorkBuddyBundledCli(bin),
       });
     // M6 的无工具对话刻意不等 MCP；Deep 研究则必须反过来。
     // 否则真实 WorkBuddy 会在 stdio server 尚未初始化时就开始首轮，
@@ -1586,29 +1618,30 @@ export async function runLocalAgent(
       ? claudeArgs(opts.systemPrompt, opts.outputSchema, opts.controlledMcp)
       : agent === "codex"
       ? codexArgs(opts.systemPrompt, tmpDir, { controlledMcp: opts.controlledMcp, outputSchemaFile, imageFiles })
-      : codeBuddyArgs(opts.systemPrompt, opts.outputSchema, codeBuddyRuntime!.legacyEphemeralHome, opts.controlledMcp);
+      : codeBuddyArgs(opts.systemPrompt, opts.outputSchema, codeBuddyRuntime!.legacyEphemeralHome, opts.controlledMcp,
+        codeBuddyRuntime!.ephemeralPort);
     if (agent === "codebuddy" && opts.userImages?.length) args.push("--input-format", "stream-json");
     const launch = executableInvocation(bin, args, runEnv);
-    // 🔴 CodeBuddy 接管道时 stdout 会在 64 KiB 截断却 exit 0；直接接文件才能收全。
-    if (codeBuddyOutputFile) outputFd = fs.openSync(codeBuddyOutputFile, "w", 0o600);
+    if (stdoutFile) stdoutFd = fs.openSync(stdoutFile, "w", 0o600);
     child = spawn(launch.file, launch.args, {
       cwd: tmpDir,
       env: runEnv,
-      stdio: ["pipe", outputFd ?? "pipe", "pipe"],
+      stdio: ["pipe", stdoutFd ?? "pipe", "pipe"],
       // POSIX 下创建独立进程组。本机 Agent CLI 可能继续派生 node / shell 子进程；
       // 只杀直接 child 会让后代留在后台继续消耗订阅额度。
       detached: process.platform !== "win32",
     });
     } catch {
       // 参数拼装或 spawn 同步失败(如提示词里有 NUL):还没有子进程,当场释放槽位与工作区。
-      if (outputFd !== undefined) { fs.closeSync(outputFd); outputFd = undefined; }
+      if (stdoutFd !== null) { try { fs.closeSync(stdoutFd); } catch { /* 已关闭 */ } }
       releaseSlot();
       try { fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* 尽力清理 */ }
       reject(new LocalAgentError("agent_launch_failed", `${label} 未能启动`));
       return;
-    } finally {
-      if (outputFd !== undefined) fs.closeSync(outputFd);
     }
+    // 子进程已经拿到自己的一份句柄；本进程这份立刻关掉，Windows 上才删得掉临时目录。
+    if (stdoutFd !== null) { try { fs.closeSync(stdoutFd); } catch { /* 已关闭 */ } stdoutFd = null; }
+    activeLocalAgentWorkspaces.add(tmpDir);
     trackLocalAgentProcess(child);
     let stdout = "";
     let stderr = "";
@@ -1618,6 +1651,9 @@ export async function runLocalAgent(
     let hardKillTimer: NodeJS.Timeout | null = null;
     let killFallbackTimer: NodeJS.Timeout | null = null;
     let outputSizeTimer: NodeJS.Timeout | null = null;
+    const stdoutFileSize = (): number => {
+      try { return fs.statSync(stdoutFile!).size; } catch { return 0; }
+    };
 
     const cleanup = () => {
       opts.signal?.removeEventListener("abort", onAbort);
@@ -1637,6 +1673,7 @@ export async function runLocalAgent(
       if (outputSizeTimer) clearInterval(outputSizeTimer);
       activeLocalAgents = Math.max(0, activeLocalAgents - 1);
       untrackLocalAgentProcess(child);
+      activeLocalAgentWorkspaces.delete(tmpDir);
       try { cleanup(); }
       catch {
         reject(new LocalAgentError("agent_cleanup_failed", `${label} 临时工作区清理失败，请检查本机文件权限`));
@@ -1661,6 +1698,7 @@ export async function runLocalAgent(
       if (settled || terminationError) return;
       terminationError = error;
       clearTimeout(timer);
+      if (outputSizeTimer) clearInterval(outputSizeTimer);
       opts.signal?.removeEventListener("abort", onAbort);
       try { child.stdin?.destroy(); } catch { /* 已关闭 */ }
       signalTree("SIGTERM");
@@ -1696,19 +1734,18 @@ export async function runLocalAgent(
     const timer = setTimeout(() => {
       terminate(new LocalAgentError("agent_timeout", `${label} 超时（>${Math.round(timeoutMs / 1000)} 秒）`));
     }, timeoutMs);
-    if (codeBuddyOutputFile) outputSizeTimer = setInterval(() => {
-      let size: number;
-      // 定时器里抛出的异常没人接，会带垮整个服务；读不到大小就等 close 时再判
-      try { size = fs.statSync(codeBuddyOutputFile).size; } catch { return; }
-      if (!terminationError && size > maxOut)
-        terminate(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`));
-    }, 1_000);
 
-    child.stdin!.on("error", () => { /* 提前退出时的 EPIPE 由 close 统一处理 */ });
+    child.stdin?.on("error", () => { /* 提前退出时的 EPIPE 由 close 统一处理 */ });
     child.stdout?.setEncoding("utf8");
-    child.stderr!.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
     const codexStream = agent === "codex" ? new CodexEventStream(opts.controlledMcp) : null;
     let pendingLine = "";
+    // 写文件时收不到 data 事件：定时量文件大小，超过上限照样终止。
+    if (stdoutFile) {
+      outputSizeTimer = setInterval(() => {
+        if (stdoutFileSize() > maxOut) terminate(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`));
+      }, 500);
+    }
     child.stdout?.on("data", (chunk: string) => {
       if (terminationError) return;
       if (codexStream) {
@@ -1728,7 +1765,7 @@ export async function runLocalAgent(
       }
       stdout += chunk;
     });
-    child.stderr!.on("data", (chunk: string) => {
+    child.stderr?.on("data", (chunk: string) => {
       if (Buffer.byteLength(stderr, "utf8") < maxErr) stderr += chunk;
     });
     child.on("error", () => {
@@ -1743,23 +1780,16 @@ export async function runLocalAgent(
         return finish(() => reject(terminationError!));
       }
       clearTimeout(timer);
+      if (outputSizeTimer) clearInterval(outputSizeTimer);
       settleOwnedProcessGroup(child.pid).then(() => {
         if (terminationError) return finish(() => reject(terminationError!));
-        if (codeBuddyOutputFile) {
-          try {
-            const fd = fs.openSync(codeBuddyOutputFile, "r");
-            try {
-              const buffer = Buffer.allocUnsafe(maxOut + 1);
-              let bytesRead = 0;
-              while (bytesRead < buffer.length) {
-                const count = fs.readSync(fd, buffer, bytesRead, buffer.length - bytesRead, null);
-                if (count === 0) break;
-                bytesRead += count;
-              }
-              if (bytesRead > maxOut) return finish(() => reject(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`)));
-              stdout = buffer.toString("utf8", 0, bytesRead);
-            } finally { fs.closeSync(fd); }
-          } catch { return finish(() => reject(new LocalAgentError("agent_bad_output", `${label} 返回了无法解析的结果`))); }
+        // 整个进程组都退出了，文件不会再变，这时才读（临时目录在 finish 里才删）。
+        if (stdoutFile) {
+          if (stdoutFileSize() > maxOut) {
+            return finish(() => reject(new LocalAgentError("agent_output_too_large", `${label} 输出超出上限，已终止`)));
+          }
+          try { stdout = fs.readFileSync(stdoutFile, "utf8"); }
+          catch { return finish(() => reject(new LocalAgentError("agent_bad_output", `${label} 的输出读取失败`))); }
         }
         const lastViolation = codexStream && pendingLine ? codexStream.push(pendingLine) : null;
         if (lastViolation) return finish(() => reject(new LocalAgentError("agent_policy_violation", lastViolation)));
@@ -1782,6 +1812,6 @@ export async function runLocalAgent(
     // 先返回就等不到 close，只能误报“退出未确认”。
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) return onAbort();
-    child.stdin!.end(input, "utf8");
+    child.stdin?.end(input, "utf8");
   });
 }
