@@ -115,12 +115,16 @@ test("ETF 回填暂停和失败原因在顶部状态中可读", async () => {
   await withRenderer(async (r) => {
     const { EtfFlowBackfill } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");
     const html = r.html(EtfFlowBackfill, { data: { ...daily, backfill: { ...daily.backfill, syncing: false, failed: [
-      { code: "510300", date: "2026-11-03", reason: "交易所无响应" },
-      { code: "510500", reason: "份额字段缺失" },
+      { code: "510300", date: "2026-11-03", reason: "RuntimeError: 深交所基金规模返回其他代码或异常记录" },
+      { code: "510500", reason: "ValueError: 份额字段缺失" },
+      { code: "510210", date: "2026-11-04", reason: "RuntimeError: 深交所基金规模返回其他代码或异常记录" },
     ] } } });
     const visible = textOf(html);
     assert.match(visible, /官方份额历史未在回填/);
-    assert.match(visible, /失败 2 处：2026-11-03 510300 交易所无响应；510500 份额字段缺失/);
+    assert.match(textOf(html.split("<details")[0] ?? ""), /失败 3 处：深交所基金规模返回其他代码或异常记录 ×2；份额字段缺失 ×1/);
+    assert.match(html, /<details><summary>查看失败明细（3 处）<\/summary>/);
+    assert.match(visible, /2026-11-03 510300 深交所基金规模返回其他代码或异常记录/);
+    assert.doesNotMatch(visible, /RuntimeError:|ValueError:/);
     assert.match(html, /aria-valuemin="0"/);
   });
 });
@@ -132,5 +136,49 @@ test("ETF 回填完成且无失败时不显示状态条", async () => {
     const complete = { ...daily, backfill: { ...daily.backfill, completed: 750, total: 750, syncing: false, failed: [] } };
     const page = [r.html(EtfFlowBackfill, { data: complete }), r.html(EtfFlowSignal, { data: complete }), r.html(EtfFlowBroad, { data: complete })].join("");
     assert.doesNotMatch(textOf(page), /官方份额历史|已完成 750 \/ 750/);
+  });
+});
+
+test("ETF 日度加载中显示待取，已返回但缺失才显示未取到原因", async () => {
+  await withRenderer(async (r) => {
+    const { EtfFlowSignal } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");
+    const { EtfFlowBroad } = await r.load("/src/verticals/finance/shortline/EtfFlowBroad.tsx");
+    const loading = textOf(r.html(EtfFlowSignal, { data: null }) + r.html(EtfFlowBroad, { data: null }));
+    assert.match(loading, /最近交易日成交额 待取/);
+    assert.match(loading, /近期交易日数据待取/);
+    assert.match(loading, /日度数据待取/);
+    assert.match(loading, /明细待取/);
+    assert.doesNotMatch(loading, /今日成交额|近期交易日数据未取到|日度数据未取到|明细未取到|ETF 日线成交额未取到/);
+    const empty = { ...daily, rows: [], recent_dates: [], spike_dates: [], recent_month_categories: [] };
+    const returned = textOf(r.html(EtfFlowSignal, { data: empty }) + r.html(EtfFlowBroad, { data: empty }));
+    assert.match(returned, /日度数据未返回交易日明细/);
+    assert.match(returned, /近期交易日数据未取到：日度数据未返回可绘制的交易日/);
+    assert.match(returned, /明细未取到：未返回最近一个月类别数据/);
+  });
+});
+
+test("ETF 月表缺 10 类不出小计，缺 6 类无底色，完整合计有底色", async () => {
+  await withRenderer(async (r) => {
+    const { EtfFlowBroad } = await r.load("/src/verticals/finance/shortline/EtfFlowBroad.tsx");
+    const names = Object.keys(categories);
+    const tenMissing = Object.fromEntries(names.map((c, i) => [c, i < 10 ? metric(null, "份额缺失") : metric(-10)]));
+    const sixMissing = Object.fromEntries(names.map((c, i) => [c, i < 6 ? metric(null, "待公布") : metric(1)]));
+    const data = { ...daily, recent_month_categories: [
+      { date: "2026-11-03", categories: tenMissing },
+      { date: "2026-11-04", categories: sixMissing },
+      { date: "2026-11-05", categories },
+    ] };
+    const html = r.html(EtfFlowBroad, { data });
+    const visible = textOf(html);
+    assert.match(visible, /2026-11-03 缺 10 类/);
+    assert.doesNotMatch(visible, /-20\.00 · 缺 10 类/);
+    assert.match(visible, /2026-11-04 \+6\.00 · 缺 6 类/);
+    assert.match(visible, /12 类齐全时显示热力底色，缺 1–6 类显示无底色小计/);
+    const totalCell = (date: string) => html.split(`>${date}</th>`)[1]?.split("</td>")[0] ?? "";
+    assert.doesNotMatch(totalCell("2026-11-03"), /background-color/);
+    assert.doesNotMatch(totalCell("2026-11-04"), /background-color/);
+    assert.match(totalCell("2026-11-05"), /background-color/);
+    assert.match(totalCell("2026-11-03"), /title="[^"]*沪深300：份额缺失/);
+    assert.match(totalCell("2026-11-03"), /sr-only/);
   });
 });
