@@ -59,7 +59,7 @@ test("ETF 资金三部分、待公布、样本不足、回填进度与排行缺�
     const monthTable = broad.split("最近一个月 · 12 类日度净流入")[1] ?? "";
     assert.ok(monthTable.indexOf("2026-11-05") < monthTable.indexOf("2026-11-04"), "月度明细按最新日期在前");
     assert.match(backfill, /官方份额历史正在回填：已完成 12 \/ 750 个交易日/);
-    assert.match(backfill, /回填用于计算日度净流入与放量记录/);
+    assert.match(backfill, /进度只统计宽基份额回填任务完成的交易日/);
     assert.equal((`${backfill} ${signal} ${broad}`.match(/官方份额历史正在回填/g) ?? []).length, 1);
     assert.doesNotMatch(`${intraday} ${signal} ${broad}`, /Choice|汪汪队|联系人/);
   });
@@ -122,5 +122,15 @@ test("ETF 回填暂停和失败原因在顶部状态中可读", async () => {
     assert.match(visible, /官方份额历史未在回填/);
     assert.match(visible, /失败 2 处：2026-11-03 510300 交易所无响应；510500 份额字段缺失/);
     assert.match(html, /aria-valuemin="0"/);
+  });
+});
+
+test("ETF 回填完成且无失败时不显示状态条", async () => {
+  await withRenderer(async (r) => {
+    const { EtfFlowBackfill, EtfFlowSignal } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");
+    const { EtfFlowBroad } = await r.load("/src/verticals/finance/shortline/EtfFlowBroad.tsx");
+    const complete = { ...daily, backfill: { ...daily.backfill, completed: 750, total: 750, syncing: false, failed: [] } };
+    const page = [r.html(EtfFlowBackfill, { data: complete }), r.html(EtfFlowSignal, { data: complete }), r.html(EtfFlowBroad, { data: complete })].join("");
+    assert.doesNotMatch(textOf(page), /官方份额历史|已完成 750 \/ 750/);
   });
 });

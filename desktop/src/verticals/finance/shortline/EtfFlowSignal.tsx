@@ -8,11 +8,11 @@ const zoom = [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }];
 
 export function EtfFlowBackfill({ data }: { data: EtfFlowDailyData | null }) {
   const b = data?.backfill;
-  if (!b) return null;
+  if (!b || b.total > 0 && b.completed >= b.total && !b.syncing && b.failed.length === 0) return null;
   return <div role="status" className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">
     官方份额历史{b.syncing ? "正在回填" : "未在回填"}：已完成 {b.completed} / {b.total || "目标待确定"} 个交易日
     {b.total > 0 && <div role="progressbar" aria-label="官方份额回填进度" aria-valuemin={0} aria-valuenow={b.completed} aria-valuemax={b.total} className="mt-2 h-1.5 rounded bg-muted"><div className="h-full rounded bg-primary" style={{ width: `${100 * b.completed / b.total}%` }} /></div>}
-    <span className="mt-1 block text-muted-foreground">已回填范围：{b.from ?? "待积累"} 至 {b.to ?? "待积累"}。回填用于计算日度净流入与放量记录；下方成交额可由日线先显示。</span>
+    <span className="mt-1 block text-muted-foreground">已回填范围：{b.from ?? "待积累"} 至 {b.to ?? "待积累"}。进度只统计宽基份额回填任务完成的交易日；已有净流入可由本地份额记录与日线收盘价算出，成交额取自日线。</span>
     {b.failed.length > 0 && <div className="mt-1 text-warning">失败 {b.failed.length} 处：{b.failed.slice(0, 3).map((x) => `${x.date ? `${x.date} ` : ""}${x.code} ${x.reason}`).join("；")}{b.failed.length > 3 && <details><summary>查看其余 {b.failed.length - 3} 处原因</summary><ul>{b.failed.slice(3).map((x, i) => <li key={`${x.code}-${x.date ?? ""}-${i}`}>{x.date ? `${x.date} ` : ""}{x.code} {x.reason}</li>)}</ul></details>}</div>}
   </div>;
 }
