@@ -98,7 +98,7 @@ function IndexTile({ name, tag, price, change, title }: { name: string; tag: str
   return (
     <div className="min-w-0 bg-card px-3 py-2" title={title}>
       <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-        <span className="truncate">{name}</span><span className="shrink-0 text-muted-foreground/50">{tag}</span>
+        <span className="truncate">{name}</span><span className="shrink-0 text-muted-foreground">{tag}</span>
       </p>
       <p className={cn("mt-0.5 font-mono text-[15px] font-semibold leading-6 tabular-nums", tone(change))}>{price == null ? "—" : price.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}</p>
       <p className={cn("font-mono text-[11px]", tone(change))}>{pct(change)}</p>
@@ -114,7 +114,7 @@ function MarketStrip({ strip }: { strip: ReturnType<typeof useMarketStrip> }) {
         <h2 id="home-market" className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-primary" /> 大盘与全球指数</h2>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           {err && <span className="text-warning">{data ? "这次没刷新成功，显示的是上一次的" : "指数没取到，请稍后刷新；不代表市场没有变化"}</span>}
-          {!err && <span>{live ? "交易时段 · 每 15 秒刷新" : "休市或页面在后台 · 不自动刷新"}</span>}
+          {!err && <span className={live ? "text-info" : undefined}>{live ? "交易时段 · 每 15 秒刷新" : "休市或页面在后台 · 不自动刷新"}</span>}
           {at && <span className="font-mono">{clock(at)}</span>}
           <button onClick={refresh} disabled={loading} title="立即刷新" aria-label="刷新指数" className="hover:text-primary disabled:opacity-50">
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -132,7 +132,7 @@ function MarketStrip({ strip }: { strip: ReturnType<typeof useMarketStrip> }) {
             <div key={i} className="bg-card px-3 py-2 text-[11px] text-muted-foreground">{err ? "未取到" : "加载中…"}<p className="mt-0.5 font-mono text-[15px] leading-6 text-muted-foreground/40">—</p></div>
           ))}
       </div>
-      <p className="border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">腾讯行情快照，不是逐笔实时；指数只看涨跌，不代表个股。</p>
+      <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground"><span className="font-medium text-info">腾讯行情快照</span>，不是逐笔实时；指数只看涨跌，不代表个股。</p>
     </section>
   );
 }
@@ -140,7 +140,7 @@ function MarketStrip({ strip }: { strip: ReturnType<typeof useMarketStrip> }) {
 function LiveNote({ polling, updatedAt, error }: { polling: boolean; updatedAt: number | null; error: string | null }) {
   return (
     <span className="text-[11px] text-muted-foreground">
-      {error ? <span className="text-warning">{error}</span> : polling ? "交易时段 · 实时刷新" : "休市或页面在后台 · 不自动刷新"}
+      {error ? <span className="text-warning">{error}</span> : polling ? <span className="text-info">交易时段 · 实时刷新</span> : "休市或页面在后台 · 不自动刷新"}
       {updatedAt && <span className="ml-1.5 font-mono" title="所显示价格中最早的取数时刻；不是成交时间，上游可能延迟">{clock(updatedAt)}</span>}
     </span>
   );
@@ -171,7 +171,7 @@ function WatchCard({ codes, quotes, live }: { codes: string[]; quotes: ReturnTyp
                   <tr key={c}>
                     <td className="min-w-[6.5rem] max-w-[10rem]">
                       <Link to={`/research?symbol=${encodeURIComponent(c)}`} title="在个股深挖看走势、财报和事件回看" className="block truncate font-medium hover:text-primary">{q?.name || c}</Link>
-                      <span className="font-mono text-[10px] text-muted-foreground">{c}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground">{c}</span>
                     </td>
                     <td className={cn("whitespace-nowrap text-right font-mono tabular-nums", tone(q?.change_pct))}>{q?.price ?? "—"}</td>
                     <td className={cn("whitespace-nowrap text-right font-mono tabular-nums", tone(q?.change_pct))}>{q ? pct(q.change_pct) : "—"}</td>
@@ -280,22 +280,22 @@ export function HoldingsCard({ view, err, rows, live, pending }: {
                         {reorder && <MoveButtons name={r.name} first={i === 0} last={i === shown.length - 1} onMove={(d) => saved.move(shownCodes, r.code, d, orderMasked)} />}
                         <div className="min-w-0">
                           <Link to={`/research?symbol=${encodeURIComponent(r.code)}`} title={r.name} className="block truncate font-medium hover:text-primary">{r.name}</Link>
-                          <span className="font-mono text-[10px] text-muted-foreground">{r.code} · {p(`${r.shares.toLocaleString("zh-CN")} 股`)}</span>
+                          <span className="font-mono text-[11px] text-muted-foreground">{r.code} · {p(`${r.shares.toLocaleString("zh-CN")} 股`)}</span>
                         </div>
                       </div>
                     </td>
                     <td className={cn("whitespace-nowrap text-right font-mono tabular-nums", tone(r.change_pct))}>
-                      {r.price ?? "—"}<span className="block text-[10px]">{pct(r.change_pct)}</span>
+                      {r.price ?? "—"}<span className="block text-[11px]">{pct(r.change_pct)}</span>
                     </td>
                     <td className="hidden whitespace-nowrap text-right font-mono tabular-nums sm:table-cell">{p(money(r.market_value))}</td>
                     <td className={cn("whitespace-nowrap text-right font-mono tabular-nums", tone(r.pnl))}>
-                      {p(signedMoney(r.pnl))}<span className="block text-[10px]">{pct(r.pnl_pct)}</span>
+                      {p(signedMoney(r.pnl))}<span className="block text-[11px]">{pct(r.pnl_pct)}</span>
                     </td>
                     <td className={cn("text-right font-mono tabular-nums", tone(r.day_pnl))} title={r.day_note ?? "（现价 − 昨收）× 股数"}>
                       <span className="whitespace-nowrap">{p(signedMoney(r.day_pnl))}</span>
                       {/* 显示「—」时把原因直接写在下面，不只藏在鼠标悬停里（手机上没有悬停） */}
                       {r.day_pnl === null && (
-                        <span className="ml-auto block max-w-[6.5rem] font-sans text-[10px] leading-3 text-muted-foreground">{pending(r.code) ? "正在取现价" : r.day_note}</span>
+                        <span className="ml-auto block max-w-[6.5rem] font-sans text-[11px] leading-4 text-muted-foreground">{pending(r.code) ? "正在取现价" : r.day_note}</span>
                       )}
                     </td>
                   </tr>
@@ -303,18 +303,18 @@ export function HoldingsCard({ view, err, rows, live, pending }: {
               </tbody>
             </table>
           </div>
-          <p className="border-t border-border px-3 py-1.5 text-[10px] leading-4 text-muted-foreground">
+          <p className="border-t border-border px-3 py-1.5 text-xs leading-5 text-muted-foreground">
             成本按持仓页选的成本法，合计按币种分开、不换算。当日盈亏按最近一个交易日（现价 − 昨收）× 股数，这只当天有买卖或送转时显示「—」；不含分红。
             点表头排序；「调整顺序」排的先后和持仓页共用，只记在这台电脑的浏览器里。
           </p>
         </>}
       {view && view.issues.length > 0 && (
-        <p className="border-t border-border px-3 py-1.5 text-[11px] text-warning">
+        <p className="border-t border-border px-3 py-1.5 text-xs text-warning">
           有 {view.issues.length} 笔流水数据不对，没参与计算。跳过的卖出会让之后的持有数偏大，<Link to="/my-stocks?tab=hold" className="text-primary">去持仓页</Link>改好（删掉重记）。
         </p>
       )}
       {view && view.migration_pending > 0 && (
-        <p className="border-t border-border px-3 py-1.5 text-[11px] text-warning">有 {view.migration_pending} 条旧版持仓记录还没转成交易流水，没算在这里。<Link to="/my-stocks?tab=hold" className="text-primary">打开持仓页</Link>会自动处理。</p>
+        <p className="border-t border-border px-3 py-1.5 text-xs text-warning">有 {view.migration_pending} 条旧版持仓记录还没转成交易流水，没算在这里。<Link to="/my-stocks?tab=hold" className="text-primary">打开持仓页</Link>会自动处理。</p>
       )}
     </GlassCard>
   );

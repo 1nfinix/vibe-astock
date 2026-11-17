@@ -132,8 +132,7 @@ export function WeeklyView({ r, rotation }: { r: WeeklyResult; rotation?: ReactN
               const dd = finite(l.drawdown_from_peak);
               const atPeak = dd === 0;
               return (
-                <div key={l.code} className={cn("rounded-xl border border-border/60 border-l-4 bg-muted/10 p-3",
-                  dd == null ? "border-l-border" : atPeak ? "border-l-danger" : "border-l-success")}>
+                <div key={l.code} className="rounded-xl border border-border/60 bg-muted/10 p-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="flex flex-wrap items-baseline gap-1.5 text-[15px] font-bold">
                       {l.name}

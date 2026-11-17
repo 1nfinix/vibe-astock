@@ -10,7 +10,7 @@
  * 对话本身的正确性（半截回答 / 换页竞态 / 后端 session 归属）在 `useAiChat` 里，
  * **与底部控制台共用同一份** —— 那些坑复制两遍必然有一份先坏，而且坏了看不出来。
  */
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Sparkles, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
@@ -59,9 +59,17 @@ export function AiDock({ send, configured, copy, renderReplyActions, renderReply
   const wired = useAiWired();
   const page = useCurrentAiPage();
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   // 按钮浮在外壳顶栏的右上角。外壳按 `--ai-trigger-space`（按钮实际宽度 + 间隔）给它让位，按钮不在就是 0。
   // 原来外壳写死让 112px:手机系统字体放大 1.3 倍时只剩 1px,再大就压住旁边的按钮;文案改长也一样。
   const triggerRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !page) return;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, [open, !!page]);
   useLayoutEffect(() => {
     const el = triggerRef.current;
     if (!el) return;
@@ -92,19 +100,11 @@ export function AiDock({ send, configured, copy, renderReplyActions, renderReply
   }, [draft, pageKey, takeDraft]);
 
   const close = useCallback(() => {
+    if (dialogRef.current?.open) dialogRef.current.close();
     abort();
     setOpen(false);
+    triggerRef.current?.focus();
   }, [abort]);
-
-  // 面板开着时 Esc 关掉（弹层的基本预期）
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
 
   // 每轮都把本页内容带上：后端那条线程是进程内的，服务重启后它什么都不记得，
   // 而用户不会知道服务重启过 —— 带着上下文问，重启前后都答得上来。
@@ -140,14 +140,17 @@ export function AiDock({ send, configured, copy, renderReplyActions, renderReply
       </button>
 
       {open && page && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/50" onClick={close} />
-          <aside className="ai-surface relative m-3 flex w-full max-w-md flex-col rounded-2xl overflow-hidden">
+        <dialog ref={dialogRef} aria-labelledby={titleId}
+          onCancel={(e) => { e.preventDefault(); close(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+          className="fixed inset-0 m-0 h-dvh w-dvw max-h-none max-w-none border-0 bg-transparent p-0 text-foreground backdrop:bg-black/50">
+          <div className="flex h-full justify-end" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+            <aside className="ai-surface relative m-3 flex w-full max-w-md flex-col rounded-2xl overflow-hidden">
             <div className="ai-surface-header flex items-center justify-between gap-2 border-b border-border/60 p-4">
               <div className="min-w-0">
                 <span className="flex min-w-0 items-center gap-2 font-semibold">
                   <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="truncate">{copy.panel} · {page.title}</span>
+                  <span id={titleId} className="truncate">{copy.panel} · {page.title}</span>
                 </span>
                 {copy.runtime && (
                   <span data-agent-runtime className="mt-1 flex items-center gap-1.5 pl-6 text-[10px] font-medium tracking-wide text-muted-foreground">
@@ -163,7 +166,7 @@ export function AiDock({ send, configured, copy, renderReplyActions, renderReply
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
-                <button onClick={close} aria-label="关闭" className="text-muted-foreground hover:text-foreground">
+                <button type="button" autoFocus onClick={close} aria-label="关闭" className="text-muted-foreground hover:text-foreground">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -206,8 +209,9 @@ export function AiDock({ send, configured, copy, renderReplyActions, renderReply
                 />
               </>
             )}
-          </aside>
-        </div>
+            </aside>
+          </div>
+        </dialog>
       )}
     </>
   );

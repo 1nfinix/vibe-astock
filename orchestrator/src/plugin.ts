@@ -50,8 +50,8 @@ import { complianceGate, probeReportLine } from "./gate.ts";
 import { currentLexicon, resetLexicon, setLexicon, type Lexicon } from "./number_fidelity.ts";
 
 /** 每阶段的取数脚本:required 全失败 → 阶段不完整;optional 缺失只记 gap */
-//: 数组是 `readonly` 的:快照冻结了对象却没冻数组时,消费者一句 `.required.push(…)` 就能改掉
-//: 已生效的运行计划。
+// 数组也要声明为 `readonly`：只冻结对象、不冻结数组时，消费者仍能用 `.required.push(…)`
+// 改掉已生效的运行计划。
 export interface StageScripts { readonly required: readonly string[]; readonly optional: readonly string[] }
 
 /**

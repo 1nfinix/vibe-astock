@@ -153,7 +153,7 @@ export function Layout() {
   };
   // 未读角标：「提醒」二级和它所在的「我的股票」一级都显示同一个数（组收起时也看得到）
   const unreadPill = (id: string) => unread > 0 && (
-    <span id={id} className={compact ? "sr-only" : "ml-auto rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary tabular-nums"}>
+    <span id={id} className={compact ? "sr-only" : "ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-medium leading-4 text-primary tabular-nums"}>
       {compact ? `${unread} 条未读` : <>{unread > 99 ? "99+" : unread}<span className="sr-only"> 条未读</span></>}
     </span>
   );
@@ -170,7 +170,7 @@ export function Layout() {
       className={cn("workspace-nav-link flex items-center gap-2 px-2 py-1 text-xs", here?.page.to === to ? "font-medium" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
       <PIcon className="h-3.5 w-3.5 shrink-0" /><span>{label}</span>
       {inbox && unread > 0 && <span id={inFlyout ? "nav-inbox-unread-flyout" : "nav-inbox-unread"}
-        className="ml-auto rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary tabular-nums">
+        className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-medium leading-4 text-primary tabular-nums">
         {unread > 99 ? "99+" : unread}<span className="sr-only"> 条未读</span>
       </span>}
     </Link>;
@@ -246,8 +246,8 @@ export function Layout() {
               {mobile && <button aria-label="关闭导航" className="p-1" onClick={closeMobileNav}><X className="h-4 w-4" /></button>}
             </div>
             {!compact && <div data-ai-identity className="mt-1.5 space-y-0.5">
-              <p className="text-[10px] leading-4 text-muted-foreground">{PRODUCT_TAGLINE}</p>
-              <Link to="/settings" data-testid="ai-runtime-badge" title="查看或更改已保存的 AI 接入" className="flex min-w-0 items-start gap-1 text-[10px] leading-5 text-muted-foreground hover:text-primary">
+              <p className="text-[11px] leading-4 text-muted-foreground">{PRODUCT_TAGLINE}</p>
+              <Link to="/settings" data-testid="ai-runtime-badge" title="查看或更改已保存的 AI 接入" className="flex min-w-0 items-start gap-1 text-[11px] leading-5 text-muted-foreground hover:text-primary">
                 <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" /><span>{aiConnectionLabel(aiRuntime)}</span>
               </Link>
             </div>}
@@ -293,7 +293,7 @@ export function Layout() {
               <span className="hidden text-muted-foreground sm:inline">工作空间 /</span><strong className="truncate font-semibold">{currentTitle}</strong>
             </div>
             <div className="flex items-center gap-1.5" style={{ marginRight: "var(--ai-trigger-space, 0px)" }}>
-              <span className="hidden text-[10px] text-muted-foreground lg:inline">本地 A 股短线工作台</span>
+              <span className="hidden text-[11px] text-muted-foreground lg:inline">本地 A 股短线工作台</span>
               <button onClick={privacy.toggle} aria-pressed={privacy.on}
                 aria-label={privacy.on ? "关闭隐私模式" : "打开隐私模式"}
                 title={privacy.on

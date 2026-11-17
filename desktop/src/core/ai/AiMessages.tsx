@@ -44,7 +44,8 @@ export function AiMessages({
   const show = displayText ?? ((t: string) => t);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" });
+    const behavior = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior });
   }, [msgs, loading]);
 
   return (

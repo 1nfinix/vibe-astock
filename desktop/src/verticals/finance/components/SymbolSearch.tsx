@@ -106,6 +106,7 @@ export function SymbolSearch({ value, onChange, onPick, onEnter, markets, placeh
   const showName = picked && picked.symbol === value.trim() ? picked.name : "";
   const empty = open && !loading && !matches.length && value.trim().length > 0;
   const showList = open && matches.length > 0;
+  const activeIndex = Math.min(hi, matches.length - 1);
 
   // 🔴 下拉挂到 body 上、按输入框位置固定定位：卡片带毛玻璃（backdrop-filter）各自成层，
   //    下拉留在卡片里的话 z-index 再高也会被页面后面那张卡片盖住。
@@ -142,8 +143,9 @@ export function SymbolSearch({ value, onChange, onPick, onEnter, markets, placeh
           disabled={disabled}
           aria-label={ariaLabel}
           role="combobox"
-          aria-expanded={open}
-          aria-controls={listId}
+          aria-expanded={showList}
+          aria-controls={showList ? listId : undefined}
+          aria-activedescendant={showList ? `${listId}-option-${activeIndex}` : undefined}
           aria-autocomplete="list"
           autoComplete="off"
           spellCheck={false}
@@ -157,13 +159,14 @@ export function SymbolSearch({ value, onChange, onPick, onEnter, markets, placeh
         <ul id={listId} role="listbox" style={place}
           className="z-50 max-h-72 overflow-auto rounded-lg border border-border bg-card p-1 shadow-xl">
           {matches.map((m, i) => (
-            <li key={m.symbol} role="option" aria-selected={i === hi}
-              onMouseDown={(e) => { e.preventDefault(); pick(m); }}
+            <li key={m.symbol} id={`${listId}-option-${i}`} role="option" aria-selected={i === activeIndex}
+              onPointerDown={(e) => { if (e.pointerType === "mouse") { e.preventDefault(); pick(m); } }}
+              onPointerUp={(e) => { if (e.pointerType !== "mouse") pick(m); }}
               onMouseEnter={() => setHi(i)}
-              className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm", i === hi && "bg-muted/60")}>
+              className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm", i === activeIndex && "bg-muted/60")}>
               <span className="min-w-0 flex-1 truncate">{m.name}</span>
               <span className="font-mono text-xs text-muted-foreground">{m.symbol}</span>
-              <span className="w-12 shrink-0 text-right text-[10px] text-muted-foreground/80">{matchTag(m)}</span>
+              <span className="w-12 shrink-0 text-right text-[11px] text-muted-foreground/80">{matchTag(m)}</span>
             </li>
           ))}
         </ul>,

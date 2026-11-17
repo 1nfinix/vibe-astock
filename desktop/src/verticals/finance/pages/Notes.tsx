@@ -17,10 +17,10 @@ import { AuditCard } from "@/components/AuditCard";
 const KIND_COLOR: Record<string, string> = {
   复盘: "bg-primary/15 text-primary",
   今日要点: "bg-warning/15 text-warning",
-  问AI: "bg-success/15 text-success",
-  "问 Agent": "bg-success/15 text-success",
-  多空辩论: "bg-sky-500/15 text-sky-400",
-  反思审计: "bg-violet-500/15 text-violet-400",
+  问AI: "bg-info/15 text-info",
+  "问 Agent": "bg-info/15 text-info",
+  多空辩论: "bg-info/15 text-info",
+  反思审计: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
 };
 
 export function Notes() {
@@ -89,7 +89,7 @@ export function Notes() {
               // 逐条删可能删到一半失败 —— 用删完后的真实剩余刷新列表，别直接置空
               try { await clearNotes(); } finally { setNotes(loadNotes()); }
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-destructive">
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground hover:text-destructive">
             <Trash2 className="h-4 w-4" /> 清空
           </button>
         )}
@@ -108,15 +108,18 @@ export function Notes() {
             const open = openId === n.id;
             return (
               <GlassCard key={n.id} className="!p-0 overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3">
-                  <button onClick={() => setOpenId(open ? null : n.id)} className="flex flex-1 items-center gap-2 text-left">
+                <div className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3">
+                  <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : n.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     {open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${KIND_COLOR[n.kind] || "bg-muted/50 text-muted-foreground"}`}>{n.kind}</span>
-                    <span className="flex-1 truncate text-sm font-medium">{shown(n.title)}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground/60">{fmt(n.ts)}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${KIND_COLOR[n.kind] || "bg-muted/50 text-muted-foreground"}`}>{n.kind}</span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                      <span title={shown(n.title)} className="min-w-0 truncate text-sm font-medium sm:flex-1">{shown(n.title)}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{fmt(n.ts)}</span>
+                    </span>
                   </button>
-                  <button onClick={() => { void deleteNote(n.id).then(setNotes).catch(() => setNotes(loadNotes())); }} className="shrink-0 text-muted-foreground/60 hover:text-destructive" title="删除">
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <button type="button" onClick={() => { void deleteNote(n.id).then(setNotes).catch(() => setNotes(loadNotes())); }}
+                    aria-label={`删除记录：${shown(n.title)}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="删除">
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
                 {open && (
@@ -125,9 +128,9 @@ export function Notes() {
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={noRemoteImages}>{shown(n.content)}</ReactMarkdown>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 border-t border-border/40 pt-3">
+                    <div className="mt-3 flex flex-col items-start gap-2 border-t border-border/40 pt-3 sm:flex-row sm:items-center">
                       <button onClick={() => runReflect(n)} disabled={reflecting}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
+                        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border/60 px-3 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
                         <ScanSearch className="h-3.5 w-3.5" />
                         {reflecting && reflectId === n.id ? "审计中…" : "反思审计"}
                       </button>

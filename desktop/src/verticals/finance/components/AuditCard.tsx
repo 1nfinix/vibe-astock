@@ -45,7 +45,7 @@ function IssueGroup({ title, items, names, shown }: { title: string; items: Audi
         ))}
       </ul>
       {items.length > FIRST && (
-        <button type="button" onClick={() => setAll(!all)} className="mt-1 text-[11px] text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={() => setAll(!all)} className="mt-1 min-h-11 text-[11px] text-muted-foreground hover:text-foreground">
           {all ? "收起" : `显示全部 ${items.length} 条`}
         </button>
       )}
@@ -53,7 +53,7 @@ function IssueGroup({ title, items, names, shown }: { title: string; items: Audi
   );
 }
 
-const BTN = "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50";
+const BTN = "inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50";
 
 /** 核对结论 + 逐条问题 + 处理按钮（单独拆出来方便测试） */
 export function AuditFindings({ report, names, shown, busy, onRegister }: {
@@ -136,7 +136,7 @@ export function AuditCard() {
   return (
     <GlassCard className="mt-4">
       <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" /> 防篡改核对</h3>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" /> 防篡改核对</h2>
         <span className="text-xs text-muted-foreground">研究结束、记录保存时都会在本地登记簿里记一个指纹</span>
         <button type="button" onClick={verify} disabled={busy !== null} className={cn(BTN, "ml-auto")}>
           {busy === "verify" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
@@ -167,7 +167,7 @@ export function AuditCard() {
             ) : <p className="mb-3 text-xs text-muted-foreground">登记簿还是空的，没有链头。</p>}
             <div className="flex flex-wrap items-center gap-2">
               <input value={saved} onChange={(e) => { setSaved(e.target.value); setHeadResult(null); }} placeholder="粘贴以前保存的链头"
-                aria-label="以前保存的链头" className="min-w-0 flex-1 rounded-lg border border-border bg-transparent px-2 py-1.5 font-mono text-[11px]" />
+                aria-label="以前保存的链头" className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-transparent px-2 font-mono text-[11px]" />
               <button type="button" onClick={checkSaved} disabled={busy !== null || !saved.trim()} className={BTN}>
                 {busy === "head" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}核对链头
               </button>

@@ -72,7 +72,7 @@ export function QuickAiConnect({ onDismiss, storageStatus }: { onDismiss: () => 
             </button>
           ))}
         </div>
-        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">测试会发送一条简短探针，使用所选订阅额度，不读取私人研究资料。</p>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">测试会发送一条简短探针，使用所选订阅额度，不读取私人研究资料。</p>
         {busy && <p role="status" className="mt-3 text-sm text-primary">正在实测连接，请稍候…</p>}
         {error && <p role="alert" className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm leading-6 text-destructive">{error} 可到其他接入方式查看登录与安装说明。</p>}
         <Link to="/settings" onClick={dismiss} className="mt-5 flex items-center justify-between rounded-xl border border-border px-4 py-3 text-sm hover:bg-muted/50">

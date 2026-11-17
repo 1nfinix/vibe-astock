@@ -1,6 +1,6 @@
 # 研究编排器(orchestrator)
 
-状态:v2.0。六阶段研究状态机 + 可换的「大脑」,TypeScript,Node ≥ 22.18 直接运行 `.ts`。
+当前包版本见 [`package.json`](package.json)；六阶段研究状态机 + 可换的「大脑」,TypeScript,Node ≥ 22.18 直接运行 `.ts`。
 **不内置任何模型引擎或 SDK**:大脑要么是使用者本机已登录的订阅 CLI(Claude Code / Codex / WorkBuddy),
 要么是任意 OpenAI 兼容的 Chat Completions 接口(模板见 [`providers/`](../providers/README.md))。
 

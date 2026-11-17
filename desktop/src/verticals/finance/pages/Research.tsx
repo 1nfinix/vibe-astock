@@ -463,7 +463,7 @@ export function Research() {
           <ThesisPanel key={chartSymbol} symbol={chartSymbol} name={stockName || undefined} />
         </> : (
           <GlassCard className="mb-4">
-            <h3 className="mb-2 font-semibold">先在上面选一只股票</h3>
+            <h2 className="mb-2 font-semibold">先在上面选一只股票</h2>
             <p className="text-sm leading-6 text-muted-foreground">
               选好就能直接看：<b className="text-foreground">K 线走势</b>（日线 / 周线 / 月线和常用指标）、
               <b className="text-foreground">财报前瞻与复盘</b>（下一份财报日、预期、过去几次财报后的涨跌）、
