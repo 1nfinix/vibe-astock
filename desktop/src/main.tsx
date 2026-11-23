@@ -50,7 +50,7 @@ function fatal(message: string, detail: string) {
   retry.type = "button";
   retry.textContent = "重新连接";
   retry.style.cssText =
-    "margin-top:1rem;padding:.55rem .85rem;color:#fff;background:#e4572e;border:0;border-radius:8px;cursor:pointer";
+    "margin-top:1rem;padding:.55rem .85rem;color:#18181b;background:#e4572e;border:0;border-radius:8px;cursor:pointer";
   retry.addEventListener("click", () => window.location.reload());
   box.append(h, p, tip, retry);
   root!.append(box);

@@ -146,7 +146,7 @@ export function Shortline() {
               <span className="sr-only">复盘日</span>
               <input type="date" aria-label="复盘日" value={date ?? day ?? ""} max={defaultDay ?? undefined}
                 onChange={(ev) => setDate(ev.target.value || null)}
-                className="bg-transparent text-foreground outline-none [color-scheme:dark]" />
+                className="bg-transparent text-foreground" />
             </label>
             {date && (
               <button type="button" onClick={() => setDate(null)}

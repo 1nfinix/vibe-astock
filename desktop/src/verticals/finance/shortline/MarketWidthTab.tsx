@@ -4,6 +4,7 @@ import { BarChart3, Database, RefreshCw } from "lucide-react";
 import { backend, type MarketHistoryResult } from "@/lib/backend";
 import { EChart } from "@/components/ui/EChart";
 import { usePalette } from "@/components/ui/chartPalette";
+import { TrendDataTable } from "./TrendDataTable";
 import type { ViewTabProps } from "./WeeklyTab";
 
 const names = { sh: "沪", sz: "深", bj: "京", all: "合计" } as const;
@@ -17,14 +18,18 @@ export function MarketWidthView({ data }: { data: MarketHistoryResult }) {
   const palette = usePalette();
   if (!data.available) return <p role="status" className="glass p-5 text-sm text-muted-foreground">{data.reason ?? "市场历史尚未取得"}</p>;
   const series = data.series ?? [];
-  const chartRows = series.filter((r) => r.status === "ok" && r.valid && r.up != null);
+  const trend = series.map((r) => ({
+    date: r.date,
+    value: r.status === "ok" && r.valid && r.up != null ? Number((r.up / r.valid * 100).toFixed(2)) : null,
+    missingReason: r.status === "missing" ? "盘后包未导入" : "无有效读数",
+  }));
   const option = {
     grid: { left: 48, right: 20, top: 25, bottom: 34 },
     tooltip: { trigger: "axis" },
     xAxis: { type: "category", data: series.map((r) => r.date.slice(5)), axisLabel: { color: palette.text, interval: Math.max(0, Math.floor(series.length / 8)) }, axisLine: { lineStyle: { color: palette.axis } } },
     yAxis: { type: "value", name: "%", min: 0, max: 100, axisLabel: { color: palette.text }, splitLine: { lineStyle: { color: palette.grid } } },
     series: [{ name: "上涨股票占比", type: "line", connectNulls: false, showSymbol: false, lineStyle: { color: palette.primary, width: 2 },
-      data: series.map((r) => r.status === "ok" && r.valid && r.up != null ? Number((r.up / r.valid * 100).toFixed(2)) : null) }],
+      data: trend.map((r) => r.value) }],
   };
   const total = markets.reduce((a, m) => {
     const row = data.markets?.[m];
@@ -38,13 +43,13 @@ export function MarketWidthView({ data }: { data: MarketHistoryResult }) {
       <p className="mt-1 text-xs text-muted-foreground">本地已导入 {data.coverage?.days ?? 0} 个交易日（{data.coverage?.from ?? "—"} 至 {data.coverage?.to ?? "—"}）。来源：{data.source?.name ?? "—"}。{data.calendar_status === "incomplete" ? "交易日历未完整取得。" : ""}</p>
     </div>
     <section className="glass p-4">
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 className="h-4 w-4 text-primary" /> 当日市场宽度</h3>
+      <h2 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 className="h-4 w-4 text-primary" /> 当日市场宽度</h2>
       <p className="mt-1 text-xs text-muted-foreground">涨跌按收盘价与参考前收盘价比较。20/60 日宽度 = 高于均线的股票数 ÷ 连续有效股票数。</p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[670px] text-xs tabular-nums">
-          <thead><tr className="border-b border-border/60 text-muted-foreground"><th className="py-2 text-left">市场</th><th className="text-right">观察 / 有效</th><th className="text-right">涨 / 跌 / 平</th><th className="text-right">20 日</th><th className="text-right">60 日</th></tr></thead>
+          <thead><tr className="border-b border-border/60 text-muted-foreground"><th scope="col" className="sticky left-0 z-10 bg-card py-2 pr-3 text-left">市场</th><th className="text-right">观察 / 有效</th><th className="text-right">涨 / 跌 / 平</th><th className="text-right">20 日</th><th className="text-right">60 日</th></tr></thead>
           <tbody>{rows.map(([m, row]) => <tr key={m} className="border-b border-border/40 last:border-0">
-            <td className="py-2 font-medium">{names[m]}</td>
+            <th scope="row" className="sticky left-0 z-10 bg-card py-2 pr-3 text-left font-medium">{names[m]}</th>
             <td className="text-right">{row ? `${row.observed} / ${row.valid}` : "—"}</td>
             <td className="text-right">{row ? `${row.up} / ${row.down} / ${row.flat}` : "—"}</td>
             <td className="text-right">{widthText(data.width?.[m]?.["20"], data.window_reason?.["20"])}</td>
@@ -54,10 +59,11 @@ export function MarketWidthView({ data }: { data: MarketHistoryResult }) {
       </div>
     </section>
     <section className="glass p-4">
-      <h3 className="text-sm font-semibold">近 {series.length || 60} 个交易日 · 上涨股票占比</h3>
+      <h2 className="text-sm font-semibold">近 {series.length || 60} 个交易日 · 上涨股票占比</h2>
       <p className="mt-1 text-xs text-muted-foreground">每日上涨股票数 ÷ 当日有效股票数；只描述已发生的盘面。缺日断线，不补 0。</p>
-      {chartRows.length >= 2 ? <EChart option={option} height={280} />
+      {trend.filter((r) => r.value !== null).length >= 2 ? <EChart option={option} height={280} />
         : <p role="status" className="py-10 text-center text-sm text-muted-foreground">{data.series_reason ?? "有效历史日不足两天，暂时画不出趋势"}</p>}
+      <TrendDataTable title="上涨股票占比" unit="%" rows={trend} />
       {series.some((r) => r.status === "missing") && <p className="text-xs text-warning">序列有 {series.filter((r) => r.status === "missing").length} 个交易日未导入，曲线在缺口处断开。</p>}
     </section>
     <p className="text-xs text-muted-foreground">统计仅覆盖盘后包中观察到的证券；缺行不直接判为停牌。历史口径和数据来源见本地市场历史记录。</p>

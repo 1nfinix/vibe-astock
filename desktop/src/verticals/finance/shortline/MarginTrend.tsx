@@ -4,6 +4,7 @@ import { usePalette } from "@/components/ui/chartPalette";
 import { backend, type Envelope, type PageResult } from "@/lib/backend";
 import { parseMargin } from "@/lib/marketReview";
 import { marginCalendar, marginPeriodSums, marginTrendSeries, type MarginPeriod } from "@/lib/marginTrend";
+import { TrendDataTable } from "./TrendDataTable";
 
 const periods = { day: "日度", week: "周度", month: "月度" } as const;
 const amount = (value: number) => value / 1e8;
@@ -31,6 +32,7 @@ function TrendChart({ title, unit, bars, rows }: {
       <p className="mt-1 text-xs text-muted-foreground">{last.date} · {last.value.toFixed(2)} {unit}{last.partial ? " · 部分合计" : ""}</p>
       <EChart option={option} height={220} />
     </> : <p className="mt-2 text-xs text-muted-foreground">该范围暂无可用数据</p>}
+    <TrendDataTable title={title} unit={unit} rows={rows} />
   </section>;
 }
 

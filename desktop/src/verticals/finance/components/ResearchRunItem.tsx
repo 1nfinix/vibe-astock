@@ -18,9 +18,9 @@ export function ResearchRunItem({ run, onOpen, onDelete, deleting }: {
   const TERMINAL = new Set(["complete", "failed", "incomplete", "unvalidated", "stale", "cancelled"]);
   const deletable = TERMINAL.has(run.status ?? "");
   return (
-    <div className="group relative flex w-full items-center rounded-md border-b border-border/30 last:border-0 hover:bg-muted/30">
+    <div className="flex w-full items-center rounded-md border-b border-border/30 last:border-0 hover:bg-muted/30">
       <button type="button" onClick={() => onOpen(run.run_id)} title={`运行标识：${run.run_id}`}
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 pr-9 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
         <span className="font-medium">{run.name ?? "个股"}</span>
         <span className="font-mono text-xs text-muted-foreground">{run.symbol ?? "—"}</span>
         <span className="rounded bg-muted/50 px-2 py-0.5 text-xs">{STATUS[run.status ?? ""] ?? "状态未知"}</span>
@@ -31,7 +31,7 @@ export function ResearchRunItem({ run, onOpen, onDelete, deleting }: {
       {onDelete && (
         <button type="button" onClick={() => onDelete(run.run_id)}
           disabled={!deletable || deleting}
-          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground/50 opacity-0 transition group-hover:opacity-100 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 focus-visible:opacity-100"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           title={deletable ? "删除这次研究归档" : "该研究未确认结束,不能删"} aria-label="删除">
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
         </button>
