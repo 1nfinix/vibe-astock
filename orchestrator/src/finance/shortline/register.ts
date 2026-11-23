@@ -6,6 +6,7 @@ import { registerView } from "../../views.ts";
 import { etfTurnoverAct, etfTurnoverRun } from "./etf_turnover.ts";
 import { etfFlowAct, etfFlowRun } from "./etf_flow.ts";
 import { shortlineHistory } from "./history.ts";
+import { marketHistoryAct, marketHistoryView } from "./market_history.ts";
 import { shortlineIntraday, shortlineIntradayAct } from "./intraday.ts";
 import { shortlineReview, shortlineReviewAct } from "./review.ts";
 import { shortlineSamples } from "./samples.ts";
@@ -16,6 +17,7 @@ import { shortlineWeekly } from "./weekly.ts";
 import { shortlineWeeklyReview, shortlineWeeklyReviewAct } from "./weekly_review.ts";
 
 registerView({ id: "shortline_history", label: "情绪历史", run: shortlineHistory });
+registerView({ id: "shortline_market_history", label: "公开市场历史", run: marketHistoryView, act: marketHistoryAct });
 registerView({ id: "shortline_verify", label: "明日验证", run: shortlineVerify, act: shortlineVerifyAct });
 registerView({ id: "shortline_samples", label: "涨停样本统计", run: shortlineSamples });
 registerView({ id: "shortline_structure", label: "结构变化", run: shortlineStructure });

@@ -57,6 +57,20 @@
       "cache_max_age_sec": 0
     },
     {
+      "id": "fetch_trade_calendar_history",
+      "title": "近 420 个自然日交易日历",
+      "layer": "1 行情",
+      "market": ["CN"],
+      "source": "baostock",
+      "compliance": "cn-public",
+      "module": "legacy",
+      "function": "fetch_trade_calendar_history.py",
+      "symbol_kind": "none",
+      "stages": {},
+      "enabled": true,
+      "cache_max_age_sec": 0
+    },
+    {
       "id": "fetch_financials",
       "title": "季度报告期累计财务(营收 / 归母 / 扣非 / EPS)",
       "layer": "6 基础数据",
@@ -4029,7 +4043,7 @@
     },
     {
       "id": "em_market_margin",
-      "title": "全市场两融余额(逐日两融余额、融资净买入,最新融资余额占流通市值)",
+      "title": "全市场两融历史(两融余额、融资余额、融资净买入、融资余额占流通市值)",
       "layer": "4 资金筹码",
       "market": [
         "CN"

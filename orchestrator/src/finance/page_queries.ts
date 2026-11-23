@@ -83,6 +83,15 @@ export const FINANCE_PAGE_QUERIES: Record<string, PageQueryDef> = {
     ],
   },
 
+  margin_trend: {
+    title: "两融趋势",
+    intent: "查看全市场融资净买入、融资余额和融资余额占流通市值的历史",
+    blocks: [
+      { id: "margin", title: "全市场两融历史", endpoint: "em_market_margin", args: { days: 250 }, staleOnError: true },
+      { id: "calendar", title: "历史交易日历", endpoint: "fetch_trade_calendar_history", symbol: FINANCE_PAGE_CONTEXT.symbol },
+    ],
+  },
+
   review: {
     title: "每日复盘",
     intent: "市场处在什么状态:涨跌面与短线情绪、中长线趋势与量能、资金去了哪",

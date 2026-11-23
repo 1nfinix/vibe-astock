@@ -222,6 +222,8 @@ export function Research() {
           if (st.finished_at !== null) {
             watchGeneration.current += 1;
             if (timer.current) window.clearInterval(timer.current);
+            // 归档在运行中打开过，先收起当时的「尚无正文」提示，再由用户读取最终报告。
+            setReport(previous => previous?.run_id === id && previous.availability !== "ready" ? null : previous);
             void loadRuns();
           }
         })
@@ -340,13 +342,12 @@ export function Research() {
       if (stale()) return;
       const st = await backend.researchStatus(id).catch(() => null);
       if (stale()) return;
-      const c = normalizeMarketSymbol(runs.find((x) => x.run_id === id)?.symbol);
+      const c = normalizeMarketSymbol(runs.find((x) => x.run_id === id)?.symbol) ?? (active?.run_id === id ? activeCode : null);
       setReport(r);
       if (st) { setActive(st); setActiveCode(c); if (!st.finished_at) watch(id); }
       if (c && c !== chartSymbol) setQuery({ symbol: c }, false);
     } catch (e) {
-      if (wantRun.current !== id) return;
-      setErr(e instanceof ApiError ? e.message : String(e));
+      if (!stale()) setErr(e instanceof ApiError ? e.message : String(e));
     }
   };
 
@@ -543,6 +544,12 @@ export function Research() {
             <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[11px]">{STATUS_CN[active.status] ?? active.status}</span>
             {active.evidence_count !== null && <span className="text-xs text-muted-foreground">证据 {active.evidence_count} 条</span>}
             {active.calculation_count !== null && <span className="text-xs text-muted-foreground">计算 {active.calculation_count} 项</span>}
+            {active.finished_at && (
+              <button type="button" onClick={() => void openReport(active.run_id)}
+                className="ml-auto rounded-md border border-border px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                {active.report !== false && (active.status === "complete" || active.status === "incomplete") ? "查看报告" : "查看报告状态"}
+              </button>
+            )}
           </div>
           {/* 阶段逐个显示 —— 用户要知道它在哪一步，而不是看一个转圈 */}
           <div className="research-stages" aria-label="研究阶段索引">
@@ -562,12 +569,6 @@ export function Research() {
         </GlassCard>
       )}
 
-      {/* 「和上次比变了什么」:同一家公司任选两次研究,关键数据逐条对齐、报告逐节比 */}
-      {report && currentRun && <ReportCompare key={report.run_id} current={currentRun} runs={runs} report={report} />}
-      {/* 「各次研究过程对比」:换一家 Agent 再研究同一只,并排看取数、引用、数字核对、缺口(不比结论和收益) */}
-      {report && currentRun && <RunCompareCard key={`cmp-${report.run_id}`} current={currentRun} researchBusy={researchBusy || starting}
-        onRunWith={(provider, endpoints) => runWith(currentRun, provider, endpoints)} />}
-
       {report && (
         <GlassCard className="mb-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -583,6 +584,12 @@ export function Research() {
           <ResearchReport result={report} />
         </GlassCard>
       )}
+
+      {/* 「和上次比变了什么」:同一家公司任选两次研究,关键数据逐条对齐、报告逐节比 */}
+      {report && currentRun && <ReportCompare key={report.run_id} current={currentRun} runs={runs} report={report} />}
+      {/* 「各次研究过程对比」:换一家 Agent 再研究同一只,并排看取数、引用、数字核对、缺口(不比结论和收益) */}
+      {report && currentRun && <RunCompareCard key={`cmp-${report.run_id}`} current={currentRun} researchBusy={researchBusy || starting}
+        onRunWith={(provider, endpoints) => runWith(currentRun, provider, endpoints)} />}
 
       <GlassCard className="mb-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -4,14 +4,14 @@
 
 <p align="center">
   <b>A short-term trading review and tracking workbench for China A-shares</b><br>
-  Watch · Sentiment review · AI review · Next-day checks · Trade journal · Company deep dive · Backtesting · 190 data endpoints
+  Watch · Sentiment review · AI review · Next-day checks · Trade journal · Company deep dive · Backtesting · 191 data endpoints
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
   <a href="CHANGELOG.md"><img alt="Source v2.1.6" src="https://img.shields.io/badge/source-v2.1.6-F35D2B"></a>
   <img alt="China A-shares, short-term" src="https://img.shields.io/badge/market-China%20A--shares-c92a2a">
-  <img alt="190 data endpoints" src="https://img.shields.io/badge/data-190%20endpoints-2f9e44">
+  <img alt="191 data endpoints" src="https://img.shields.io/badge/data-191%20endpoints-2f9e44">
   <img alt="AI: Claude Code, Codex, WorkBuddy, or a model API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
 </p>
 
@@ -37,7 +37,7 @@ From v2.0.0 it shares one foundation with [Vibe Research](https://github.com/sim
 - **Watch**: live readings for your holdings, your watchlist, yesterday's ladder, large caps, and the top ten by turnover; a move of 1.5% or more within 3 minutes is logged as a surge or drop, and touching or leaving the limit-up price as sealed or opened; how yesterday's limit-up names did in the 09:25 auction, and the sentiment path across six snapshots through the day.
 - **Sentiment review**: the money-making effect, promotion rates, the board ladder, the streak premium, gaps in the ladder, the sentiment cycle, seal quality, the theme tree, first-board names, and theme rotation over the last 5 days; AI review and AI weekly review, next-day checks (write conditions the night before, scored automatically after the next close), limit-up sample statistics, and structural shifts.
 - **Trade journal**: each trade is matched automatically to that day's sentiment (strong / middling / weak) and where the stock stood, with win rates by sentiment, board, playbook, and whether it followed the plan; plus risk & discipline, review, and playbook cards. It stays on your machine and never goes to the AI.
-- **190 data endpoints** (35 layers), 14 of them built for short-term work: sentiment readings, six fact tables, the board ladder, the theme tree, theme rotation, first-board names, limit-up structure, intraday sentiment, yesterday's ladder, and more; the rest cover quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, the dragon-tiger list, lock-up expiries, convertible bonds, futures and commodities, Hong Kong and US stocks, news, macro data, and more.
+- **191 data endpoints** (35 layers), 14 of them built for short-term work: sentiment readings, six fact tables, the board ladder, the theme tree, theme rotation, first-board names, limit-up structure, intraday sentiment, yesterday's ladder, and more; the rest cover quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, the dragon-tiger list, lock-up expiries, convertible bonds, futures and commodities, Hong Kong and US stocks, news, macro data, and more.
 - **Six-stage company research (A-shares, Hong Kong, US)**: company profile → financials → earnings expectations → valuation → risk → report. Raw data keeps its source; derived figures keep their calculations.
 - **Bring your own AI**: a Claude Code, Codex, or WorkBuddy subscription, or any Chat Completions–compatible model API such as DeepSeek, Qwen, Kimi, or MiMo.
 - **Runs on Windows, macOS, and Linux**; it can also run on a macOS / Linux cloud computer and be opened remotely through a link with an access token.
@@ -328,7 +328,7 @@ Verdict criteria and falsifiers that are due and not yet judged sit at the top o
 
 ## Data and markets
 
-The data registry has **190 endpoints across 35 layers**, 14 of them built for short-term work (`cn_shortline_*`): the four sentiment readings, the sentiment cycle, daily readings, six fact tables, the board ladder, the theme tree, theme rotation over the last 5 days, first-board names, how yesterday's limit-up names did today, limit-up structure, intraday sentiment, yesterday's ladder, the top ten by turnover, and large caps. Closed days are cached for good; a day that has not closed is marked "partial" and not cached. The 7 SEC endpoints need an SEC contact filled in on the Connect AI page (or the `VRA_SEC_CONTACT` environment variable); without it they say what's missing. Other coverage includes quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, positioning, Southbound flows, A/H premiums, company profiles, options, indices, futures and commodities, corporate events, convertible bonds, SEC / FINRA / CBOE, news, macro data, industry thermometers, hiring, restrictions, and data calendars. A-share data is synced to [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1; US and Hong Kong data to [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3.
+The data registry has **191 endpoints across 35 layers**, 14 of them built for short-term work (`cn_shortline_*`): the four sentiment readings, the sentiment cycle, daily readings, six fact tables, the board ladder, the theme tree, theme rotation over the last 5 days, first-board names, how yesterday's limit-up names did today, limit-up structure, intraday sentiment, yesterday's ladder, the top ten by turnover, and large caps. Closed days are cached for good; a day that has not closed is marked "partial" and not cached. The 7 SEC endpoints need an SEC contact filled in on the Connect AI page (or the `VRA_SEC_CONTACT` environment variable); without it they say what's missing. Other coverage includes quotes, candles, tick trades, financial statements, consensus, filings, reports, fund flows, positioning, Southbound flows, A/H premiums, company profiles, options, indices, futures and commodities, corporate events, convertible bonds, SEC / FINRA / CBOE, news, macro data, industry thermometers, hiring, restrictions, and data calendars. A-share data is synced to [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1; US and Hong Kong data to [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3.
 
 | | A-shares | US | Hong Kong |
 |---|---|---|---|
@@ -551,7 +551,7 @@ There are 8 tools: 7 read-only (endpoint list, fetch, run status, report, eviden
 
 ## Current boundaries
 
-- Watch: v2.0.0 was developed and captured on October 10–11, 2026 (a weekend), so auto-refresh, intraday moves, whether yesterday's ladder is sealed, and the scheduled snapshots have not yet been tested during trading hours; the Auction & intraday screenshot in this README uses snapshots the old version saved during the September 23, 2026 session and that were then imported.
+- During the November 20, 2026 morning session, we verified browser auto-refresh and checked each stock on the previous day's limit-up ladder against its price and limit-up price from the same quote batch. We checked the save records and opened the 09:25, 09:35, and 10:00 snapshots and the November 19 closing snapshot in the UI. Live verification of each intraday alert type is still pending. The Auction & intraday screenshot uses snapshots saved by the old version on September 23, 2026.
 - AI review and AI weekly review: on October 10, 2026 they were tested only with a Claude Code subscription (4 review versions, 3 weekly versions); Codex, WorkBuddy, and model APIs have not run these two features yet.
 - Importing from the old version: preview and import were tested on a copy of real old data; files written in other old formats are listed as skipped in the preview with a reason.
 - Delivered as source code and as Windows / macOS portable packages, both using a local browser UI. The portable packages are not code-signed; they are built on GitHub Actions at release time and uploaded only after their smoke test passes, and have not been validated on physical machines.
@@ -574,7 +574,7 @@ Home · watch · sentiment review · trade journal · daily review · industry n
         │
         ▼
 Research layer
-190 data endpoints · short-term readings and scoring · six-stage research workflow · calc · validator · report archive
+191 data endpoints · short-term readings and scoring · six-stage research workflow · calc · validator · report archive
         │
         ▼
 Local Agent Runtime and Model Provider

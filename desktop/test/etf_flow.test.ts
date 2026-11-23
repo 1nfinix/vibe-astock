@@ -139,6 +139,22 @@ test("ETF 回填完成且无失败时不显示状态条", async () => {
   });
 });
 
+test("ETF 回填按连接故障合并不同基金的重复请求错误", async () => {
+  await withRenderer(async (r) => {
+    const { EtfFlowBackfill } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");
+    const failed = ["159012", "159066", "159078"].map((code) => ({
+      code, date: "2026-11-20",
+      reason: `HTTPSConnectionPool(host='fund.szse.cn', port=443): Max retries exceeded with url: /api/report/ShowReport/data?txtDm=${code}`,
+    }));
+    const html = r.html(EtfFlowBackfill, { data: { ...daily, backfill: {
+      ...daily.backfill, completed: 749, total: 750, failed,
+    } } });
+    assert.match(textOf(html.split("<details")[0] ?? ""), /已完成 749 \/ 750 个交易日.*失败 3 处：交易所份额接口连接失败 ×3/);
+    assert.match(textOf(html), /2026-11-20 159066 交易所份额接口连接失败/);
+    assert.doesNotMatch(html, /HTTPSConnectionPool|txtDm|fund\.szse\.cn/);
+  });
+});
+
 test("ETF 日度加载中显示待取，已返回但缺失才显示未取到原因", async () => {
   await withRenderer(async (r) => {
     const { EtfFlowSignal } = await r.load("/src/verticals/finance/shortline/EtfFlowSignal.tsx");

@@ -5,7 +5,15 @@ import { flowNumber, flowSigned } from "./EtfFlowTypes";
 
 const panel = "min-w-0 rounded-md border border-border bg-card p-4";
 const zoom = [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }];
-const failureReason = (reason: string) => reason.replace(/^\s*[A-Za-z_][\w.]*Error:\s*/, "").trim() || "原因未返回";
+function failureReason(reason: string) {
+  if (/timed?\s*out|timeout|超时/i.test(reason)) return "交易所份额请求超时";
+  if (/\b429\b(?=\s+(?:Client Error|Too Many Requests))|限流/i.test(reason)) return "交易所份额请求受限";
+  if (/HTTPS?ConnectionPool|Max retries exceeded|ProxyError|ConnectionError|RemoteDisconnected|SSLError/i.test(reason)) {
+    return "交易所份额接口连接失败";
+  }
+  const message = reason.replace(/^\s*[A-Za-z_][\w.]*Error:\s*/, "").replace(/\s+/g, " ").trim();
+  return message.length > 100 ? "份额数据获取失败" : message || "原因未返回";
+}
 
 export function EtfFlowBackfill({ data }: { data: EtfFlowDailyData | null }) {
   const b = data?.backfill;
@@ -15,12 +23,15 @@ export function EtfFlowBackfill({ data }: { data: EtfFlowDailyData | null }) {
     const reason = failureReason(item.reason);
     failedReasons.set(reason, (failedReasons.get(reason) ?? 0) + 1);
   }
+  const summary = [...failedReasons].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const otherFailures = b.failed.length - summary.reduce((sum, [, count]) => sum + count, 0);
+  if (otherFailures) summary.push(["其他原因", otherFailures]);
   return <div role="status" className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">
     官方份额历史{b.syncing ? "正在回填" : "未在回填"}：已完成 {b.completed} / {b.total || "目标待确定"} 个交易日
     {b.total > 0 && <div role="progressbar" aria-label="官方份额回填进度" aria-valuemin={0} aria-valuenow={b.completed} aria-valuemax={b.total} className="mt-2 h-1.5 rounded bg-muted"><div className="h-full rounded bg-primary" style={{ width: `${100 * b.completed / b.total}%` }} /></div>}
     <span className="mt-1 block text-muted-foreground">已回填范围：{b.from ?? "待积累"} 至 {b.to ?? "待积累"}。进度只统计宽基份额回填任务完成的交易日；已有净流入可由本地份额记录与日线收盘价算出，成交额取自日线。</span>
-    {b.failed.length > 0 && <div className="mt-1 text-warning">失败 {b.failed.length} 处：{[...failedReasons].map(([reason, count]) => `${reason} ×${count}`).join("；")}
-      <details><summary>查看失败明细（{b.failed.length} 处）</summary><ul>{b.failed.map((x, i) => <li key={`${x.code}-${x.date ?? ""}-${i}`}>{x.date ? `${x.date} ` : ""}{x.code} {failureReason(x.reason)}</li>)}</ul></details>
+    {b.failed.length > 0 && <div className="mt-1 break-words text-warning">失败 {b.failed.length} 处：{summary.map(([reason, count]) => `${reason} ×${count}`).join("；")}
+      <details><summary>查看失败明细（{b.failed.length} 处）</summary><ul className="max-h-48 overflow-auto">{b.failed.map((x, i) => <li key={`${x.code}-${x.date ?? ""}-${i}`}>{x.date ? `${x.date} ` : ""}{x.code} {failureReason(x.reason)}</li>)}</ul></details>
     </div>}
   </div>;
 }

@@ -725,7 +725,8 @@ def em_market_margin_map(result: list, ctx: dict) -> dict:
     if not rows:
         return empty("全市场两融汇总为空")
     note = "全市场两融(东财两融历史汇总);T 日数据 T+1 发布"
-    evs = rows_fields(ctx, rows, [("rzrqye", "market_margin_balance", "元"), ("rzjme", "market_financing_net_buy", "元")],
+    evs = rows_fields(ctx, rows, [("rzrqye", "market_margin_balance", "元"), ("rzjme", "market_financing_net_buy", "元"),
+                                 ("rzye", "market_financing_balance", "元"), ("rzye_float_pct", "market_financing_float_pct", "%")],
                       period_of=lambda r: r["date"], key_of=lambda r: f"margin|{r['date']}", as_of_of=lambda r: r["date"], note_of=lambda r: note)
     last = rows[-1]
     evs += dict_fields(ctx, last, [("rzye", "market_financing_balance", "元"), ("rqye", "market_short_balance", "元"), ("rzmre", "market_financing_buy", "元"),

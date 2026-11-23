@@ -388,7 +388,7 @@ const KILL_GRACE_MS = 2_000;
  * ③ 起不来(ENOENT / EACCES)要报 spawn_failed —— 与旧的 `p.error` 分支同一个错误码。
  * ⚠️ 用 `close` 而不是 `exit`:`exit` 时 stdout 可能还没读完,会拿到截断的 JSON。
  */
-function runFetchProcess(
+export function runFetchProcess(
   cmd: string,
   argv: string[],
   opts: { cwd: string; env: Record<string, string>; timeout: number; input?: string; signal?: AbortSignal },
@@ -1071,6 +1071,16 @@ export async function pageQuery(
         // 一块取不到不该让整屏空白 —— 但也**不能装作没事**:如实标出来
         return { ...head, status: "missing", error: e instanceof Error ? e.message : String(e) };
       } })();
+      if (b.staleOnError && !(b.injectContext && ctxUnavailable) && !req.signal?.aborted && (primary.status === "failed" || primary.status === "missing")) {
+        const symbol = b.symbol ?? req.symbol ?? "";
+        const old = readSnapshot<FetchResult>(ctx.dataRoot, snapshotKey(b.endpoint, symbol, {
+          ...b.args, ...(b.injectContext ? selectInject(injected, b.injectAs) : {}), ...used,
+        }));
+        if (old && blockStatusFromEnvelope(old.payload.envelope) === "ok") {
+          return { ...primary, status: "partial", cached: true, fetched_at: old.fetched_at, envelope: old.payload.envelope,
+            error: primary.error ?? envelopeWhy(primary.envelope) ?? "来源暂不可用" };
+        }
+      }
       if (!b.fallback || primary.status === "ok" || primary.status === "partial") return primary;
       // 主源没取到 → 换垂类声明的备用端点。备源不吃上下文与用户参数(注册期已禁止同用)
       const primaryError = primary.error ?? envelopeWhy(primary.envelope);

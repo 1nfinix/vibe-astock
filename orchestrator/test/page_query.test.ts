@@ -11,6 +11,7 @@ import { detectPython } from "../src/init.ts";
 import { currentPlugin } from "../src/plugin.ts";
 import { ServiceError, assertArgs, blockStatusFromEnvelope, pageQuery, type ServiceContext } from "../src/service.ts";
 import type { EndpointDef } from "../src/registry.ts";
+import { snapshotKey, writeSnapshot } from "../src/snapshot.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** 解释器:VRA_PYTHON → 仓库 .venv → 上一级 .venv(开发布局)→ PATH 上的 python3;不写死任何机器的绝对路径 */
@@ -37,6 +38,26 @@ const INJECTED_KEYS: string[] = (() => {
 
 const ctx = (): ServiceContext =>
   ({ repoRoot: REPO, dataRoot: fs.mkdtempSync(path.join(os.tmpdir(), "vra-page-")), python: process.env.VRA_PYTHON ?? "python3", node: process.execPath }) as ServiceContext;
+
+test("两融趋势刷新失败时保留同参数的既有快照和原获取时间", async () => {
+  const c = ctx();
+  try {
+    const key = snapshotKey("em_market_margin", "", { days: 250 });
+    const envelope = { status: "ok", evidence: [{ field: "market_financing_net_buy", value: 1 }] };
+    const snap = writeSnapshot(c.dataRoot, key, { endpoint: "em_market_margin", symbol: "" }, { envelope }, () => true);
+    const fetch: NonNullable<Parameters<typeof pageQuery>[2]>["fetch"] = async () => { throw new Error("来源断开"); };
+    const page = await pageQuery(c, { query: "margin_trend", refresh: true }, { fetch });
+    const margin = page.blocks.find((b) => b.id === "margin");
+    assert.equal(margin?.status, "partial");
+    assert.equal(margin.cached, true);
+    assert.equal(margin.error, "来源断开");
+    assert.equal(margin.fetched_at, snap?.fetched_at);
+    assert.deepEqual(margin.envelope, envelope);
+    assert.equal(page.blocks.find((b) => b.id === "calendar")?.status, "missing");
+  } finally {
+    fs.rmSync(c.dataRoot, { recursive: true, force: true });
+  }
+});
 
 test("🔴 页面按名字要数据,端点 id 只活在垂类声明里(界面上不该印出端点名)", () => {
   const qs = currentPlugin().pageQueries ?? {};
@@ -71,6 +92,10 @@ test("页面查询声明不能暗中绑定某一只示例标的", () => {
   const layerOf = new Map(reg.endpoints.map((e) => [e.id, String(e.layer ?? "")]));
   for (const [name, def] of Object.entries(currentPlugin().pageQueries ?? {})) {
     for (const block of def.blocks) {
+      if (block.endpoint === "fetch_trade_calendar_history") {
+        assert.equal(block.symbol, currentPlugin().pageContext?.symbol, "全市场日历沿用上下文探针的市场标识");
+        continue;
+      }
       if (block.symbol !== undefined && /指数/.test(layerOf.get(block.endpoint) ?? "")) continue;
       assert.equal(block.symbol, undefined, `${name}.${block.id} 不应硬编码示例标的 ${block.symbol}`);
     }

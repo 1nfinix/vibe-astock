@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 190 个)
+# 数据源端点目录(registry v1.0.0,共 191 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -22,12 +22,13 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `st_stock_list` | ST / *ST 股票名单(沪深京) | CN | eastmoney | cn-public | none | - | 东财名单不可用时上游自动改用 baostock(只覆盖沪深,结果标 partial 并写明原因)。上游 a-stock-data §6 |
 | `em_main_business` | 主营构成(按行业 / 产品 / 地区;收入 / 占比 / 毛利率) | CN | eastmoney | cn-public | cn6 | profile:optional | 收入占比 / 毛利率是源给的小数(0.86 = 86%) |
 
-## 1 行情(11)
+## 1 行情(12)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
 | `fetch_quote` | 实时行情 / 估值快照(含僵尸报价判定) | CN | tencent | cn-public | cn6 | profile:required | 关键 |
 | `fetch_trade_calendar` | 交易日历(参考报价日 / 盘前盘后) | CN | baostock | cn-public | none | profile:required |  |
+| `fetch_trade_calendar_history` | 近 420 个自然日交易日历 | CN | baostock | cn-public | none | - |  |
 | `fetch_kline` | 日 K 前复权序列 | CN | tencent | cn-public | cn6 | risk:optional |  |
 | `tx_quote` | 腾讯实时行情(个股 / 指数 / ETF / 北交所,含僵尸报价判定) | CN | tencent | cn-public | raw | - | 指数 / ETF 请带前缀(sh000001 / sh510050);fetch_quote 仍是阶段必需的主行情脚本 |
 | `tx_quotes_batch` | 腾讯批量行情(默认 A股四大指数 + 美股道指纳指 + 港股恒生与恒生科技) | CN/US/HK | tencent | cn-public | none | - |  |
@@ -85,7 +86,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `bs_chip_distribution` | 筹码分布 CYQ(获利比例 / 平均成本 / 成本区间 / 集中度,前复权 + 换手衰减模型) | CN | baostock+calc | cn-public | cn6 | - | 计算型端点:取数层确定性计算(非 calc DAG),信封 extra.computation 记库 / 版本 / 输入 raw / 参数供复算;不进研究阶段计划(计算型端点待迁 calc);仅供手工调用 |
 | `etf_shares` | ETF 份额(上交所按日归档 / 深交所当前快照,万份) | CN | exchange | cn-public | none | - | exchange=SH / SZ;date 缺省:上交所 = 上一个交易日,深交所 = 今天的快照(深交所只给最新一天,T 日晚为预估、T+1 早为确认值);codes 逗号分隔只留指定 ETF,缺省全表、证据给份额前 30。上游 a-stock-data §4 |
 | `margin_backup` | 两融明细官方备胎(上交所 / 深交所,单只) | CN | exchange | cn-public | cn6 | - | 交易所按代码所属市场自动选;trade_date 缺省 = 上一个交易日(两融数据次日发布);不覆盖北交所;筛不到代码 = 不是两融标的。⚠️ 上游上交所分支 2026-10-08 实测分页判断有误(2002 条分 2 页被当成不完整),上交所代码暂时报错,深交所正常。上游 a-stock-data §12 官方备胎 |
-| `em_market_margin` | 全市场两融余额(逐日两融余额、融资净买入,最新融资余额占流通市值) | CN | eastmoney | cn-public | none | - | T 日数据 T+1 发布,最新一条通常是上一个交易日。 |
+| `em_market_margin` | 全市场两融历史(两融余额、融资余额、融资净买入、融资余额占流通市值) | CN | eastmoney | cn-public | none | - | T 日数据 T+1 发布,最新一条通常是上一个交易日。 |
 | `em_top10_holders` | 十大股东(最近两期;持股数 / 占总股本 / 较上期变动) | CN | eastmoney | cn-public | cn6 | - |  |
 | `em_top10_free_holders` | 十大流通股东(最近两期;持股数 / 占流通股本 / 股东性质) | CN | eastmoney | cn-public | cn6 | risk:optional |  |
 

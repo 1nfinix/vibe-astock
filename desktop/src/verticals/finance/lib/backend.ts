@@ -275,6 +275,22 @@ async function ensureSelectedLocalAgentReady(llm: unknown, signal?: AbortSignal)
 
 export type ShortlineViewId = "shortline_history" | "shortline_verify" | "shortline_samples" | "shortline_structure" | "shortline_weekly" | "shortline_review" | "shortline_weekly_review";
 
+export interface MarketHistoryResult {
+  available: boolean;
+  date?: string;
+  reason?: string;
+  coverage?: { from: string; to: string; days: number };
+  source?: { name: string; archive_sha256: string; rows: number };
+  markets?: Record<"sh" | "sz" | "bj", { observed: number; valid: number; up: number; down: number; flat: number }>;
+  width?: Record<"sh" | "sz" | "bj" | "all", Record<"20" | "60", { eligible: number | null; above: number | null }>>;
+  calendar_status?: "ready" | "incomplete";
+  window_complete?: Record<"20" | "60", boolean>;
+  window_reason?: Record<"20" | "60", string | null>;
+  series?: { date: string; status: "ok" | "missing"; observed: number | null; valid: number | null; up: number | null; down: number | null; flat: number | null }[];
+  series_reason?: string | null;
+  notes?: string[];
+}
+
 /** AI 复盘 / AI 周报开工:先确认选中的本地订阅能用,再带上 AI 配置发给后端 */
 async function startShortlineAi<T>(view: "shortline_review" | "shortline_weekly_review", date: string, signal?: AbortSignal): Promise<T> {
   const runtime = requestRuntime();
@@ -417,6 +433,15 @@ export const backend = {
     if (query.refresh) qs.set("refresh", "1");
     return call<T>(`/view/${id}?${qs}`, { signal });
   },
+  /** 公开市场历史：GET 只读，不会因打开页面而下载。 */
+  marketHistory: (date: string, days = 60, signal?: AbortSignal) =>
+    call<MarketHistoryResult>(`/view/shortline_market_history?${new URLSearchParams({ date, days: String(days) })}`, { signal }),
+  marketHistoryIngest: (date: string, signal?: AbortSignal) =>
+    call<{ date: string; status: "inserted" | "replaced" | "unchanged"; rows: number; calendar_status: "ready" | "source_unavailable" }>(
+      "/view/shortline_market_history", { method: "POST", signal, body: JSON.stringify({ date }) }),
+  marketHistoryBackfill: (date: string, signal?: AbortSignal) =>
+    call<{ target: string; requested_days: number; completed: number; remaining: number; imported: string[] }>(
+      "/view/shortline_market_history", { method: "POST", signal, body: JSON.stringify({ action: "backfill", date }) }),
   /** 明日验证:整晚的条件一起替换(没变的条目不重写) */
   shortlineVerifySave: (date: string, items: { metric: string; direction: string; reason: string }[]) =>
     call<{ date: string; items: unknown[] }>("/view/shortline_verify", { method: "POST", body: JSON.stringify({ action: "save", date, items }) }),

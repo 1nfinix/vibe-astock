@@ -74,6 +74,7 @@ jobs:
           python -m pytest calc/tests -q
           python -m pytest backtest/tests -q
           python -m pytest .agents/skills/data-access/scripts/tests -q
+          python -m pytest orchestrator/test/market_history_store_test.py -q
       - name: Parse Windows PowerShell entrypoints
         if: runner.os == 'Windows'
         shell: powershell

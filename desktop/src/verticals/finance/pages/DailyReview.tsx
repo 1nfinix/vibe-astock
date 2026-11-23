@@ -19,6 +19,7 @@ import { ReviewTiersCard } from "@/components/ReviewTiersCard";
 import { TIER_PROMPT_RULES, tiersSummary, type ReviewTiersResult } from "@/lib/reviewTiers";
 import { BREADTH_RULE, SPECULATION_RULE, aboveMa, blockOf, parseReview, reviewLines, staleNote, yiText, type ReviewBlockId } from "@/lib/marketReview";
 import { cn } from "@/lib/utils";
+import { MarginTrend } from "@/shortline/MarginTrend";
 
 // A股红涨绿跌。全球市场（美股/港股指数）**也沿用红涨**——与整个看板及东财等中国平台一致，
 // 对中国用户最不易看错（Simon 2026-07-05 确认；非国际绿涨惯例，是有意选择，勿改）。
@@ -85,6 +86,7 @@ function Stat({ k, v, sub, tone, title }: { k: string; v: ReactNode; sub?: React
 }
 
 export function DailyReview() {
+  const [marginTrendOpen, setMarginTrendOpen] = useState(false);
   const fetchingRef = useRef(false);
   const [mode, setMode] = useState<ViewMode>("live");
   const [review, setReview] = useState("");
@@ -598,6 +600,10 @@ export function DailyReview() {
                 <Stat k="近 5 日融资净买入" v={<span className={pctColor(M.netBuy5)}>{signedYi(M.netBuy5)}</span>} sub={`融资余额占流通市值 ${M.floatPct == null ? "—" : `${M.floatPct.toFixed(2)}%`}`} />
               </div>
             </>}
+            <button type="button" aria-expanded={marginTrendOpen} onClick={() => setMarginTrendOpen((x) => !x)} className="mt-3 rounded border border-border px-2 py-1 text-xs hover:text-primary">
+              {marginTrendOpen ? "收起两融趋势" : "查看两融趋势"}
+            </button>
+            {marginTrendOpen && <MarginTrend cutoff={bizDay} />}
           </GlassCard>
         </div>
 

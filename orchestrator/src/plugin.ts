@@ -544,6 +544,8 @@ export interface PageBlockDef {
    *    值合不合法仍由 `assertArgs` 判。
    */
   readonly userArgs?: readonly string[];
+  /** 取数失败时允许显示同一查询的上一次成功快照，并标明更新失败。 */
+  readonly staleOnError?: boolean;
   /**
    * 主源取不到(块状态 failed / missing)时改取的**备用端点**。部分成功(partial)不换 —— 那是主源如实说了缺哪些。
    *
@@ -815,6 +817,7 @@ export const PLUGIN_SCHEMA = {
                 args: { type: "object" }, required: { type: "boolean" }, injectContext: { type: "boolean" }, collapsed: { type: "boolean" },
                 injectAs: { type: "object", additionalProperties: { type: "string", minLength: 1 }, propertyNames: { minLength: 1 } },
                 userArgs: strArray({ uniqueItems: true }),
+                staleOnError: { type: "boolean" },
                 fallback: {
                   type: "object", additionalProperties: false, required: ["endpoint", "note"],
                   properties: { endpoint: NONBLANK, args: { type: "object" }, note: NONBLANK },

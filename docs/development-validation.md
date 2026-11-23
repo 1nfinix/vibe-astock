@@ -21,7 +21,7 @@
 ```sh
 npm test --prefix desktop
 node --test --test-concurrency=1 orchestrator/test/*.test.ts
-python -m pytest calc/tests backtest/tests .agents/skills/data-access/scripts/tests -q
+python -m pytest calc/tests backtest/tests .agents/skills/data-access/scripts/tests orchestrator/test/market_history_store_test.py -q
 python -m mypy
 npm run typecheck --prefix orchestrator
 npm run build --prefix desktop

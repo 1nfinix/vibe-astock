@@ -376,7 +376,7 @@ export interface Margin {
   balance: number | null; financing: number | null; short: number | null;
   floatPct: number | null; netBuy: number | null; financingBuy: number | null;
   /** 旧 → 新 */
-  series: { date: string; balance: number | null; netBuy: number | null }[];
+  series: { date: string; balance: number | null; netBuy: number | null; financing: number | null; floatPct: number | null }[];
   /** 两融余额比 5 / 20 个交易日前多(+)少(−)多少元;那一天没有就 null */
   chg5: number | null; chg20: number | null;
   /** 最近 5 个交易日融资净买入合计;有一天没取到就不合计 */
@@ -385,11 +385,16 @@ export interface Margin {
 export function parseMargin(env: Envelope | undefined): Margin | null {
   if (!env) return null;
   const all = rows(env);
+  const lt = all.find((r) => r.key === "margin|latest")?.fields ?? {};
   const series = all
     .filter((r) => DAY.test(r.key.slice(7)) && r.key.startsWith("margin|"))
-    .map((r) => ({ date: r.key.slice(7, 17), balance: num(r.fields.market_margin_balance), netBuy: num(r.fields.market_financing_net_buy) }))
+    .map((r) => {
+      const date = r.key.slice(7, 17);
+      return { date, balance: num(r.fields.market_margin_balance), netBuy: num(r.fields.market_financing_net_buy),
+        financing: num(r.fields.market_financing_balance) ?? (lt.market_financing_balance?.period === date ? num(lt.market_financing_balance) : null),
+        floatPct: num(r.fields.market_financing_float_pct) ?? (lt.market_financing_float_pct?.period === date ? num(lt.market_financing_float_pct) : null) };
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
-  const lt = all.find((r) => r.key === "margin|latest")?.fields ?? {};
   const last = series.at(-1);
   const back = (n: number) => {
     const a = series.at(-1)?.balance ?? null;

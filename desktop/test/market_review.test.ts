@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { PageBlock, PageResult } from "../src/verticals/finance/lib/backend.ts";
+import { marginCalendar, marginPeriodSums, marginTrendSeries } from "../src/verticals/finance/lib/marginTrend.ts";
 import {
   breadthLabel, parseBoardFlow, parseBreadth, parseDragon, parseMargin, parseReview, parseShortTerm, parseTrend,
   parseTurnover, parseValuation, reviewLines, speculationLabel, staleNote,
@@ -19,6 +20,30 @@ const block = (id: string, envelope: unknown, status: PageBlock["status"] = "ok"
 const page = (blocks: PageBlock[], ctx: Partial<PageResult["context"]> = {}): PageResult => ({
   query: "review", title: "每日复盘", intent: "", blocks, oldest_fetched_at: null, mixed_ages: false,
   context: { last_trading_day: "2026-10-09", previous_trading_day: "2026-10-08", is_today_trading_day: true, session_phase: "trading", review_date: "2026-10-08", realtime_matches_review_day: false, ...ctx },
+});
+
+test("两融趋势按复盘日截断，缺日留空，日历验证跨周和跨月的部分合计", () => {
+  const dates = ["2026-10-29", "2026-10-30", "2026-11-02", "2026-11-04", "2026-11-05"];
+  const cal = marginCalendar({ window: ["2026-10-26", "2026-11-05"], trading_dates: dates })!;
+  const input = parseMargin(env(dates.filter((d) => d !== "2026-11-02").map((date) => ({
+    field: "market_financing_net_buy", value: 1e8, record_key: `margin|${date}`, period: date,
+  })).concat([{ field: "market_financing_float_pct", value: 2.4, record_key: "margin|latest", period: "2026-11-05" }])))!;
+  assert.equal(input.series.at(-1)?.floatPct, 2.4);
+  const cutoff = "2026-11-04";
+  const selected = marginTrendSeries(input.series, cutoff, 60, cal);
+  assert.deepEqual(selected.map((r) => [r.date, r.netBuy, r.floatPct]), [
+    [dates[0], 1e8, null], [dates[1], 1e8, null], [dates[2], null, null], [dates[3], 1e8, null],
+  ]);
+  assert.deepEqual(marginPeriodSums(selected, "week", cutoff, cal), [
+    { date: "2026-10-26", value: 2e8, partial: false }, { date: "2026-11-02", value: 1e8, partial: true },
+  ]);
+  assert.deepEqual(marginPeriodSums(selected, "month", cutoff, cal).map((r) => r.partial), [true, true]);
+  assert.deepEqual(marginPeriodSums(selected, "week", cutoff, null), []);
+  assert.equal(marginCalendar({ window: ["2026-10-26", "2026-11-05"], trading_dates: [dates[1], dates[1]] }), null);
+  const friday = marginTrendSeries(input.series, "2026-10-30", 60, cal);
+  assert.deepEqual(marginPeriodSums(friday, "week", "2026-10-30", cal), [
+    { date: "2026-10-26", value: 2e8, partial: false },
+  ]);
 });
 
 test("涨跌分布:上涨 / 下跌 / 平盘按档位合计;涨 5% 以上 = 5~6% 那档起到涨停;三所成交额缺一所就不合计", () => {

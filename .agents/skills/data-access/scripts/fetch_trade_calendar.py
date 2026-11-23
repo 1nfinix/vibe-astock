@@ -29,12 +29,12 @@ SCRIPT = "fetch_trade_calendar"
 EP = "query_trade_dates"
 
 
-def main() -> None:
+def main(default_days: int = 30, *, script: str = SCRIPT, include_dates: bool = False) -> None:
     p = base_parser("A 股交易日历(baostock,全市场)")
-    p.add_argument("--days", type=int, default=30, help="回看天数(默认 30)")
+    p.add_argument("--days", type=int, default=default_days, help="回看自然日天数")
     args = p.parse_args()
-    parse_symbol_or_exit(args.symbol, SCRIPT, args.out_dir)  # 只校验格式
-    res = result_skeleton(SCRIPT, "MARKET", "CN")
+    parse_symbol_or_exit(args.symbol, script, args.out_dir)  # 只校验格式
+    res = result_skeleton(script, "MARKET", "CN")
     try:
         import baostock as bs
         today = datetime.now(TZ_SH).date()
@@ -57,6 +57,10 @@ def main() -> None:
                 bs.logout()
         if not rows:
             raise ValueError("交易日历为空")
+        if include_dates:
+            expected = [(start + timedelta(days=i)).isoformat() for i in range(args.days + 1)]
+            if [r.get("calendar_date") for r in rows] != expected or any(r.get("is_trading_day") not in ("0", "1") for r in rows):
+                raise ValueError("交易日历自然日或开市标记不完整")
         raw = save_raw(args.out_dir, "baostock", EP, json.dumps(rows, ensure_ascii=False).encode("utf-8"), "json",
                        kind="extracted")
         trading = [r["calendar_date"] for r in rows if r.get("is_trading_day") == "1"]
@@ -77,7 +81,7 @@ def main() -> None:
         for f, v, u in (("last_trading_day", last_td, "date"), ("previous_trading_day", prev_td, "date"),
                         ("is_today_trading_day", is_today_td, "bool"), ("session_phase", phase, "text"),
                         ("reference_quote_day", ref_day, "date")):
-            res["evidence"].append(evidence(script=SCRIPT, symbol="MARKET", market="CN", field=f, value=v, unit=u,
+            res["evidence"].append(evidence(script=script, symbol="MARKET", market="CN", field=f, value=v, unit=u,
                                             period=today_str(), source="baostock", endpoint=EP, raw_ref=raw["raw_ref"],
                                             currency="n/a", note="extracted:SDK 行数据拼装;全市场日历,非个股;"
                                                                  "session_phase 按 Asia/Shanghai 当前时刻推算"))
@@ -85,6 +89,8 @@ def main() -> None:
                         "last_trading_day": last_td, "previous_trading_day": prev_td, "is_today_trading_day": is_today_td,
                         "session_phase": phase, "reference_quote_day": ref_day, "checked_at": now_iso(),
                         "provenance": lib_versions("baostock")}
+        if include_dates:
+            res["extra"]["trading_dates"] = trading
         res["primary_source"] = "baostock"
         res["status"] = "ok"
         res["used_sources"].append("baostock")

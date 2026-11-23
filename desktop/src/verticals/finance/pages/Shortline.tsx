@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarDays, CalendarRange, ClipboardCheck, Flame, History, NotebookPen, RefreshCw, RotateCcw, Shuffle, Sigma, Sparkles } from "lucide-react";
+import { BarChart3, CalendarDays, CalendarRange, ClipboardCheck, Flame, History, NotebookPen, RefreshCw, RotateCcw, Shuffle, Sigma, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageTabs, type PageTab } from "@/components/ui/PageTabs";
 import { Disclaimer } from "@/components/ui/Disclaimer";
@@ -9,6 +9,7 @@ import { LOADING, badDayReason, loadBlocks, loadEmotion, type DayHead, type Pane
 import { TodayTab, type TodayPanels } from "@/shortline/TodayTab";
 import { WeeklyTab } from "@/shortline/WeeklyTab";
 import { HistoryTab } from "@/shortline/HistoryTab";
+import { MarketWidthTab } from "@/shortline/MarketWidthTab";
 import { ReviewTab } from "@/shortline/ReviewTab";
 import { WeeklyReviewTab } from "@/shortline/WeeklyReviewTab";
 import { VerifyTab } from "@/shortline/VerifyTab";
@@ -16,13 +17,14 @@ import { SamplesTab } from "@/shortline/SamplesTab";
 import { StructureTab } from "@/shortline/StructureTab";
 import type { EmotionResult } from "@/shortline/types";
 
-type Tab = "today" | "review" | "weekreview" | "weekly" | "history" | "verify" | "samples" | "structure";
+type Tab = "today" | "review" | "weekreview" | "weekly" | "history" | "width" | "verify" | "samples" | "structure";
 const TABS: PageTab<Tab>[] = [
   { key: "today", label: "今日情绪", icon: Flame },
   { key: "review", label: "AI 复盘", icon: Sparkles },
   { key: "weekreview", label: "AI 周报", icon: NotebookPen },
   { key: "weekly", label: "近 5 天", icon: CalendarRange },
   { key: "history", label: "情绪历史", icon: History },
+  { key: "width", label: "市场宽度", icon: BarChart3 },
   { key: "verify", label: "明日验证", icon: ClipboardCheck },
   { key: "samples", label: "涨停样本", icon: Sigma },
   { key: "structure", label: "结构变化", icon: Shuffle },
@@ -181,6 +183,7 @@ export function Shortline() {
         : tab === "weekreview" ? <WeeklyReviewTab key={day} {...viewProps} />
         : tab === "weekly" ? <WeeklyTab key={day} {...viewProps} />
         : tab === "history" ? <HistoryTab key={day} {...viewProps} />
+        : tab === "width" ? <MarketWidthTab key={day} {...viewProps} />
         : tab === "verify" ? <VerifyTab key={day} {...viewProps} />
         : tab === "samples" ? <SamplesTab key={day} {...viewProps} />
         : <StructureTab key={day} {...viewProps} />}

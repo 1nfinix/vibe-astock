@@ -266,6 +266,9 @@ def test_margin_history_and_map(monkeypatch):
     out = mappers.em_market_margin_map(r, _mctx("em_market_margin"))
     bal = [e for e in out["evidence"] if e["field"] == "market_margin_balance"]
     assert [e["period"] for e in bal] == ["2026-10-06", "2026-10-07", "2026-10-08"]
+    for field, unit in (("market_financing_balance", "元"), ("market_financing_float_pct", "%")):
+        history = [e for e in out["evidence"] if e["field"] == field and e["record_key"] != "margin|latest"]
+        assert [(e["period"], e["unit"]) for e in history] == [(e["period"], unit) for e in bal]
     latest = {e["field"]: e for e in out["evidence"] if e["record_key"] == "margin|latest"}
     assert set(latest) == {"market_financing_balance", "market_short_balance", "market_financing_buy", "market_financing_float_pct"}
     assert all(e["period"] == "2026-10-08" for e in latest.values())
