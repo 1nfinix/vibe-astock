@@ -1121,6 +1121,32 @@ test("🔴 同一份查询并发进来只真取一次(single-flight)—— 否�
   }
 });
 
+test("历史汇总的部分结果可限时复用，其他端点的部分结果仍重新取数", async () => {
+  const ctx = fakeCtx();
+  const script = path.join(ctx.repoRoot, ".agents/skills/data-access/scripts/fetch_endpoint.py");
+  fs.writeFileSync(script, `import json, pathlib, sys
+out = pathlib.Path(sys.argv[sys.argv.index("--out-dir") + 1])
+marker = out / "partial-fetch-count"
+marker.write_text(str(int(marker.read_text()) + 1 if marker.exists() else 1))
+print(json.dumps({"status": "partial", "evidence": [{"field": "sample", "value": 1}], "missing": [], "errors": []}))
+sys.exit(2)
+`);
+  try {
+    const first = await fetchEndpoint(ctx, { endpoint: "pledge_weekly" });
+    const second = await fetchEndpoint(ctx, { endpoint: "pledge_weekly" });
+    assert.equal(first.cached, false);
+    assert.equal(second.cached, true);
+    assert.equal(first.envelope.status, "partial");
+    assert.equal(fs.readFileSync(path.join(ctx.dataRoot, "mcp", "default", "partial-fetch-count"), "utf8"), "1");
+
+    const otherFirst = await fetchEndpoint(ctx, { endpoint: "equity_pledge_market" });
+    const otherSecond = await fetchEndpoint(ctx, { endpoint: "equity_pledge_market" });
+    assert.equal(otherFirst.cached, false);
+    assert.equal(otherSecond.cached, false);
+    assert.equal(fs.readFileSync(path.join(ctx.dataRoot, "mcp", "default", "partial-fetch-count"), "utf8"), "3");
+  } finally { fs.rmSync(ctx.repoRoot, { recursive: true, force: true }); }
+});
+
 test("single-flight 取消只影响该订阅者;全部取消后可立即重试", async () => {
   const ctx = fakeCtx();
   const script = path.join(ctx.repoRoot, ".agents/skills/data-access/scripts/fetch_endpoint.py");
