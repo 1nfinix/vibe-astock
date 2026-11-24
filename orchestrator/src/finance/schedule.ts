@@ -342,5 +342,14 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
       // 箭头包一层:verdicts.ts 反过来引用本文件,直接写函数名在加载顺序颠倒时会读到未初始化的绑定
       run: (j) => verdictDue(j),
     },
+    {
+      id: "market_history_daily", label: "市场历史盘后采集", at: "17:15", defaultEnabled: true,
+      description: "盘后按交易所日历核对近 60 个交易日，每次优先补最近一个缺日；归档暂未发布时 10 分钟后重试，未完成的缺口在后续交易日继续补。",
+      run: async (j) => {
+        const r = await (await import("./shortline/market_history.ts")).marketHistoryScheduled(j.ctx, j.day, j.signal);
+        return { messages: [], partial: r.remaining > 0,
+          note: `市场历史 ${r.completed}/${r.requested_days} 个交易日已入库${r.imported.length ? `；本次新增 ${r.imported.join("、")}` : ""}${r.remaining ? `；剩余 ${r.remaining} 日` : ""}` };
+      },
+    },
   ],
 };

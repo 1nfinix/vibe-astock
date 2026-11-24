@@ -225,3 +225,33 @@ def test_backfill_uses_calendar_and_resumes_missing_days(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="1–5"):
         M.backfill(REPO, store, target, limit=6)
+
+
+def test_scheduled_backfill_prioritizes_latest_missing_day_and_resumes(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    days = [(date(2026, 8, 1) + timedelta(days=i)).isoformat() for i in range(60)]
+    target = days[-1]
+    calls: list[str] = []
+
+    def calendar(db: sqlite3.Connection, _store: Path, _day: str) -> None:
+        with db:
+            for month in M.months_between(days[0], target):
+                db.execute("INSERT OR IGNORE INTO calendar_month VALUES (?, 'fixture', 30)", (month,))
+            db.executemany("INSERT OR IGNORE INTO calendar_day VALUES (?, ?)",
+                           ((day, day[:7]) for day in days))
+
+    def import_day(_repo: Path, path: Path, day: str, *, calendar_ready: bool = False) -> dict:
+        assert calendar_ready
+        calls.append(day)
+        with closing(M.open_db(path / "market.sqlite3", write=True)) as db:
+            rows = [(day, market, code, market + code, market, 10000, 10100, 10, 10000)
+                    for market, code in (("sh", "600000"), ("sz", "000001"), ("bj", "920001"))]
+            M.replace_day(db, day, day, "raw/fixture", rows)
+        return {"date": day}
+
+    with patch.object(M, "ensure_calendar", calendar), patch.object(M, "ingest", import_day):
+        first = M.backfill(REPO, store, target, limit=1, latest_first=True)
+        second = M.backfill(REPO, store, target, limit=1, latest_first=True)
+        assert first["imported"] == [target] and first["remaining"] == 59
+        assert second["imported"] == [days[-2]] and second["remaining"] == 58
+        assert calls == days[-1:-3:-1]

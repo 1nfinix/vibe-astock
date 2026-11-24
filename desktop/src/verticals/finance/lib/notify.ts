@@ -11,7 +11,7 @@ export interface NotifyJob {
   enabled: boolean;
   last_day: string | null;
   last_run_at: string | null;
-  status: "ok" | "failed" | "blocked" | "skipped" | "running" | null;
+  status: "ok" | "partial" | "failed" | "blocked" | "skipped" | "running" | null;
   note: string;
   running: boolean;
 }
@@ -49,6 +49,7 @@ export function jobStatusLabel(job: Pick<NotifyJob, "status" | "running">): { te
   if (job.running || job.status === "running") return { text: "运行中", tone: "muted" };
   switch (job.status) {
     case "ok": return { text: "已运行", tone: "ok" };
+    case "partial": return { text: "部分完成", tone: "warn" };
     case "failed": return { text: "失败", tone: "bad" };
     case "blocked": return { text: "等待中", tone: "warn" };
     case "skipped": return { text: "今天不运行", tone: "muted" };

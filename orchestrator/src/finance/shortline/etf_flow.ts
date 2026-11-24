@@ -160,9 +160,9 @@ export async function etfFlowPoll(ctx: ServiceContext, signal: AbortSignal, fetc
 }
 
 type FiveDay = { date: string; times: string[]; amount_yi: (number | null)[]; coverage: (number | null)[]; reason: string | null };
-function fiveDays(root: string, hist: Raw): FiveDay[] {
+function fiveDays(root: string, hist: Raw, includeArchives = true): FiveDay[] {
   const all = new Map<string, FiveDay>();
-  for (const d of [...arr(hist.days), ...archives(root)]) {
+  for (const d of [...arr(hist.days), ...(includeArchives ? archives(root) : [])]) {
     const total = obj(d.total) ?? d, date = str(d.date), times = strings(total.times), amounts = nums(total.amount_yi);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !times.length || amounts.length !== times.length) continue;
     all.set(date, { date, times, amount_yi: amounts, coverage: nums(total.coverage), reason: str(total.reason) || null });
@@ -372,11 +372,23 @@ export async function etfFlowClose(j: JobContext, fetch: Fetch = fetchEndpoint):
     etfFlowDaily(j.ctx, j.signal, fetch, j.now, true),
     requireResult(j.ctx, "cn_etf_minute_hist", fetch, j.signal, { days: 21 }, true),
   ]);
-  const day = histReply.status === "fulfilled" ? fiveDays(j.ctx.dataRoot, histReply.value).find((d) => d.date === j.day) : null;
-  if (day) writeJson(archiveFile(j.ctx.dataRoot, j.day), day);
-  if (dailyReply.status === "fulfilled") writeJson(path.join(j.ctx.dataRoot, "shortline", "etf_flow", "daily.json"), dailyReply.value);
-  if (!day || dailyReply.status === "rejected")
-    throw new Error(`ETF 收盘档案${day ? "已存" : "未取到"}；日度${dailyReply.status === "fulfilled" ? "已缓存" : "未算出"}`);
+  const day = histReply.status === "fulfilled" ? fiveDays(j.ctx.dataRoot, histReply.value, false).find((d) => d.date === j.day) : null;
+  const minuteReady = !!day && day.times.length === 48 && day.amount_yi.every((v) => v !== null)
+    && day.coverage.length === 48 && day.coverage.every((v) => v === BASKET.length);
+  if (day && minuteReady) writeJson(archiveFile(j.ctx.dataRoot, j.day), day);
+  const dailyDate = dailyReply.status === "fulfilled" ? dailyReply.value.rows.at(-1)?.date : undefined;
+  const dailyReady = dailyReply.status === "fulfilled" && dailyDate === j.day
+    && dailyReply.value.rows.at(-1)?.turnover_missing_count === 0;
+  if (dailyReply.status === "fulfilled" && dailyReady)
+    writeJson(path.join(j.ctx.dataRoot, "shortline", "etf_flow", "daily.json"), dailyReply.value);
+  if (!minuteReady || !dailyReady) {
+    const minuteReason = histReply.status === "rejected" ? String(histReply.reason instanceof Error ? histReply.reason.message : histReply.reason).slice(0, 180)
+      : !day ? `${j.day} 无分钟记录` : "当日 5 分钟成交额不足 48 点或 ETF 覆盖不全";
+    const dailyReason = dailyReply.status === "rejected" ? String(dailyReply.reason instanceof Error ? dailyReply.reason.message : dailyReply.reason).slice(0, 180)
+      : dailyDate !== j.day ? `日线最新日 ${dailyDate ?? "缺失"}，预期 ${j.day}` : "当日宽基 ETF 成交额缺失";
+    throw new Error(`${minuteReady ? "分钟档案已存" : `分钟档案未取到：${minuteReason}`}；${dailyReady ? "日度已缓存" : `日度未算出：${dailyReason}`}`);
+  }
+  if (dailyReply.status !== "fulfilled") throw new Error("ETF 日度未算出");
   const daily = dailyReply.value;
   return { messages: [], note: `ETF 资金 ${j.day} 日度缓存与 5 分钟档案已更新；份额回填 ${daily.backfill.completed}/${daily.backfill.total} 个交易日` };
 }

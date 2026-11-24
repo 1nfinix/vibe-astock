@@ -187,6 +187,45 @@ test("任务失败:10 分钟后重试,第三次还失败就放弃并在收件箱
   } finally { clean(ctx); }
 });
 
+test("部分完成:重试后可恢复为成功；三次仍有缺口则明确通知", async () => {
+  const ctx = tmpCtx();
+  try {
+    const h = harness();
+    h.setRun(async () => ({ messages: [], partial: true, note: "缺一份" }));
+    await tick(ctx, { now: sh("2026-10-08T15:40"), def: h.def });
+    assert.equal(jobState(ctx, h).status, "partial");
+    await notifyAction(ctx, "jobs/run", { id: "digest" }, { def: h.def, now: sh("2026-10-08T15:42") });
+    assert.equal(jobState(ctx, h).status, "partial");
+    await tick(ctx, { now: sh("2026-10-08T15:45"), def: h.def });
+    assert.equal(h.runs.length, 2, "手动运行不提前触发定时重试");
+    h.setRun(async () => ({ messages: [], note: "已补齐" }));
+    await tick(ctx, { now: sh("2026-10-08T15:50"), def: h.def });
+    assert.equal(jobState(ctx, h).status, "ok");
+    assert.equal(h.runs.length, 3);
+    await tick(ctx, { now: sh("2026-10-08T16:00"), def: h.def });
+    assert.equal(h.runs.length, 3);
+    h.setRun(async () => ({ messages: [], partial: true, note: "仍缺一份" }));
+    for (const hm of ["15:40", "15:50", "16:00"]) await tick(ctx, { now: sh(`2026-10-09T${hm}`), def: h.def });
+    assert.equal(jobState(ctx, h).status, "partial");
+    assert.equal(inbox(ctx).items.filter((x) => x.kind === "notice").length, 1);
+  } finally { clean(ctx); }
+});
+
+test("部分数据已落盘后重试失败，终态仍显示部分完成", async () => {
+  const ctx = tmpCtx();
+  try {
+    const h = harness();
+    h.setRun(async () => ({ messages: [], partial: true, note: "已补两日，仍缺一日" }));
+    await tick(ctx, { now: sh("2026-10-08T15:40"), def: h.def });
+    await tick(ctx, { now: sh("2026-10-08T15:50"), def: h.def });
+    h.setRun(async () => { throw new Error("归档下载失败"); });
+    await tick(ctx, { now: sh("2026-10-08T16:00"), def: h.def });
+    assert.equal(jobState(ctx, h).status, "partial");
+    assert.match(jobState(ctx, h).note, /部分完成，第 3 次重试失败/);
+    assert.match(inbox(ctx).items[0]!.title, /部分完成/);
+  } finally { clean(ctx); }
+});
+
 test("任务返回的消息格式不对按失败处理,不往收件箱写半截东西", async () => {
   const ctx = tmpCtx();
   try {

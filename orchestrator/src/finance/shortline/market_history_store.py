@@ -344,7 +344,7 @@ def ingest(repo_root: Path, store: Path, day: str, *, calendar_ready: bool = Fal
             "calendar_status": calendar_status}
 
 
-def backfill(repo_root: Path, store: Path, target: str, *, limit: int = 5) -> dict:
+def backfill(repo_root: Path, store: Path, target: str, *, limit: int = 5, latest_first: bool = False) -> dict:
     """Import one bounded batch of the latest 60 official trading days."""
     checked_day(target)
     if target > datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat():
@@ -364,7 +364,7 @@ def backfill(repo_root: Path, store: Path, target: str, *, limit: int = 5) -> di
         )}
     pending = [day for day in days if day not in existing]
     imported = []
-    for day in pending[:limit]:
+    for day in (pending[::-1] if latest_first else pending)[:limit]:
         imported.append(ingest(repo_root, store, day, calendar_ready=True))
     return {"target": target, "requested_days": len(days),
             "completed": len(days) - len(pending) + len(imported),
@@ -503,6 +503,7 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--capture-root", type=Path)
     parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--latest-first", action="store_true")
     args = parser.parse_args()
     if args.mode == "ingest" and not args.date:
         parser.error("ingest requires --date")
@@ -511,7 +512,8 @@ def main() -> None:
     if args.mode == "backfill" and not args.date:
         parser.error("backfill requires --date")
     result = (ingest(args.repo_root, args.store, args.date) if args.mode == "ingest"
-              else backfill(args.repo_root, args.store, args.date, limit=args.limit) if args.mode == "backfill"
+              else backfill(args.repo_root, args.store, args.date, limit=args.limit,
+                            latest_first=args.latest_first) if args.mode == "backfill"
               else replay(args.repo_root, args.store, args.capture_root) if args.mode == "replay"
               else query(args.store, args.date, args.days))
     print(json.dumps(result, ensure_ascii=False))

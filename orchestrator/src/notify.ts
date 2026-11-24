@@ -51,6 +51,8 @@ export interface JobContext {
 
 export interface JobResult {
   messages: NotifyMessage[];
+  /** 有产物但仍有缺口:按失败间隔重试，最终明确显示部分完成。 */
+  partial?: boolean;
   /** 要留给下次的状态(不返回 = 保持原样) */
   state?: unknown;
   /** 给界面看的一句话(比如「自选为空,没有可看的」) */
@@ -136,9 +138,9 @@ interface Settings {
 interface JobState {
   last_day?: string;
   last_run_at?: string;
-  status?: "ok" | "failed" | "blocked" | "skipped" | "running";
+  status?: "ok" | "partial" | "failed" | "blocked" | "skipped" | "running";
   note?: string;
-  attempt?: { day: string; n: number; retry_after?: string };
+  attempt?: { day: string; n: number; retry_after?: string; partial?: boolean };
   data?: unknown;
 }
 
@@ -523,6 +525,7 @@ function withTimeout<T>(ms: number, fn: (signal: AbortSignal) => Promise<T>, wha
 
 function checkResult(r: unknown): JobResult {
   if (!isObj(r) || !Array.isArray(r.messages)) throw new Error("任务没有返回消息列表");
+  if (r.partial !== undefined && typeof r.partial !== "boolean") throw new Error("任务部分完成标记格式不对");
   for (const m of r.messages) {
     if (!isObj(m) || typeof m.title !== "string" || !m.title.trim() || !Array.isArray(m.lines) || m.lines.some((l) => typeof l !== "string")
       || typeof m.dedupeKey !== "string" || !m.dedupeKey || (m.link !== undefined && (typeof m.link !== "string" || !m.link.startsWith("/")))) {
@@ -586,26 +589,35 @@ async function runJob(ctx: ServiceContext, def: ScheduleDef, job: ScheduledJobDe
       const r = checkResult(await withTimeout(JOB_TIMEOUT_MS, (signal) => job.run({ ctx, day, now, signal, state: prev.data, manual, at: jobAt(loadSettings(ctx.dataRoot), job) }), `「${job.label}」`));
       const pushNote = await deliver(ctx, job, r.messages, now, hm, manual, deps);
       const note = [r.note ?? (r.messages.length ? `生成 ${r.messages.length} 条` : "没有要提醒的"), pushNote].filter(Boolean).join(";");
+      const n = !manual && prev.attempt?.day === day ? prev.attempt.n + 1 : 1;
+      const giveUp = manual || n >= MAX_ATTEMPTS;
       const next: JobState = {
-        ...(manual ? { ...(prev.last_day ? { last_day: prev.last_day } : {}) } : { last_day: day }),
-        last_run_at: now.toISOString(), status: "ok", note: `${manual ? "手动运行:" : ""}${note}`,
+        ...(manual ? { ...(prev.last_day ? { last_day: prev.last_day } : {}) } : !r.partial || giveUp ? { last_day: day } : {}),
+        last_run_at: now.toISOString(), status: r.partial ? "partial" : "ok", note: `${manual ? "手动运行:" : ""}${note}${r.partial && !giveUp ? ";10 分钟后重试" : ""}`,
+        ...(manual && prev.attempt ? { attempt: prev.attempt } : {}),
+        ...(r.partial && !manual ? { attempt: giveUp ? { day, n, partial: true } : { day, n, partial: true, retry_after: new Date(now.getTime() + RETRY_AFTER_MS).toISOString() } } : {}),
         // 手动运行只是看一眼:不改任务记下的进度(看过的公告、提醒过的判据),否则当天定时那次就没东西可推了
         ...(r.state !== undefined && !manual ? { data: r.state } : prev.data !== undefined ? { data: prev.data } : {}),
       };
       await mutateState(ctx.dataRoot, (s) => { s.jobs[job.id] = next; });
+      if (r.partial && !manual && giveUp) {
+        await addInbox(ctx.dataRoot, [{ id: newId(), at: now.toISOString(), job: job.id, job_label: job.label,
+          title: `「${job.label}」今天部分完成`, lines: [note], read: false, kind: "notice" }]);
+      }
       return next;
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       const n = !manual && prev.attempt?.day === day ? prev.attempt.n + 1 : 1;
       const giveUp = manual || n >= MAX_ATTEMPTS;
+      const hadPartial = prev.attempt?.day === day && prev.attempt.partial === true;
       const next: JobState = {
-        ...prev, last_run_at: now.toISOString(), status: "failed",
-        note: manual ? `手动运行失败:${reason}` : giveUp ? `今天试了 ${n} 次都失败:${reason}` : `第 ${n} 次失败,10 分钟后重试:${reason}`,
-        ...(manual ? {} : giveUp ? { last_day: day, attempt: { day, n } } : { attempt: { day, n, retry_after: new Date(now.getTime() + RETRY_AFTER_MS).toISOString() } }),
+        ...prev, last_run_at: now.toISOString(), status: hadPartial ? "partial" : "failed",
+        note: manual ? `手动运行失败:${reason}` : giveUp ? hadPartial ? `今天部分完成，第 ${n} 次重试失败:${reason}` : `今天试了 ${n} 次都失败:${reason}` : `第 ${n} 次失败,10 分钟后重试:${reason}`,
+        ...(manual ? {} : giveUp ? { last_day: day, attempt: { day, n, ...(hadPartial ? { partial: true } : {}) } } : { attempt: { day, n, ...(hadPartial ? { partial: true } : {}), retry_after: new Date(now.getTime() + RETRY_AFTER_MS).toISOString() } }),
       };
       await mutateState(ctx.dataRoot, (s) => { s.jobs[job.id] = next; });
       if (!manual && giveUp) {
-        await addInbox(ctx.dataRoot, [{ id: newId(), at: now.toISOString(), job: job.id, job_label: job.label, title: `「${job.label}」今天没跑成`, lines: [reason], read: false, kind: "notice" }]);
+        await addInbox(ctx.dataRoot, [{ id: newId(), at: now.toISOString(), job: job.id, job_label: job.label, title: `「${job.label}」今天${hadPartial ? "部分完成" : "没跑成"}`, lines: [reason], read: false, kind: "notice" }]);
       }
       if (manual) throw new ServiceError("job_failed", next.note!);
       return next;

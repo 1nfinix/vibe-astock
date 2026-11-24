@@ -322,3 +322,20 @@ test("15:40 收盘任务写日度缓存和当日分钟档案，不重跑旧份�
     for (let i = 0; i < 20 && backfillProgress(folder).syncing; i++) await new Promise((r) => setTimeout(r, 1));
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
+
+test("ETF 收盘任务不把昨日的日线标成今日完成", async () => {
+  const folder = root();
+  try {
+    const fetch = async (_ctx: ServiceContext, req: { endpoint: string; args?: Record<string, unknown> }) => {
+      if (req.endpoint === "cn_broad_etf_universe") return { envelope: env({ items: BASKET.map((code) => ({ code, name: code, category: "沪深300", exchange: "SH" })) }) };
+      if (req.endpoint === "cn_etf_daily_batch") return { envelope: env({ amount_basis: "baostock 不复权日线成交额（元）",
+        items: Object.fromEntries((req.args?.codes as string[]).map((code) => [code, [{ date: "2026-11-04", close: 2, amount_yi: 1 }]])),
+        index: req.args?.include_index ? [{ date: "2026-11-04", close: 3000 }] : null, missing: [] }) };
+      if (req.endpoint === "cn_etf_minute_hist") return { envelope: env({ days: [{ date: "2026-11-05", total: { times: fiveTimes, amount_yi: Array(48).fill(1), coverage: Array(48).fill(20), reason: null } }] }) };
+      throw new Error(req.endpoint);
+    };
+    const job = { ctx: ctx(folder), day: "2026-11-05", now: new Date("2026-11-05T07:40:00Z"), signal, state: undefined, manual: false };
+    await assert.rejects(etfFlowClose(job, fetch as never), /日线最新日 2026-11-04，预期 2026-11-05/);
+    assert.equal(fs.existsSync(path.join(folder, "shortline", "etf_flow", "daily.json")), false);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});

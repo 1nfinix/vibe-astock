@@ -22,6 +22,7 @@ type Fetch = (ctx: ServiceContext, req: Parameters<typeof fetchEndpoint>[1]) => 
 export async function shortlineCloseFetch(j: JobContext, fetch: Fetch = fetchEndpoint): Promise<JobResult> {
   const ok: string[] = [];
   const bad: string[] = [];
+  let partial = false;
   // 一个一个取:东财本来就排队限速,并发只会让每个都更慢、更容易超时
   for (const t of CLOSE_FETCH_ENDPOINTS) {
     try {
@@ -29,7 +30,8 @@ export async function shortlineCloseFetch(j: JobContext, fetch: Fetch = fetchEnd
       const r = await fetch(j.ctx, { endpoint: t.endpoint, args: { date: j.day }, consistency: { mode: "fresh" }, signal: j.signal });
       const status = (r.envelope as { status?: unknown }).status;
       if (status === "failed") bad.push(`${t.label}(${failedNote(r.envelope) || "没取到"})`);
-      else ok.push(status === "partial" ? `${t.label}(部分)` : t.label);
+      else if (status === "partial") { partial = true; ok.push(`${t.label}(部分)`); }
+      else ok.push(t.label);
     } catch (e) {
       if (j.signal.aborted) throw e;
       bad.push(`${t.label}(${e instanceof Error ? e.message.slice(0, 60) : "没取到"})`);
@@ -37,5 +39,5 @@ export async function shortlineCloseFetch(j: JobContext, fetch: Fetch = fetchEnd
   }
   // 全没取到才算失败(定时任务会隔 10 分钟再试);取到一部分照实写
   if (!ok.length) throw new Error(`${j.day} 的短线数据都没取到:${bad.join(";")}`);
-  return { messages: [], note: `${j.day} 已取好:${ok.join("、")}${bad.length ? `;没取到:${bad.join(";")}` : ""}` };
+  return { messages: [], partial: partial || bad.length > 0, note: `${j.day} 已取好:${ok.join("、")}${bad.length ? `;没取到:${bad.join(";")}` : ""}` };
 }

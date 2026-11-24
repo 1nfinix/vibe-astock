@@ -389,6 +389,7 @@ test("收盘取数:五份逐个现取当天的;取到一部分照实写;全没�
     assert.deepEqual(calls.map((c) => c.endpoint), ["cn_shortline_daily", "cn_shortline_settled", "cn_shortline_structure", "cn_shortline_facts", "cn_shortline_board_ladder"]);
     assert.ok(calls.every((c) => (c.args as { date: string }).date === DAY && (c.consistency as { mode: string }).mode === "fresh"));
     assert.deepEqual(r.messages, [], "不推送");
+    assert.equal(r.partial, true, "有缺口时交给调度器重试");
     assert.equal(r.note, `${DAY} 已取好:每日情绪读数、昨日涨停股今日表现、事实表(部分)、连板天梯;没取到:涨停结构(eastmoney 连不上)`);
     await assert.rejects(shortlineCloseFetch(job(DAY), async () => { throw new Error("断网"); }), /都没取到/);
   } finally { clean(ctx); }
