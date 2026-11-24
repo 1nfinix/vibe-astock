@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 191 个)
+# 数据源端点目录(registry v1.0.0,共 193 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -350,6 +350,8 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `em_dragon_tiger_history` | 个股历次上龙虎榜(全部历史) | CN | eastmoney | cn-public | cn6 | - | 单只;一条上榜理由一行;金额单位元,按累计偏离上榜的是那几天的合计;不取东财自编的成功率。em_dragon_tiger 只看近 30 天。事件回看用 |
 | `em_lockup_history` | 个股历次限售解禁(全部历史 + 已排期) | CN | eastmoney | cn-public | cn6 | - | 单只;一批一行;实际可流通股数(万股)和占总股本(%);源的占流通股比例新旧批次分母不一致,不取。em_lockup_expiry 历史只取 15 条。事件回看用 |
 | `equity_pledge` | 股权质押比例(中国结算每周统计) | CN | eastmoney | cn-public | cn6 | - | 单只历次统计;只覆盖沪深;股数万股、市值万元。上游 a-stock-data §14 |
+| `equity_pledge_market` | 全市场每周股票质押明细 | CN | eastmoney | cn-public | none | - | 最近统计日或 `--args {"date":"YYYY-MM-DD"}`；沪深逐股明细完整保存在 raw，证据最多展示 30 行；汇总前须核验覆盖率。 |
+| `pledge_weekly` | 沪深逐股质押周度汇总 | CN | eastmoney+chinaclear+calc | cn-public | none | - | 默认最近 12 期，`weeks` 可设 2–26，`before` 限定截止日；完整逐股表按期求和，缺值字段留空；中国结算官网本期新办理质押量单列；股数万股、市值万元，高质押阈值 50%。 |
 | `ipo_calendar` | 新股申购日历(沪深京,含排期) | CN | eastmoney | cn-public | none | - | 按申购日倒序;定价前发行价为空。上游 a-stock-data §14 |
 | `em_suspensions` | 当日停复牌名单(沪深京;停牌原因 / 期限 / 预计复牌日) | CN | eastmoney | cn-public | none | - | 全市场口径(源不支持按个股过滤);默认当天,可传 date=YYYY-MM-DD |
 

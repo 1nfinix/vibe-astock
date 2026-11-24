@@ -3537,6 +3537,45 @@
       "notes": "单只历次统计;只覆盖沪深;股数万股、市值万元。上游 a-stock-data §14"
     },
     {
+      "market": ["CN"],
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "stages": {},
+      "enabled": true,
+      "mapper_module": "mappers_pledge",
+      "id": "equity_pledge_market",
+      "title": "全市场每周股票质押明细",
+      "layer": "21 事件驱动",
+      "source": "eastmoney",
+      "module": "astock_ported",
+      "function": "equity_pledge",
+      "mapper": "equity_pledge_market_map",
+      "endpoint_label": "equity pledge",
+      "libs": ["requests", "pandas"],
+      "args": {"date": null, "limit": 5000},
+      "notes": "最近统计日或指定 date 的沪深单股质押明细；全市场汇总需校验覆盖率"
+    },
+    {
+      "market": ["CN"],
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "mapper_module": "mappers_pledge",
+      "id": "pledge_weekly",
+      "title": "沪深逐股质押周度汇总",
+      "layer": "21 事件驱动",
+      "source": "eastmoney+chinaclear+calc",
+      "module": "pledge_weekly",
+      "function": "weekly_pledge",
+      "mapper": "weekly_pledge_map",
+      "endpoint_label": "中国结算逐股质押统计",
+      "libs": ["requests", "pandas"],
+      "args": {"weeks": 12, "before": null},
+      "notes": "沪深有质押记录股票逐期求和，股数万股、市值万元；中国结算官网本期新办理质押数量单列，不等于存量变化"
+    },
+    {
       "market": [
         "CN"
       ],

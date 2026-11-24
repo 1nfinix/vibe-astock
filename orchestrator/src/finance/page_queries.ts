@@ -92,6 +92,15 @@ export const FINANCE_PAGE_QUERIES: Record<string, PageQueryDef> = {
     ],
   },
 
+  pledge_snapshot: {
+    title: "股权质押周度观察",
+    intent: "查看沪深逐股质押统计的周度趋势及单期样本",
+    blocks: [
+      { id: "history", title: "沪深逐股质押周度汇总", endpoint: "pledge_weekly", args: { weeks: 12 }, userArgs: ["before"], staleOnError: true },
+      { id: "pledge", title: "沪深逐股质押统计", endpoint: "equity_pledge_market", userArgs: ["date"], staleOnError: true },
+    ],
+  },
+
   review: {
     title: "每日复盘",
     intent: "市场处在什么状态:涨跌面与短线情绪、中长线趋势与量能、资金去了哪",

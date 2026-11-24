@@ -20,6 +20,7 @@ import { TIER_PROMPT_RULES, tiersSummary, type ReviewTiersResult } from "@/lib/r
 import { BREADTH_RULE, SPECULATION_RULE, aboveMa, blockOf, parseReview, reviewLines, staleNote, yiText, type ReviewBlockId } from "@/lib/marketReview";
 import { cn } from "@/lib/utils";
 import { MarginTrend } from "@/shortline/MarginTrend";
+import { PledgeSnapshot } from "@/shortline/PledgeSnapshot";
 
 // A股红涨绿跌。全球市场（美股/港股指数）**也沿用红涨**——与整个看板及东财等中国平台一致，
 // 对中国用户最不易看错（Simon 2026-07-05 确认；非国际绿涨惯例，是有意选择，勿改）。
@@ -87,6 +88,7 @@ function Stat({ k, v, sub, tone, title }: { k: string; v: ReactNode; sub?: React
 
 export function DailyReview() {
   const [marginTrendOpen, setMarginTrendOpen] = useState(false);
+  const [pledgeOpen, setPledgeOpen] = useState(false);
   const fetchingRef = useRef(false);
   const [mode, setMode] = useState<ViewMode>("live");
   const [review, setReview] = useState("");
@@ -606,6 +608,13 @@ export function DailyReview() {
             {marginTrendOpen && <MarginTrend cutoff={bizDay} />}
           </GlassCard>
         </div>
+
+        <GlassCard className="mb-4 min-w-0">
+          <button type="button" aria-expanded={pledgeOpen} onClick={() => setPledgeOpen((open) => !open)} className="rounded border border-border px-2 py-1 text-xs hover:text-primary">
+            {pledgeOpen ? "收起股权质押周度观察" : "查看股权质押周度观察"}
+          </button>
+          {pledgeOpen && <PledgeSnapshot />}
+        </GlassCard>
 
         <GlassCard>
           <BlockHead title="沪深300 估值与国债收益率" page={pageMeta} id="valuation" date={V?.date ?? null} />

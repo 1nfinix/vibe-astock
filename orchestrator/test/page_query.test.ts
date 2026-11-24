@@ -59,6 +59,25 @@ test("两融趋势刷新失败时保留同参数的既有快照和原获取时�
   }
 });
 
+test("股权质押页面将用户选的统计日传给全市场端点", async () => {
+  const c = ctx();
+  try {
+    const calls: { endpoint: string; args?: Record<string, unknown> }[] = [];
+    const fetch: NonNullable<Parameters<typeof pageQuery>[2]>["fetch"] = async (_ctx, request) => {
+      calls.push(request);
+      return { envelope: { status: "ok", evidence: [{ field: "pledge_snapshot_count", value: 2 }] }, cached: false, fetched_at: "2026-11-23T00:00:00Z" } as unknown as Awaited<ReturnType<NonNullable<typeof fetch>>>;
+    };
+    const page = await pageQuery(c, { query: "pledge_snapshot", blockArgs: { pledge: { date: "2026-11-20" }, history: { before: "2026-11-20" } } }, { fetch });
+    assert.equal(page.blocks[0]?.status, "ok");
+    assert.deepEqual(calls.map((call) => [call.endpoint, call.args]), [
+      ["pledge_weekly", { weeks: 12, before: "2026-11-20" }],
+      ["equity_pledge_market", { date: "2026-11-20" }],
+    ]);
+  } finally {
+    fs.rmSync(c.dataRoot, { recursive: true, force: true });
+  }
+});
+
 test("🔴 页面按名字要数据,端点 id 只活在垂类声明里(界面上不该印出端点名)", () => {
   const qs = currentPlugin().pageQueries ?? {};
   assert.ok(Object.keys(qs).length >= 3, "至少声明了几屏");
