@@ -45,6 +45,8 @@ export interface EndpointDef {
    *    (Codex 架构评审 arch-r1 §B)。
    */
   cache_max_age_sec?: number | null;
+  /** 经 fetchEndpoint 取数时的最短时限；共享查询的调用方使用同一下限。 */
+  min_fetch_timeout_ms?: number;
   /** 允许保存有证据但字段不完整的快照；必须同时设置有限缓存时长。 */
   cache_partial?: boolean;
   /**
@@ -89,6 +91,7 @@ export function loadRegistry(repoRoot: string): Registry | null {
     if (Array.isArray(e.industry_tags) && e.industry_tags.length && Object.values(e.stages ?? {}).includes("required")) throw new Error(`端点 ${e.id} 带 industry_tags 却是 required:按产业标签门控的端点只能 optional`);
     if (e.history_fields !== undefined && !(Array.isArray(e.history_fields) && e.history_fields.length > 0 && e.history_fields.every((x) => typeof x === "string" && /^[a-z0-9_]{1,80}$/.test(x)))) throw new Error(`端点 ${e.id} 的 history_fields 非法:须为非空的小写字段名数组`);
     if (e.cache_partial !== undefined && (e.cache_partial !== true || typeof e.cache_max_age_sec !== "number" || !Number.isFinite(e.cache_max_age_sec) || e.cache_max_age_sec <= 0)) throw new Error(`端点 ${e.id} 允许缓存部分数据时必须设置正数缓存时长`);
+    if (e.min_fetch_timeout_ms !== undefined && (!Number.isInteger(e.min_fetch_timeout_ms) || e.min_fetch_timeout_ms < 1000 || e.min_fetch_timeout_ms > 600000)) throw new Error(`端点 ${e.id} 的最短取数时限必须为 1000–600000 毫秒的整数`);
   }
   return reg;
 }

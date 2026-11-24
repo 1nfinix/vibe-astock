@@ -318,7 +318,7 @@ export async function fetchEndpoint(
     const authValue = ep.auth_env ? authEnvValue(ep.auth_env, ctx.dataRoot) : undefined;
     if (ep.auth_env && authValue) extra[ep.auth_env] = authValue;
     if (process.env.VRA_ALLOW_INSECURE_TLS) extra.VRA_ALLOW_INSECURE_TLS = process.env.VRA_ALLOW_INSECURE_TLS;
-    const timeout = Math.min(Math.max(Number(req.timeout_ms) || 180_000, 1_000), 600_000);
+    const timeout = Math.min(Math.max(Number(req.timeout_ms) || 180_000, ep.min_fetch_timeout_ms ?? 1_000, 1_000), 600_000);
     const t0 = Date.now();
     // 🔴 **必须是异步 spawn,不能用 spawnSync** —— spawnSync 会阻塞整个 Node 事件循环,
     //    HTTP 服务在取数期间连别的请求都收不下:实测 3 个并发请求墙钟 ≈ 串行合计,

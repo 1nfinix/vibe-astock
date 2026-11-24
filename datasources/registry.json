@@ -3566,6 +3566,7 @@
       "mapper_module": "mappers_pledge",
       "id": "pledge_weekly",
       "cache_max_age_sec": 21600,
+      "min_fetch_timeout_ms": 600000,
       "cache_partial": true,
       "title": "沪深逐股质押周度汇总",
       "layer": "21 事件驱动",
